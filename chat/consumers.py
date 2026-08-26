@@ -7,6 +7,8 @@ from .models import Message
 from .validators import validate_message
 
 
+online_users = {}
+
 class ChatConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
@@ -24,14 +26,80 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         await self.accept()
 
+        user = self.scope["user"]
+
+        online_users.setdefault(
+            self.room_name,
+            {}
+        )
+
+        online_users[self.room_name][
+            self.channel_name
+        ] = user.username
+
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                "type": "user_status",
+                "action": "join",
+                "username": user.username,
+                "channel_name": self.channel_name,
+            },
+        )
+
+        await self.broadcast_online_users()
+
         await self.send_message_history()
 
     async def disconnect(self, close_code):
-        if hasattr(self, "room_group_name"):
-            await self.channel_layer.group_discard(
-                self.room_group_name,
-                self.channel_name,
+
+        if not hasattr(self, "room_group_name"):
+            return
+
+        user = self.scope["user"]
+
+        if not user.is_anonymous:
+            room_users = online_users.get(
+                self.room_name,
+                {},
             )
+
+            room_users.pop(
+                self.channel_name,
+                None,
+            )
+
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    "type": "user_status",
+                    "action": "leave",
+                    "username": user.username,
+                    "channel_name": self.channel_name,
+                },
+            )
+
+            await self.broadcast_online_users()
+
+        await self.channel_layer.group_discard(
+            self.room_group_name,
+            self.channel_name,
+        )
+
+    async def user_status(self, event):
+
+        if event["channel_name"] == self.channel_name:
+            return
+
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "user_status",
+                    "action": event["action"],
+                    "username": event["username"],
+                }
+            )
+        )
 
     async def receive(self, text_data):
         message_text, error = validate_message(text_data)
@@ -85,6 +153,30 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 {
                     "type": "history",
                     "messages": messages,
+                }
+            )
+        )
+
+    async def broadcast_online_users(self):
+        users = online_users.get(
+            self.room_name,
+            {},
+        )
+
+        await self.channel_layer.group_send(
+            self.room_group_name,
+            {
+                "type": "online_users",
+                "users": list(set(users.values())),
+            },
+        )
+
+    async def online_users(self, event):
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "online_users",
+                    "users": event["users"],
                 }
             )
         )
