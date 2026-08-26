@@ -32,6 +32,10 @@
         .chat-header {
             padding: 15px 20px;
             border-bottom: 1px solid #ddd;
+
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .chat-header h1 {
@@ -115,16 +119,344 @@
             border-radius: 6px;
             cursor: pointer;
         }
+
+        .modal {
+            position: fixed;
+            inset: 0;
+
+            display: flex;
+            justify-content: center;
+            align-items: center;
+
+            background: rgba(0, 0, 0, 0.5);
+
+            z-index: 1000;
+        }
+
+        .modal.hidden {
+            display: none;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .modal-content {
+            width: 380px;
+            max-width: 90%;
+            padding: 32px;
+
+            background: white;
+            border-radius: 12px;
+
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-header {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+
+        .modal-header h2 {
+            margin: 0 0 8px;
+            font-size: 24px;
+        }
+
+        .modal-header p {
+            margin: 0;
+            color: #777;
+            font-size: 14px;
+        }
+
+        .modal-content form {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group label {
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 11px 12px;
+
+            border: 1px solid #ccc;
+            border-radius: 7px;
+
+            font-size: 15px;
+
+            outline: none;
+        }
+
+        .form-group input:focus {
+            border-color: #777;
+        }
+
+        .primary-button {
+            width: 100%;
+            padding: 11px;
+
+            border: none;
+            border-radius: 7px;
+
+            font-size: 15px;
+            font-weight: bold;
+
+            cursor: pointer;
+        }
+
+        .primary-button:hover {
+            opacity: 0.85;
+        }
+
+        .modal-footer {
+            margin-top: 20px;
+
+            text-align: center;
+
+            color: #777;
+            font-size: 14px;
+        }
+
+        .link-button {
+            padding: 0;
+
+            border: none;
+            background: none;
+
+            font-size: 14px;
+
+            cursor: pointer;
+        }
+
+        .link-button:hover {
+            text-decoration: underline;
+        }
+
+        .form-error {
+            min-height: 18px;
+
+            color: #b00020;
+
+            font-size: 13px;
+            text-align: center;
+        }
+
+        #login-error {
+            color: #b00020;
+            font-size: 14px;
+            min-height: 18px;
+        }
+        #logout-button {
+            padding: 8px 14px;
+
+            border: 1px solid #ccc;
+            border-radius: 6px;
+
+            background: white;
+
+            cursor: pointer;
+        }
+
+        #logout-button:hover {
+            background: #f5f5f5;
+        }
     </style>
 </head>
 
 <body>
 
+<div id="login-modal" class="modal {% if user.is_authenticated %} hidden{% endif %}">
+    <div class="modal-content">
+
+    <!-- LOGIN -->
+
+        <div id="login-container">
+
+            <div class="modal-header">
+                <h2>Вход в чат</h2>
+                <p>Войдите, чтобы продолжить</p>
+            </div>
+
+            <form id="login-form">
+
+                {% csrf_token %}
+
+                <div class="form-group">
+                    <label for="login-username">Логин</label>
+
+                    <input
+                        id="login-username"
+                        type="text"
+                        placeholder="Введите логин"
+                        autocomplete="username"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="login-password">Пароль</label>
+
+                    <input
+                        id="login-password"
+                        type="password"
+                        placeholder="Введите пароль"
+                        autocomplete="current-password"
+                        required
+                    >
+                </div>
+
+                <div id="login-error" class="form-error"></div>
+
+                <button
+                    type="submit"
+                    class="primary-button"
+                >
+                    Войти
+                </button>
+
+            </form>
+
+            <div class="modal-footer">
+                Нет аккаунта?
+
+                <button
+                    type="button"
+                    id="show-register"
+                    class="link-button"
+                >
+                    Зарегистрироваться
+                </button>
+            </div>
+
+        </div>
+
+
+        <!-- REGISTER -->
+
+        <div
+            id="register-container"
+            class="hidden"
+        >
+
+            <div class="modal-header">
+                <h2>Создание аккаунта</h2>
+                <p>Заполните данные для регистрации</p>
+            </div>
+
+            <form id="register-form">
+
+                {% csrf_token %}
+
+                <div class="form-group">
+                    <label for="register-username">
+                        Логин
+                    </label>
+
+                    <input
+                        id="register-username"
+                        type="text"
+                        placeholder="Придумайте логин"
+                        autocomplete="username"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="register-email">
+                        Email
+                    </label>
+
+                    <input
+                        id="register-email"
+                        type="email"
+                        placeholder="Введите email"
+                        autocomplete="email"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="register-password">
+                        Пароль
+                    </label>
+
+                    <input
+                        id="register-password"
+                        type="password"
+                        placeholder="Придумайте пароль"
+                        autocomplete="new-password"
+                        required
+                    >
+                </div>
+
+                <div class="form-group">
+                    <label for="register-password-confirm">
+                        Повторите пароль
+                    </label>
+
+                    <input
+                        id="register-password-confirm"
+                        type="password"
+                        placeholder="Повторите пароль"
+                        autocomplete="new-password"
+                        required
+                    >
+                </div>
+
+                <div
+                    id="register-error"
+                    class="form-error"
+                ></div>
+
+                <button
+                    type="submit"
+                    class="primary-button"
+                >
+                    Создать аккаунт
+                </button>
+
+            </form>
+
+            <div class="modal-footer">
+                Уже есть аккаунт?
+
+                <button
+                    type="button"
+                    id="show-login"
+                    class="link-button"
+                >
+                    Войти
+                </button>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
 <div class="chat-container">
 
     <div class="chat-header">
-        <h1>Комната: {{ room_name }}</h1>
-        <p>Django Channels Chat</p>
+        <div>
+            <h1>Комната: {{ room_name }}</h1>
+            <p>Пользователь: {{ request.user.username }}</p>
+        </div>
+
+        {% if user.is_authenticated %}
+            <button id="logout-button">
+                Выйти
+            </button>
+        {% endif %}
     </div>
 
     <div id="chat-log" class="chat-log"></div>
@@ -133,10 +465,10 @@
 
     <div class="chat-input">
         <input
-            id="chat-message-input"
-            type="text"
-            placeholder="Введите сообщение..."
-            autocomplete="off"
+                id="chat-message-input"
+                type="text"
+                placeholder="Введите сообщение..."
+                autocomplete="off"
         >
 
         <button id="chat-message-submit">
@@ -146,64 +478,165 @@
 
 </div>
 
+
 <script>
     const roomName = "{{ room_name }}";
 
-    const chatSocket = new WebSocket(
-        "ws://" + window.location.host + "/ws/chat/" + roomName + "/"
-    );
+    let chatSocket = null;
 
 
-    chatSocket.onmessage = function(event) {
-        const data = JSON.parse(event.data);
+    // =========================
+    // Authentication state
+    // =========================
 
-        if (data.type === "history") {
-            data.messages.forEach(addMessage);
-        }
+    const isAuthenticated =
+        {% if user.is_authenticated %}true{% else %}false{% endif %};
 
-        if (data.type === "message") {
-            addMessage(data);
-        }
 
-        if (data.type === "error") {
-            showError(data.message);
-        }
-    };
+    // =========================
+    // DOM elements
+    // =========================
 
+    const loginContainer =
+        document.getElementById("login-container");
+
+    const registerContainer =
+        document.getElementById("register-container");
+
+    const loginForm =
+        document.getElementById("login-form");
+
+    const registerForm =
+        document.getElementById("register-form");
+
+    const showRegisterButton =
+        document.getElementById("show-register");
+
+    const showLoginButton =
+        document.getElementById("show-login");
+
+
+    // =========================
+    // WebSocket
+    // =========================
+
+    if (isAuthenticated) {
+        connectWebSocket();
+    }
+
+
+    function connectWebSocket() {
+
+        chatSocket = new WebSocket(
+            "ws://" +
+            window.location.host +
+            "/ws/chat/" +
+            roomName +
+            "/"
+        );
+
+
+        chatSocket.onmessage = function (event) {
+
+            const data = JSON.parse(event.data);
+
+
+            if (data.type === "history") {
+                data.messages.forEach(addMessage);
+            }
+
+
+            if (data.type === "message") {
+                addMessage(data);
+            }
+
+
+            if (data.type === "error") {
+                showError(data.message);
+            }
+        };
+
+
+        chatSocket.onclose = function () {
+            console.log("WebSocket connection closed");
+        };
+    }
+
+
+    // =========================
+    // Messages
+    // =========================
 
     function addMessage(data) {
-        const chatLog = document.getElementById("chat-log");
 
-        const messageElement = document.createElement("div");
+        const chatLog =
+            document.getElementById("chat-log");
 
-        const currentUser = "{{ request.user.username }}";
+        const messageElement =
+            document.createElement("div");
+
+
+        const currentUser =
+            "{{ request.user.username }}";
+
 
         if (data.username === currentUser) {
-            messageElement.classList.add("message", "own");
+
+            messageElement.classList.add(
+                "message",
+                "own"
+            );
+
         } else {
-            messageElement.classList.add("message");
+
+            messageElement.classList.add(
+                "message"
+            );
         }
 
-        const content = document.createElement("div");
-        content.classList.add("message-content");
 
-        const username = document.createElement("div");
+        const content =
+            document.createElement("div");
+
+        content.classList.add(
+            "message-content"
+        );
+
+
+        const username =
+            document.createElement("div");
+
         username.classList.add("username");
-        username.textContent = data.username;
 
-        const text = document.createElement("div");
+        username.textContent =
+            data.username;
+
+
+        const text =
+            document.createElement("div");
+
         text.classList.add("text");
-        text.textContent = data.message;
 
-        const time = document.createElement("div");
+        text.textContent =
+            data.message;
+
+
+        const time =
+            document.createElement("div");
+
         time.classList.add("time");
 
-        const date = new Date(data.created_at);
 
-        time.textContent = date.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit"
-        });
+        const date =
+            new Date(data.created_at);
+
+
+        time.textContent =
+            date.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit"
+            });
+
 
         content.appendChild(username);
         content.appendChild(text);
@@ -213,29 +646,65 @@
 
         chatLog.appendChild(messageElement);
 
-        chatLog.scrollTop = chatLog.scrollHeight;
+
+        chatLog.scrollTop =
+            chatLog.scrollHeight;
     }
 
 
     function showError(message) {
-        const errorElement = document.getElementById("error-message");
 
-        errorElement.textContent = message;
+        const errorElement =
+            document.getElementById(
+                "error-message"
+            );
+
+
+        errorElement.textContent =
+            message;
+
 
         setTimeout(() => {
+
             errorElement.textContent = "";
+
         }, 3000);
     }
 
 
-    function sendMessage() {
-        const input = document.getElementById("chat-message-input");
+    // =========================
+    // Send message
+    // =========================
 
-        const message = input.value.trim();
+    function sendMessage() {
+
+        const input =
+            document.getElementById(
+                "chat-message-input"
+            );
+
+
+        const message =
+            input.value.trim();
+
 
         if (!message) {
             return;
         }
+
+
+        if (
+            !chatSocket ||
+            chatSocket.readyState !== WebSocket.OPEN
+        ) {
+
+            showError(
+                "WebSocket не подключен"
+            );
+
+            return;
+        }
+
 
         chatSocket.send(
             JSON.stringify({
@@ -243,28 +712,322 @@
             })
         );
 
+
         input.value = "";
+
         input.focus();
     }
 
 
     document
         .getElementById("chat-message-submit")
-        .addEventListener("click", sendMessage);
+        .addEventListener(
+            "click",
+            sendMessage
+        );
 
 
     document
         .getElementById("chat-message-input")
-        .addEventListener("keydown", function(event) {
-            if (event.key === "Enter") {
-                sendMessage();
+        .addEventListener(
+            "keydown",
+            function (event) {
+
+                if (event.key === "Enter") {
+                    sendMessage();
+                }
+
             }
-        });
+        );
 
 
-    chatSocket.onclose = function() {
-        console.log("WebSocket connection closed");
-    };
+    // =========================
+    // Login
+    // =========================
+
+    loginForm.addEventListener(
+        "submit",
+        async function (event) {
+
+            event.preventDefault();
+
+
+            const username =
+                document.getElementById(
+                    "login-username"
+                ).value;
+
+
+            const password =
+                document.getElementById(
+                    "login-password"
+                ).value;
+
+
+            const errorElement =
+                document.getElementById(
+                    "login-error"
+                );
+
+
+            errorElement.textContent = "";
+
+
+            const csrfToken =
+                document.querySelector(
+                    "[name=csrfmiddlewaretoken]"
+                ).value;
+
+
+            const response =
+                await fetch(
+                    "{% url 'login' %}",
+                    {
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "application/x-www-form-urlencoded",
+
+                            "X-CSRFToken":
+                                csrfToken,
+                        },
+
+                        body:
+                            new URLSearchParams({
+                                username: username,
+                                password: password,
+                            }),
+                    }
+                );
+
+
+            const data =
+                await response.json();
+
+
+            if (!response.ok) {
+
+                errorElement.textContent =
+                    data.error;
+
+                return;
+            }
+
+
+            window.location.reload();
+        }
+    );
+
+
+    // =========================
+    // Logout
+    // =========================
+
+    const logoutButton =
+        document.getElementById(
+            "logout-button"
+        );
+
+
+    if (logoutButton) {
+
+        logoutButton.addEventListener(
+            "click",
+            async function () {
+
+                const csrfToken =
+                    document.querySelector(
+                        "[name=csrfmiddlewaretoken]"
+                    ).value;
+
+
+                if (chatSocket) {
+                    chatSocket.close();
+                }
+
+
+                const response =
+                    await fetch(
+                        "{% url 'logout' %}",
+                        {
+                            method: "POST",
+
+                            headers: {
+                                "X-CSRFToken":
+                                    csrfToken,
+                            },
+                        }
+                    );
+
+
+                if (response.ok) {
+                    window.location.reload();
+                }
+            }
+        );
+    }
+
+
+    // =========================
+    // Switch to registration
+    // =========================
+
+    showRegisterButton.addEventListener(
+        "click",
+        function () {
+
+            loginContainer.classList.add(
+                "hidden"
+            );
+
+            registerContainer.classList.remove(
+                "hidden"
+            );
+        }
+    );
+
+
+    // =========================
+    // Switch to login
+    // =========================
+
+    showLoginButton.addEventListener(
+        "click",
+        function () {
+
+            registerContainer.classList.add(
+                "hidden"
+            );
+
+            loginContainer.classList.remove(
+                "hidden"
+            );
+        }
+    );
+
+
+    // =========================
+    // Registration
+    // =========================
+
+    registerForm.addEventListener(
+        "submit",
+        async function (event) {
+
+            event.preventDefault();
+
+
+            const username =
+                document.getElementById(
+                    "register-username"
+                ).value;
+
+
+            const email =
+                document.getElementById(
+                    "register-email"
+                ).value;
+
+
+            const password =
+                document.getElementById(
+                    "register-password"
+                ).value;
+
+
+            const passwordConfirm =
+                document.getElementById(
+                    "register-password-confirm"
+                ).value;
+
+
+            const errorElement =
+                document.getElementById(
+                    "register-error"
+                );
+
+
+            errorElement.textContent = "";
+
+
+            const csrfToken =
+                document.querySelector(
+                    "[name=csrfmiddlewaretoken]"
+                ).value;
+
+
+            const response =
+                await fetch(
+                    "{% url 'register' %}",
+                    {
+                        method: "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "application/x-www-form-urlencoded",
+
+                            "X-CSRFToken":
+                                csrfToken,
+                        },
+
+                        body:
+                            new URLSearchParams({
+                                username: username,
+                                email: email,
+                                password: password,
+                                password_confirm:
+                                    passwordConfirm,
+                            }),
+                    }
+                );
+
+
+            const data =
+                await response.json();
+
+
+            if (!response.ok) {
+
+                showRegistrationErrors(
+                    data.errors
+                );
+
+                return;
+            }
+
+
+            window.location.reload();
+        }
+    );
+
+
+    function showRegistrationErrors(errors) {
+
+        const errorElement =
+            document.getElementById(
+                "register-error"
+            );
+
+
+        const messages = [];
+
+
+        for (const field in errors) {
+
+            for (const error of errors[field]) {
+
+                messages.push(
+                    error.message
+                );
+            }
+        }
+
+
+        errorElement.textContent =
+            messages.join(" ");
+    }
+
 </script>
 
 </body>

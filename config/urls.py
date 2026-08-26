@@ -1,10 +1,8 @@
 from django.contrib import admin
-from django.urls import path
-
-from chat.views import chat_page
+from django.urls import include, path
 
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path("chat/<str:room_name>/", chat_page, name="chat")
+    path("admin/", admin.site.urls),
+    path("chat/", include("chat.urls")),
 ]
