@@ -1,0 +1,156 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Профиль — {{ user.username }}</title>
+    <link
+        rel="stylesheet"
+        href="{% static 'users/css/profile.css' %}"
+    >
+
+</head>
+
+<body>
+
+<div class="profile-container">
+    <div class="profile-header">
+        <h1>Профиль пользователя</h1>
+        <a href="{% url 'chat' room_name='general' %}">
+            Вернуться в чат
+        </a>
+        <form method="post" action="{% url 'logout' %}">
+            {% csrf_token %}
+            <button type="submit" class="logout-button">
+                Выйти
+            </button>
+        </form>
+    </div>
+
+
+    <div class="profile-avatar">
+        {% if user.avatar %}
+            <img
+                src="{{ user.avatar.url }}"
+                alt="Аватар {{ user.username }}"
+            >
+        {% else %}
+            <span>
+                {{ user.username|first|upper }}
+            </span>
+        {% endif %}
+    </div>
+
+    <div class="profile-info">
+
+        <div class="profile-row">
+            <span class="profile-label">
+                Имя пользователя
+            </span>
+            <span class="profile-value">
+                {{ user.username }}
+            </span>
+        </div>
+
+        <div class="profile-row">
+            <span class="profile-label">
+                Email
+            </span>
+            <span class="profile-value">
+                {{ user.email }}
+            </span>
+        </div>
+
+        <div class="profile-row">
+            <span class="profile-label">
+                Дата регистрации
+            </span>
+            <span class="profile-value">
+                {{ user.date_joined|date:"d.m.Y H:i" }}
+            </span>
+        </div>
+
+    </div>
+
+
+    <div class="profile-edit">
+
+        <h2>Изменить профиль</h2>
+
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            {{ form.non_field_errors }}
+
+            <div class="form-group">
+                {{ form.username.label_tag }}
+                {{ form.username }}
+                {{ form.username.errors }}
+            </div>
+
+            <div class="form-group">
+                {{ form.email.label_tag }}
+                {{ form.email }}
+                {{ form.email.errors }}
+            </div>
+
+            <div class="form-group">
+
+                <label for="id_avatar">Аватар</label>
+
+                {% if user.avatar %}
+                    <div class="current-avatar">
+                        Текущий файл:
+                        <a
+                            href="{{ user.avatar.url }}"
+                            target="_blank"
+                        >
+                            {{ user.avatar.name|cut:"avatars/" }}
+                        </a>
+                    </div>
+                {% endif %}
+
+                <div class="avatar-upload">
+
+                    <label
+                        for="id_avatar"
+                        class="avatar-upload-button"
+                    >
+                        Выбрать изображение
+                    </label>
+
+                    <input
+                        type="file"
+                        name="avatar"
+                        id="id_avatar"
+                        accept="image/*"
+                    >
+
+                    <span id="avatar-file-name"></span>
+
+                </div>
+
+                {% if form.avatar.errors %}
+                    <div class="form-error">
+                        {{ form.avatar.errors }}
+                    </div>
+                {% endif %}
+
+            </div>
+
+
+            <button type="submit">
+                Сохранить изменения
+            </button>
+
+        </form>
+
+    </div>
+
+<script src="{% static 'users/js/profile.js' %}"></script>
+
+</div>
+
+</body>
+</html>
