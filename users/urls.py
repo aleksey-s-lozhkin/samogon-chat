@@ -1,10 +1,11 @@
-# from django.urls import path
-#
-# import chat
-# from chat.views import login_view
-#
-#
-# urlpatterns = [
-#     path("<str:room_name>/", chat, name="chat"),
-#     path("login/", login_view, name="login"),
-# ]
+from django.urls import path
+
+from .views import login_view, logout_view, register_view, profile
+
+
+urlpatterns = [
+    path("login/", login_view, name="login"),
+    path("logout/", logout_view, name="logout"),
+    path("register/", register_view, name="register"),
+    path("profile/", profile, name="profile"),
+]
