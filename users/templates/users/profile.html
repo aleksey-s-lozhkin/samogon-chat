@@ -16,17 +16,30 @@
 <body>
 
 <div class="profile-container">
+
     <div class="profile-header">
+
         <h1>Профиль пользователя</h1>
-        <a href="{% url 'chat' room_name='general' %}">
-            Вернуться в чат
-        </a>
-        <form method="post" action="{% url 'logout' %}">
-            {% csrf_token %}
-            <button type="submit" class="logout-button">
-                Выйти
-            </button>
-        </form>
+
+        <div class="profile-actions">
+
+            <a href="{% url 'chat' room_name='general' %}">
+                Вернуться в чат
+            </a>
+
+            <form method="post" action="{% url 'logout' %}">
+                {% csrf_token %}
+
+                <button
+                    type="submit"
+                    class="logout-button"
+                >
+                    Выйти
+                </button>
+            </form>
+
+        </div>
+
     </div>
 
 
