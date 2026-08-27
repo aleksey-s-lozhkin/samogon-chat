@@ -3,4 +3,5 @@ from django.db import models
 
 
 class User(AbstractUser):
-    pass
+    """Модель пользователя."""
+    avatar = models.ImageField(upload_to='avatars/%Y/%m', blank=True, null=True)
