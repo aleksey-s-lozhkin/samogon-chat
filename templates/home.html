@@ -1,0 +1,230 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Django Chat</title>
+
+    <link
+        rel="stylesheet"
+        href="{% static 'home/css/home.css' %}"
+    >
+</head>
+
+<body>
+
+<div class="page">
+
+    <!-- HEADER -->
+
+    <header class="header">
+
+        <a href="{% url 'home' %}" class="logo">
+            <span class="logo-icon">💬</span>
+            <span>Django Chat</span>
+        </a>
+
+
+        {% if user.is_authenticated %}
+
+            <div class="user-info">
+
+                <div class="user-avatar">
+
+                    {% if user.avatar %}
+                        <img
+                            src="{{ user.avatar.url }}"
+                            alt="{{ user.username }}"
+                        >
+                    {% else %}
+                        <span>
+                            {{ user.username|first|upper }}
+                        </span>
+                    {% endif %}
+
+                </div>
+
+                <span>
+                    {{ user.username }}
+                </span>
+
+            </div>
+
+        {% endif %}
+
+    </header>
+
+
+    <!-- MAIN -->
+
+    <main class="main">
+
+        <div class="hero">
+
+            <div class="hero-icon">
+                💬
+            </div>
+
+
+            {% if user.is_authenticated %}
+
+                <span class="badge">
+                    ● Вы в сети
+                </span>
+
+                <h1>
+                    Добро пожаловать,
+                    <span>{{ user.username }}</span>!
+                </h1>
+
+                <p class="hero-description">
+                    Рады снова вас видеть.
+                    Продолжайте общение в реальном времени.
+                </p>
+
+
+                <div class="actions">
+
+                    <a
+                        href="{% url 'chat' room_name='general' %}"
+                        class="button button-primary"
+                    >
+                        <span>💬</span>
+                        Открыть чат
+                    </a>
+
+                    <a
+                        href="{% url 'profile' %}"
+                        class="button button-secondary"
+                    >
+                        <span>👤</span>
+                        Мой профиль
+                    </a>
+
+                </div>
+
+
+            {% else %}
+
+                <span class="badge">
+                    ● Онлайн-чат
+                </span>
+
+                <h1>
+                    Общайтесь
+                    <span>в реальном времени</span>
+                </h1>
+
+                <p class="hero-description">
+                    Простой и быстрый чат на Django Channels.
+                    Общайтесь с другими пользователями
+                    без обновления страницы.
+                </p>
+
+
+                <div class="actions">
+
+                    <a
+                        href="{% url 'chat' room_name='general' %}"
+                        class="button button-primary"
+                    >
+                        <span>💬</span>
+                        Войти в чат
+                    </a>
+
+                </div>
+
+            {% endif %}
+
+        </div>
+
+
+        <!-- FEATURES -->
+
+        <section class="features">
+
+            <div class="feature">
+
+                <div class="feature-icon">
+                    ⚡
+                </div>
+
+                <h3>
+                    Real-time
+                </h3>
+
+                <p>
+                    Сообщения появляются
+                    мгновенно благодаря
+                    WebSocket.
+                </p>
+
+            </div>
+
+
+            <div class="feature">
+
+                <div class="feature-icon">
+                    👥
+                </div>
+
+                <h3>
+                    Пользователи онлайн
+                </h3>
+
+                <p>
+                    Видите, кто сейчас
+                    находится в комнате.
+                </p>
+
+            </div>
+
+
+            <div class="feature">
+
+                <div class="feature-icon">
+                    🔐
+                </div>
+
+                <h3>
+                    Авторизация
+                </h3>
+
+                <p>
+                    Личный профиль и
+                    защищённая авторизация.
+                </p>
+
+            </div>
+
+        </section>
+
+    </main>
+
+
+    <!-- FOOTER -->
+
+    <footer class="footer">
+
+        <span>
+            Django Chat
+        </span>
+
+        <span>
+            Django • Channels • WebSocket
+        </span>
+
+    </footer>
+
+</div>
+
+</body>
+</html>

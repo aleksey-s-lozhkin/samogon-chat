@@ -1,0 +1,473 @@
+* {
+    box-sizing: border-box;
+}
+
+
+body {
+    margin: 0;
+
+    font-family:
+        Inter,
+        Arial,
+        sans-serif;
+
+    color: #ffffff;
+
+    background:
+        radial-gradient(
+            circle at top,
+            #263b5c 0%,
+            #111827 45%,
+            #080d16 100%
+        );
+
+    min-height: 100vh;
+}
+
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+
+.page {
+    min-height: 100vh;
+
+    display: flex;
+    flex-direction: column;
+}
+
+
+/* =========================
+   HEADER
+   ========================= */
+
+.header {
+    width: 100%;
+
+    padding: 24px 50px;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    border-bottom:
+        1px solid rgba(255, 255, 255, 0.08);
+}
+
+
+.logo {
+    display: flex;
+    align-items: center;
+
+    gap: 10px;
+
+    font-size: 20px;
+    font-weight: 700;
+}
+
+
+.logo-icon {
+    font-size: 25px;
+}
+
+
+.user-info {
+    display: flex;
+    align-items: center;
+
+    gap: 10px;
+
+    font-size: 14px;
+
+    color: #d1d5db;
+}
+
+
+.user-avatar {
+    width: 36px;
+    height: 36px;
+
+    border-radius: 50%;
+
+    overflow: hidden;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: #3b82f6;
+
+    color: white;
+
+    font-weight: 700;
+}
+
+
+.user-avatar img {
+    width: 100%;
+    height: 100%;
+
+    object-fit: cover;
+
+    display: block;
+}
+
+
+/* =========================
+   MAIN
+   ========================= */
+
+.main {
+    flex: 1;
+
+    width: 100%;
+    max-width: 1100px;
+
+    margin: 0 auto;
+
+    padding:
+        80px 30px
+        60px;
+}
+
+
+.hero {
+    max-width: 750px;
+
+    margin: 0 auto;
+
+    text-align: center;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+
+.hero-icon {
+    width: 80px;
+    height: 80px;
+
+    margin-bottom: 25px;
+
+    border-radius: 24px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-size: 38px;
+
+    background:
+        rgba(59, 130, 246, 0.15);
+
+    border:
+        1px solid rgba(59, 130, 246, 0.3);
+
+    box-shadow:
+        0 15px 50px
+        rgba(0, 0, 0, 0.25);
+}
+
+
+.badge {
+    padding: 7px 14px;
+
+    margin-bottom: 22px;
+
+    border-radius: 20px;
+
+    font-size: 13px;
+
+    color: #93c5fd;
+
+    background:
+        rgba(59, 130, 246, 0.1);
+
+    border:
+        1px solid rgba(59, 130, 246, 0.2);
+}
+
+
+h1 {
+    margin: 0;
+
+    font-size: clamp(
+        38px,
+        6vw,
+        64px
+    );
+
+    line-height: 1.1;
+
+    letter-spacing: -2px;
+}
+
+
+h1 span {
+    display: block;
+
+    color: #60a5fa;
+}
+
+
+.hero-description {
+    max-width: 600px;
+
+    margin:
+        25px auto
+        0;
+
+    color: #9ca3af;
+
+    font-size: 18px;
+
+    line-height: 1.7;
+}
+
+
+/* =========================
+   BUTTONS
+   ========================= */
+
+.actions {
+    margin-top: 35px;
+
+    display: flex;
+
+    gap: 12px;
+
+    justify-content: center;
+
+    flex-wrap: wrap;
+}
+
+
+.button {
+    min-width: 170px;
+
+    padding: 13px 22px;
+
+    border-radius: 9px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    gap: 8px;
+
+    font-size: 15px;
+    font-weight: 600;
+
+    transition:
+        transform 0.2s,
+        background 0.2s,
+        box-shadow 0.2s;
+}
+
+
+.button:hover {
+    transform: translateY(-2px);
+}
+
+
+.button-primary {
+    background: #3b82f6;
+
+    box-shadow:
+        0 8px 25px
+        rgba(59, 130, 246, 0.25);
+}
+
+
+.button-primary:hover {
+    background: #2563eb;
+
+    box-shadow:
+        0 12px 30px
+        rgba(59, 130, 246, 0.35);
+}
+
+
+.button-secondary {
+    background:
+        rgba(255, 255, 255, 0.06);
+
+    border:
+        1px solid
+        rgba(255, 255, 255, 0.1);
+
+    color: #e5e7eb;
+}
+
+
+.button-secondary:hover {
+    background:
+        rgba(255, 255, 255, 0.1);
+}
+
+
+/* =========================
+   FEATURES
+   ========================= */
+
+.features {
+    margin-top: 80px;
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(3, 1fr);
+
+    gap: 20px;
+}
+
+
+.feature {
+    padding: 25px;
+
+    border-radius: 14px;
+
+    background:
+        rgba(255, 255, 255, 0.04);
+
+    border:
+        1px solid
+        rgba(255, 255, 255, 0.07);
+
+    transition:
+        transform 0.2s,
+        background 0.2s;
+}
+
+
+.feature:hover {
+    transform: translateY(-4px);
+
+    background:
+        rgba(255, 255, 255, 0.06);
+}
+
+
+.feature-icon {
+    font-size: 25px;
+
+    margin-bottom: 15px;
+}
+
+
+.feature h3 {
+    margin:
+        0 0 8px;
+
+    font-size: 16px;
+}
+
+
+.feature p {
+    margin: 0;
+
+    color: #9ca3af;
+
+    font-size: 14px;
+
+    line-height: 1.6;
+}
+
+
+/* =========================
+   FOOTER
+   ========================= */
+
+.footer {
+    padding: 25px 50px;
+
+    display: flex;
+    justify-content: space-between;
+
+    color: #6b7280;
+
+    font-size: 12px;
+
+    border-top:
+        1px solid
+        rgba(255, 255, 255, 0.06);
+}
+
+
+/* =========================
+   MOBILE
+   ========================= */
+
+@media (max-width: 700px) {
+
+    .header {
+        padding: 20px;
+    }
+
+
+    .main {
+        padding:
+            60px 20px
+            40px;
+    }
+
+
+    h1 {
+        font-size: 40px;
+
+        letter-spacing: -1px;
+    }
+
+
+    .hero-description {
+        font-size: 16px;
+    }
+
+
+    .features {
+        grid-template-columns: 1fr;
+
+        margin-top: 60px;
+    }
+
+
+    .footer {
+        padding: 20px;
+
+        flex-direction: column;
+
+        gap: 8px;
+
+        text-align: center;
+    }
+
+}
+
+.user-avatar {
+    width: 36px;
+    height: 36px;
+
+    border-radius: 50%;
+    overflow: hidden;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: #3b82f6;
+
+    color: white;
+
+    font-weight: 700;
+}
+
+.user-avatar img {
+    width: 100%;
+    height: 100%;
+
+    object-fit: cover;
+    display: block;
+}
