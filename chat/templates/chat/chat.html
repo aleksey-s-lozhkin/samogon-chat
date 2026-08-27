@@ -188,9 +188,20 @@
         </div>
 
         {% if user.is_authenticated %}
-            <button id="logout-button">
-                Выйти
-            </button>
+            <div class="user-actions">
+
+                <a
+                    href="{% url 'profile' %}"
+                    class="profile-link"
+                >
+                    Профиль
+                </a>
+
+                <button id="logout-button" action="{% url 'logout' %}">
+                    Выйти
+                </button>
+
+            </div>
         {% endif %}
     </div>
 
