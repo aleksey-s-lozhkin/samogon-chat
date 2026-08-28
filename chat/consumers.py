@@ -3,8 +3,8 @@ import json
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 
-from .models import Message
 from .validators import validate_message
+from .services.messages import MessageService
 
 
 online_users = {}
@@ -183,7 +183,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def create_message(self, user_id, room_name, text):
-        return Message.objects.create(
+        return MessageService.create_message(
             user_id=user_id,
             room_name=room_name,
             text=text,
@@ -191,17 +191,4 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_messages(self, room_name):
-        messages = (
-            Message.objects
-            .filter(room_name=room_name)
-            .select_related("user")
-        )
-
-        return [
-            {
-                "username": message.user.username,
-                "message": message.text,
-                "created_at": message.created_at.isoformat(),
-            }
-            for message in messages
-        ]
+        return MessageService.get_room_messages(room_name)
