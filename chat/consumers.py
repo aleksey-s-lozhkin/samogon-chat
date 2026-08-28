@@ -18,6 +18,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         self.room_slug = self.scope["url_route"]["kwargs"]["room_slug"]
+
+        try:
+            self.room = await self.get_room(self.room_slug)
+        except Room.DoesNotExist:
+            await self.close()
+            return
+
         self.room_group_name = f"chat_{self.room_slug}"
 
         await self.channel_layer.group_add(
@@ -28,10 +35,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.accept()
 
         user = self.scope["user"]
-        messages = await self.get_messages(self.room)
 
-        online_users.setdefault(self.room_name, {})
-        online_users[self.room_name][self.channel_name] = user.username
+        online_users.setdefault(self.room_slug, {})
+        online_users[self.room_slug][self.channel_name] = user.username
 
         await self.channel_layer.group_send(
             self.room_group_name,
@@ -46,12 +52,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.broadcast_online_users()
         await self.send_message_history()
 
-        try:
-            self.room = await self.get_room(self.room_slug)
-        except Room.DoesNotExist:
-            await self.close()
-            return
-
     async def disconnect(self, close_code):
         if not hasattr(self, "room_group_name"):
             return
@@ -59,7 +59,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         user = self.scope["user"]
 
         if not user.is_anonymous:
-            room_users = online_users.get(self.room_name, {})
+            room_users = online_users.get(self.room_slug, {})
 
             room_users.pop(self.channel_name, None)
 
@@ -112,7 +112,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         message = await self.create_message(
             user_id=user.id,
-            room_name=self.room_name,
+            room=self.room,
             text=message_text,
         )
 
@@ -139,7 +139,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def send_message_history(self):
-        messages = await self.get_messages(self.room_name)
+        messages = await self.get_messages(self.room)
 
         await self.send(
             text_data=json.dumps(
@@ -151,7 +151,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def broadcast_online_users(self):
-        users = online_users.get(self.room_name, {})
+        users = online_users.get(self.room_slug, {})
 
         await self.channel_layer.group_send(
             self.room_group_name,
