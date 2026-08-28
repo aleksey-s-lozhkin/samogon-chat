@@ -13,3 +13,14 @@ def chat_page(request, room_slug):
             "room": room,
         },
     )
+
+def rooms_page(request):
+    rooms = Room.objects.order_by("name")
+
+    return render(
+        request,
+        "chat/rooms.html",
+        {
+            "rooms": rooms,
+        },
+    )

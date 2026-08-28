@@ -4,16 +4,45 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Chat — {{ room_name }}</title>
-    <link rel="stylesheet" href="{% static 'chat/css/chat.css' %}">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>
+        {{ room.name }} — Самогон
+    </title>
+
+    <link
+        rel="stylesheet"
+        href="{% static 'chat/css/chat.css' %}"
+    >
+
+    <script
+        src="https://unpkg.com/htmx.org@2.0.4"
+        defer
+    ></script>
+
+    <script
+        defer
+        src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
 </head>
 
 <body>
 
-<div id="login-modal" class="modal {% if user.is_authenticated %} hidden{% endif %}">
+<!-- =========================
+     AUTH MODAL
+     ========================= -->
+
+<div
+    id="login-modal"
+    class="modal {% if user.is_authenticated %}hidden{% endif %}"
+>
+
     <div class="modal-content">
 
-    <!-- LOGIN -->
+        <!-- LOGIN -->
 
         <div id="login-container">
 
@@ -27,7 +56,10 @@
                 {% csrf_token %}
 
                 <div class="form-group">
-                    <label for="login-username">Логин</label>
+
+                    <label for="login-username">
+                        Логин
+                    </label>
 
                     <input
                         id="login-username"
@@ -36,10 +68,15 @@
                         autocomplete="username"
                         required
                     >
+
                 </div>
 
+
                 <div class="form-group">
-                    <label for="login-password">Пароль</label>
+
+                    <label for="login-password">
+                        Пароль
+                    </label>
 
                     <input
                         id="login-password"
@@ -48,9 +85,15 @@
                         autocomplete="current-password"
                         required
                     >
+
                 </div>
 
-                <div id="login-error" class="form-error"></div>
+
+                <div
+                    id="login-error"
+                    class="form-error"
+                ></div>
+
 
                 <button
                     type="submit"
@@ -61,7 +104,9 @@
 
             </form>
 
+
             <div class="modal-footer">
+
                 Нет аккаунта?
 
                 <button
@@ -71,6 +116,7 @@
                 >
                     Зарегистрироваться
                 </button>
+
             </div>
 
         </div>
@@ -88,11 +134,13 @@
                 <p>Заполните данные для регистрации</p>
             </div>
 
+
             <form id="register-form">
 
                 {% csrf_token %}
 
                 <div class="form-group">
+
                     <label for="register-username">
                         Логин
                     </label>
@@ -104,9 +152,12 @@
                         autocomplete="username"
                         required
                     >
+
                 </div>
 
+
                 <div class="form-group">
+
                     <label for="register-email">
                         Email
                     </label>
@@ -118,9 +169,12 @@
                         autocomplete="email"
                         required
                     >
+
                 </div>
 
+
                 <div class="form-group">
+
                     <label for="register-password">
                         Пароль
                     </label>
@@ -132,9 +186,12 @@
                         autocomplete="new-password"
                         required
                     >
+
                 </div>
 
+
                 <div class="form-group">
+
                     <label for="register-password-confirm">
                         Повторите пароль
                     </label>
@@ -146,12 +203,15 @@
                         autocomplete="new-password"
                         required
                     >
+
                 </div>
+
 
                 <div
                     id="register-error"
                     class="form-error"
                 ></div>
+
 
                 <button
                     type="submit"
@@ -162,7 +222,9 @@
 
             </form>
 
+
             <div class="modal-footer">
+
                 Уже есть аккаунт?
 
                 <button
@@ -172,81 +234,283 @@
                 >
                     Войти
                 </button>
+
             </div>
 
         </div>
 
     </div>
+
 </div>
 
-<div class="chat-container">
 
-    <div class="chat-header">
-        <div>
-            <h1>Комната: {{ room_name }}</h1>
-            <p>Пользователь: {{ request.user.username }}</p>
+<!-- =========================
+     CHAT
+     ========================= -->
+
+<div
+    class="chat-container"
+    x-data="{ sidebarOpen: false }"
+>
+
+    <!-- HEADER -->
+
+    <header class="chat-header">
+
+        <div class="brand">
+
+            <button
+                class="mobile-menu-button"
+                type="button"
+                @click="sidebarOpen = !sidebarOpen"
+                aria-label="Открыть комнаты"
+            >
+                ☰
+            </button>
+
+            <div>
+                <h1>🍺 Самогон</h1>
+                <p>Лампочка горит. Сервер тоже.</p>
+            </div>
+
         </div>
 
+
         {% if user.is_authenticated %}
+
             <div class="user-actions">
 
                 <a
                     href="{% url 'profile' %}"
                     class="profile-link"
+                    hx-boost="true"
                 >
                     Профиль
                 </a>
 
-                <button id="logout-button" action="{% url 'logout' %}">
+                <button
+                    id="logout-button"
+                    action="{% url 'logout' %}"
+                >
                     Выйти
                 </button>
 
             </div>
+
         {% endif %}
-    </div>
 
-    <div class="online-users">
+    </header>
 
-        <div class="online-title">
-            Пользователи онлайн
-        </div>
 
-        <div id="online-users-list"></div>
+    <!-- CHAT LAYOUT -->
 
-    </div>
+    <div class="chat-layout">
 
-    <div id="chat-log" class="chat-log"></div>
 
-    <div id="error-message" class="error"></div>
+        <!-- SIDEBAR -->
 
-    <div class="chat-input">
-        <input
-                id="chat-message-input"
-                type="text"
-                placeholder="Введите сообщение..."
-                autocomplete="off"
+        <aside
+            class="rooms-sidebar"
+            :class="{ 'is-open': sidebarOpen }"
         >
 
-        <button id="chat-message-submit">
-            Отправить
-        </button>
+            <div class="sidebar-header">
+
+                <div>
+                    <span class="eyebrow">
+                        САМОГОН
+                    </span>
+
+                    <h2>Комнаты</h2>
+                </div>
+
+
+                <button
+                    class="sidebar-close"
+                    type="button"
+                    @click="sidebarOpen = false"
+                    aria-label="Закрыть меню"
+                >
+                    ×
+                </button>
+
+            </div>
+
+
+            <nav class="rooms-navigation">
+
+                {% for chat_room in rooms %}
+
+                    <a
+                        href="{% url 'chat:chat' room_slug=chat_room.slug %}"
+                        class="room-navigation-item {% if chat_room.slug == room.slug %}active{% endif %}"
+                        hx-boost="true"
+                        @click="sidebarOpen = false"
+                    >
+
+                        <span class="room-navigation-icon">
+                            #
+                        </span>
+
+                        <span>
+                            {{ chat_room.name }}
+                        </span>
+
+                    </a>
+
+                {% empty %}
+
+                    <span class="rooms-empty">
+                        Комнат пока нет
+                    </span>
+
+                {% endfor %}
+
+            </nav>
+
+
+            <!-- BARTENDER -->
+
+            <div class="bartender-card">
+
+                <div class="bartender-avatar">
+                    С
+                </div>
+
+                <div>
+
+                    <strong>Семён</strong>
+
+                    <p>
+                        Бармен
+                    </p>
+
+                </div>
+
+            </div>
+
+        </aside>
+
+
+        <!-- MOBILE OVERLAY -->
+
+        <div
+            class="sidebar-overlay"
+            x-show="sidebarOpen"
+            @click="sidebarOpen = false"
+            x-transition
+        ></div>
+
+
+        <!-- CHAT MAIN -->
+
+        <main class="chat-main">
+
+
+            <!-- ROOM HEADER -->
+
+            <div class="room-header">
+
+                <div>
+
+                    <div class="room-title">
+                        <span>#</span>
+                        <h2>{{ room.name }}</h2>
+                    </div>
+
+                    {% if room.description %}
+                        <p>{{ room.description }}</p>
+                    {% endif %}
+
+                </div>
+
+            </div>
+
+
+            <!-- ONLINE -->
+
+            <section class="online-users">
+
+                <div class="online-title">
+                    <span class="online-dot"></span>
+                    Пользователи онлайн
+                </div>
+
+                <div id="online-users-list"></div>
+
+            </section>
+
+
+            <!-- MESSAGES -->
+
+            <div
+                id="chat-log"
+                class="chat-log"
+            ></div>
+
+
+            <div
+                id="error-message"
+                class="error"
+            ></div>
+
+
+            <!-- INPUT -->
+
+            <div class="chat-input">
+
+                <input
+                    id="chat-message-input"
+                    type="text"
+                    placeholder="Написать сообщение..."
+                    autocomplete="off"
+                >
+
+                <button
+                    id="chat-message-submit"
+                    type="button"
+                >
+                    Отправить
+                </button>
+
+            </div>
+
+
+            <div class="chat-hint">
+                Enter — отправить сообщение
+            </div>
+
+        </main>
+
     </div>
 
 </div>
 
+
+<!-- =========================
+     CONFIG
+     ========================= -->
+
 <script>
+
     const chatConfig = {
-        roomName: "{{ room_name }}",
+        roomSlug: "{{ room.slug }}",
+        roomName: "{{ room.name }}",
         username: "{{ request.user.username }}",
-        isAuthenticated: {{ user.is_authenticated|yesno:"true,false" }},
+        isAuthenticated:
+            {{ user.is_authenticated|yesno:"true,false" }},
 
         logoutUrl: "{% url 'logout' %}",
         loginUrl: "{% url 'login' %}",
         registerUrl: "{% url 'register' %}",
     };
+
 </script>
 
-<script src="{% static 'chat/js/chat.js' %}"></script>
+
+<script
+    src="{% static 'chat/js/chat.js' %}"
+></script>
 
 </body>
 </html>

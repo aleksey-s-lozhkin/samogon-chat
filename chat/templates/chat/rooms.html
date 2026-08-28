@@ -1,0 +1,153 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>Самогон — комнаты</title>
+
+    <link
+        rel="stylesheet"
+        href="{% static 'chat/css/chat.css' %}"
+    >
+
+    <script
+        src="https://unpkg.com/htmx.org@2.0.4"
+        defer
+    ></script>
+
+    <script
+        defer
+        src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+    ></script>
+</head>
+
+<body>
+
+<div
+    class="chat-container rooms-page"
+    x-data="{ menuOpen: false }"
+>
+
+    <header class="chat-header">
+
+        <div>
+            <h1>🍺 Самогон</h1>
+            <p>Место, где код обсуждают за кружкой</p>
+        </div>
+
+        {% if user.is_authenticated %}
+            <div class="user-actions">
+
+                <a
+                    href="{% url 'profile' %}"
+                    class="profile-link"
+                    hx-boost="true"
+                >
+                    Профиль
+                </a>
+
+                <button
+                    id="logout-button"
+                    action="{% url 'logout' %}"
+                >
+                    Выйти
+                </button>
+
+            </div>
+        {% endif %}
+
+    </header>
+
+
+    <main class="rooms-content">
+
+        <div class="rooms-heading">
+
+            <div>
+                <span class="eyebrow">БАР ОТКРЫТ</span>
+
+                <h2>Выберите комнату</h2>
+
+                <p>
+                    Заходите. Здесь обычно говорят о Python,
+                    архитектуре и том, почему всё работало вчера.
+                </p>
+            </div>
+
+        </div>
+
+
+        <section class="rooms-list">
+
+            {% for room in rooms %}
+
+                <a
+                    href="{% url 'chat:chat' room_slug=room.slug %}"
+                    class="room-card"
+                    hx-boost="true"
+                >
+
+                    <div class="room-icon">
+                        #
+                    </div>
+
+                    <div class="room-info">
+
+                        <h3>{{ room.name }}</h3>
+
+                        {% if room.description %}
+                            <p>{{ room.description }}</p>
+                        {% else %}
+                            <p>
+                                Комната ждёт разговоров.
+                            </p>
+                        {% endif %}
+
+                    </div>
+
+                    <div class="room-arrow">
+                        →
+                    </div>
+
+                </a>
+
+            {% empty %}
+
+                <div class="empty-state">
+
+                    <div class="empty-icon">
+                        🍺
+                    </div>
+
+                    <h3>Комнат пока нет</h3>
+
+                    <p>
+                        Семён протирает стойку и делает вид,
+                        что всё под контролем.
+                    </p>
+
+                </div>
+
+            {% endfor %}
+
+        </section>
+
+    </main>
+
+
+    <footer class="rooms-footer">
+        <span>🍸 Семён за стойкой</span>
+        <span>·</span>
+        <span>Без регистрации разговор не начинается</span>
+    </footer>
+
+</div>
+
+</body>
+</html>

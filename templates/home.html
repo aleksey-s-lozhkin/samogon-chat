@@ -32,7 +32,6 @@
             <span>Django Chat</span>
         </a>
 
-
         {% if user.is_authenticated %}
 
             <div class="user-info">
@@ -86,19 +85,19 @@
                 </h1>
 
                 <p class="hero-description">
-                    Рады снова вас видеть.
-                    Продолжайте общение в реальном времени.
+                    Выберите комнату и присоединяйтесь
+                    к общению в реальном времени.
                 </p>
 
 
                 <div class="actions">
 
                     <a
-                        href="{% url 'chat' room_name='general' %}"
+                        href="{% url 'chat:rooms' %}"
                         class="button button-primary"
                     >
                         <span>💬</span>
-                        Открыть чат
+                        Выбрать комнату
                     </a>
 
                     <a
@@ -124,20 +123,19 @@
                 </h1>
 
                 <p class="hero-description">
-                    Простой и быстрый чат на Django Channels.
-                    Общайтесь с другими пользователями
-                    без обновления страницы.
+                    Выбирайте комнату и общайтесь с другими
+                    пользователями без обновления страницы.
                 </p>
 
 
                 <div class="actions">
 
                     <a
-                        href="{% url 'chat' room_name='general' %}"
+                        href="{% url 'chat:rooms' %}"
                         class="button button-primary"
                     >
                         <span>💬</span>
-                        Войти в чат
+                        Выбрать комнату
                     </a>
 
                 </div>
@@ -200,7 +198,7 @@
 
                 <p>
                     Личный профиль и
-                    защищённая авторизация.
+                    защищённый доступ к чату.
                 </p>
 
             </div>
