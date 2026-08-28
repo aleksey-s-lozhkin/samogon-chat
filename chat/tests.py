@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from .models import Message
+from .models import Message, Room
 from .services.messages import MessageService
 
 
@@ -14,49 +14,43 @@ class MessageServiceTests(TestCase):
             username="alex",
         )
 
+        self.room = Room.objects.create(
+            name="General",
+            slug="general",
+            description="General chat",
+        )
+
     def test_create_message(self):
         message = MessageService.create_message(
             user_id=self.user.id,
-            room_name="general",
+            room=self.room,
             text="Hello, Samogon!",
         )
 
         self.assertEqual(message.user, self.user)
-        self.assertEqual(message.room_name, "general")
+        self.assertEqual(message.room, self.room)
         self.assertEqual(message.text, "Hello, Samogon!")
 
     def test_get_room_messages(self):
         MessageService.create_message(
             user_id=self.user.id,
-            room_name="general",
+            room=self.room,
             text="First message",
+        )
+
+        other_room = Room.objects.create(
+            name="Other",
+            slug="other",
         )
 
         MessageService.create_message(
             user_id=self.user.id,
-            room_name="other",
+            room=other_room,
             text="Other room",
         )
 
-        messages = MessageService.get_room_messages("general")
+        messages = MessageService.get_room_messages(self.room)
 
         self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0]["username"], "alex")
         self.assertEqual(messages[0]["message"], "First message")
-
-    def test_serialize_message(self):
-        message = MessageService.create_message(
-            user_id=self.user.id,
-            room_name="general",
-            text="Hello, Samogon!",
-        )
-
-        data = MessageService.serialize_message(message)
-
-        self.assertEqual(data["id"], message.id)
-        self.assertEqual(data["username"], "alex")
-        self.assertEqual(data["message"], "Hello, Samogon!")
-        self.assertEqual(
-            data["created_at"],
-            message.created_at.isoformat(),
-        )

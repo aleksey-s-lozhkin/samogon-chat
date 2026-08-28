@@ -5,6 +5,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 
 from .services.messages import MessageService
 from .validators import validate_message
+from .models import Room
 
 
 online_users = {}
@@ -16,8 +17,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close()
             return
 
-        self.room_name = self.scope["url_route"]["kwargs"]["room_name"]
-        self.room_group_name = f"chat_{self.room_name}"
+        self.room_slug = self.scope["url_route"]["kwargs"]["room_slug"]
+        self.room_group_name = f"chat_{self.room_slug}"
 
         await self.channel_layer.group_add(
             self.room_group_name,
@@ -27,6 +28,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.accept()
 
         user = self.scope["user"]
+        messages = await self.get_messages(self.room)
 
         online_users.setdefault(self.room_name, {})
         online_users[self.room_name][self.channel_name] = user.username
@@ -43,6 +45,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         await self.broadcast_online_users()
         await self.send_message_history()
+
+        try:
+            self.room = await self.get_room(self.room_slug)
+        except Room.DoesNotExist:
+            await self.close()
+            return
 
     async def disconnect(self, close_code):
         if not hasattr(self, "room_group_name"):
@@ -164,13 +172,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     @database_sync_to_async
-    def create_message(self, *, user_id, room_name, text):
+    def create_message(self, *, user_id, room, text):
         return MessageService.create_message(
             user_id=user_id,
-            room_name=room_name,
+            room=room,
             text=text,
         )
 
     @database_sync_to_async
-    def get_messages(self, room_name):
-        return MessageService.get_room_messages(room_name)
+    def get_messages(self, room):
+        return MessageService.get_room_messages(room)
+
+    @database_sync_to_async
+    def get_room(self, slug):
+        return Room.objects.get(slug=slug)

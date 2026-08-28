@@ -4,5 +4,5 @@ from .views import chat_page
 
 
 urlpatterns = [
-    path("<str:room_name>/", chat_page, name="chat"),
+    path("<slug:room_name>/", chat_page, name="chat"),
 ]

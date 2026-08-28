@@ -1,25 +1,34 @@
-from chat.models import Message
+from chat.models import Message, Room
 
 
 class MessageService:
     @staticmethod
-    def create_message(*, user_id: int, room_name: str, text: str) -> Message:
+    def create_message(
+        *,
+        user_id: int,
+        room: Room,
+        text: str,
+    ) -> Message:
         return Message.objects.create(
             user_id=user_id,
-            room_name=room_name,
+            room=room,
             text=text,
         )
 
     @staticmethod
-    def get_room_messages(room_name: str) -> list[dict]:
+    def get_room_messages(room: Room) -> list[dict]:
         messages = (
             Message.objects
-            .filter(room_name=room_name)
+            .filter(room=room)
             .select_related("user")
         )
 
         return [
-            MessageService.serialize_message(message)
+            {
+                "username": message.user.username,
+                "message": message.text,
+                "created_at": message.created_at.isoformat(),
+            }
             for message in messages
         ]
 
@@ -31,4 +40,3 @@ class MessageService:
             "message": message.text,
             "created_at": message.created_at.isoformat(),
         }
-    
