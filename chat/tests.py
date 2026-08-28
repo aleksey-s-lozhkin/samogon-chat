@@ -43,4 +43,20 @@ class MessageServiceTests(TestCase):
         self.assertEqual(len(messages), 1)
         self.assertEqual(messages[0]["username"], "alex")
         self.assertEqual(messages[0]["message"], "First message")
-        
+
+    def test_serialize_message(self):
+        message = MessageService.create_message(
+            user_id=self.user.id,
+            room_name="general",
+            text="Hello, Samogon!",
+        )
+
+        data = MessageService.serialize_message(message)
+
+        self.assertEqual(data["id"], message.id)
+        self.assertEqual(data["username"], "alex")
+        self.assertEqual(data["message"], "Hello, Samogon!")
+        self.assertEqual(
+            data["created_at"],
+            message.created_at.isoformat(),
+        )

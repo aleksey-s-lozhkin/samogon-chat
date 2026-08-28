@@ -19,10 +19,16 @@ class MessageService:
         )
 
         return [
-            {
-                "username": message.user.username,
-                "message": message.text,
-                "created_at": message.created_at.isoformat(),
-            }
+            MessageService.serialize_message(message)
             for message in messages
         ]
+
+    @staticmethod
+    def serialize_message(message: Message) -> dict:
+        return {
+            "id": message.id,
+            "username": message.user.username,
+            "message": message.text,
+            "created_at": message.created_at.isoformat(),
+        }
+    

@@ -3,14 +3,14 @@ import json
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 
-from .validators import validate_message
 from .services.messages import MessageService
+from .validators import validate_message
 
 
 online_users = {}
 
-class ChatConsumer(AsyncWebsocketConsumer):
 
+class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         if self.scope["user"].is_anonymous:
             await self.close()
@@ -28,14 +28,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         user = self.scope["user"]
 
-        online_users.setdefault(
-            self.room_name,
-            {}
-        )
-
-        online_users[self.room_name][
-            self.channel_name
-        ] = user.username
+        online_users.setdefault(self.room_name, {})
+        online_users[self.room_name][self.channel_name] = user.username
 
         await self.channel_layer.group_send(
             self.room_group_name,
@@ -48,26 +42,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
         await self.broadcast_online_users()
-
         await self.send_message_history()
 
     async def disconnect(self, close_code):
-
         if not hasattr(self, "room_group_name"):
             return
 
         user = self.scope["user"]
 
         if not user.is_anonymous:
-            room_users = online_users.get(
-                self.room_name,
-                {},
-            )
+            room_users = online_users.get(self.room_name, {})
 
-            room_users.pop(
-                self.channel_name,
-                None,
-            )
+            room_users.pop(self.channel_name, None)
 
             await self.channel_layer.group_send(
                 self.room_group_name,
@@ -87,7 +73,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def user_status(self, event):
-
         if event["channel_name"] == self.channel_name:
             return
 
@@ -118,9 +103,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         user = self.scope["user"]
 
         message = await self.create_message(
-            user.id,
-            self.room_name,
-            message_text,
+            user_id=user.id,
+            room_name=self.room_name,
+            text=message_text,
         )
 
         await self.channel_layer.group_send(
@@ -158,10 +143,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def broadcast_online_users(self):
-        users = online_users.get(
-            self.room_name,
-            {},
-        )
+        users = online_users.get(self.room_name, {})
 
         await self.channel_layer.group_send(
             self.room_group_name,
@@ -182,7 +164,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     @database_sync_to_async
-    def create_message(self, user_id, room_name, text):
+    def create_message(self, *, user_id, room_name, text):
         return MessageService.create_message(
             user_id=user_id,
             room_name=room_name,
