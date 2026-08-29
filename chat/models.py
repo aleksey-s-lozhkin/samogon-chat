@@ -26,6 +26,13 @@ class Message(models.Model):
         on_delete=models.CASCADE,
         related_name="messages",
     )
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="received_chat_messages",
+        blank=True,
+        null=True,
+    )
     text = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 

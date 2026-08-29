@@ -17,11 +17,6 @@
     >
 
     <script
-        src="https://unpkg.com/htmx.org@2.0.4"
-        defer
-    ></script>
-
-    <script
         defer
         src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
     ></script>
@@ -38,7 +33,7 @@
 
         <div>
             <h1>🍺 Самогон</h1>
-            <p>Место, где код обсуждают за кружкой</p>
+            <p>Тёплый свет, честные разговоры и немного магии.</p>
         </div>
 
         {% if user.is_authenticated %}
@@ -47,17 +42,17 @@
                 <a
                     href="{% url 'profile' %}"
                     class="profile-link"
-                    hx-boost="true"
                 >
                     Профиль
                 </a>
 
-                <button
-                    id="logout-button"
-                    action="{% url 'logout' %}"
-                >
-                    Выйти
-                </button>
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+
+                    <button type="submit">
+                        Выйти
+                    </button>
+                </form>
 
             </div>
         {% endif %}
@@ -75,8 +70,8 @@
                 <h2>Выберите комнату</h2>
 
                 <p>
-                    Заходите. Здесь обычно говорят о Python,
-                    архитектуре и том, почему всё работало вчера.
+                    Заходите. Здесь говорят о Python, архитектуре
+                    и о том, почему вчера всё работало само.
                 </p>
             </div>
 
@@ -90,7 +85,6 @@
                 <a
                     href="{% url 'chat:chat' room_slug=room.slug %}"
                     class="room-card"
-                    hx-boost="true"
                 >
 
                     <div class="room-icon">
@@ -144,7 +138,7 @@
     <footer class="rooms-footer">
         <span>🍸 Семён за стойкой</span>
         <span>·</span>
-        <span>Без регистрации разговор не начинается</span>
+        <span>У каждой хорошей истории есть первая реплика</span>
     </footer>
 
 </div>

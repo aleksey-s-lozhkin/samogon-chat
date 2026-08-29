@@ -71,12 +71,14 @@ class ProfileForm(forms.ModelForm):
             "username",
             "email",
             "avatar",
+            "message_color",
         )
 
         labels = {
             "username": "Имя пользователя",
             "email": "Email",
             "avatar": "Аватар",
+            "message_color": "Цвет моих сообщений",
         }
 
         widgets = {

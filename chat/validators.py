@@ -1,6 +1,9 @@
 import json
 
 
+MESSAGE_MAX_LENGTH = 1000
+
+
 def validate_message(text_data):
     try:
         data = json.loads(text_data)
@@ -20,7 +23,7 @@ def validate_message(text_data):
     if not message:
         return None, "Сообщение не может быть пустым"
 
-    if len(message) > 1000:
-        return None, "Сообщение не может быть длиннее 1000 символов"
+    if len(message) > MESSAGE_MAX_LENGTH:
+        return None, f"Сообщение не может быть длиннее {MESSAGE_MAX_LENGTH} символов"
 
     return message, None

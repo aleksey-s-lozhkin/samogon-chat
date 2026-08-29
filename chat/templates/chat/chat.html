@@ -4,14 +4,13 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
+
     <meta
         name="viewport"
         content="width=device-width, initial-scale=1.0"
     >
 
-    <title>
-        {{ room.name }} — Самогон
-    </title>
+    <title>{{ room.name }} — Самогон</title>
 
     <link
         rel="stylesheet"
@@ -24,16 +23,16 @@
     ></script>
 
     <script
-        defer
         src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+        defer
     ></script>
 </head>
 
 <body>
 
-<!-- =========================
+<!-- =========================================================
      AUTH MODAL
-     ========================= -->
+     ========================================================= -->
 
 <div
     id="login-modal"
@@ -51,49 +50,49 @@
                 <p>Войдите, чтобы продолжить</p>
             </div>
 
-            <form id="login-form">
+            <form
+                id="login-form"
+                hx-post="{% url 'login' %}"
+                hx-target="#login-error"
+                hx-swap="innerHTML"
+            >
 
                 {% csrf_token %}
 
                 <div class="form-group">
-
                     <label for="login-username">
                         Логин
                     </label>
 
                     <input
                         id="login-username"
+                        name="username"
                         type="text"
                         placeholder="Введите логин"
                         autocomplete="username"
                         required
                     >
-
                 </div>
 
-
                 <div class="form-group">
-
                     <label for="login-password">
                         Пароль
                     </label>
 
                     <input
                         id="login-password"
+                        name="password"
                         type="password"
                         placeholder="Введите пароль"
                         autocomplete="current-password"
                         required
                     >
-
                 </div>
-
 
                 <div
                     id="login-error"
                     class="form-error"
                 ></div>
-
 
                 <button
                     type="submit"
@@ -103,7 +102,6 @@
                 </button>
 
             </form>
-
 
             <div class="modal-footer">
 
@@ -134,8 +132,12 @@
                 <p>Заполните данные для регистрации</p>
             </div>
 
-
-            <form id="register-form">
+            <form
+                id="register-form"
+                hx-post="{% url 'register' %}"
+                hx-target="#register-error"
+                hx-swap="innerHTML"
+            >
 
                 {% csrf_token %}
 
@@ -147,6 +149,7 @@
 
                     <input
                         id="register-username"
+                        name="username"
                         type="text"
                         placeholder="Придумайте логин"
                         autocomplete="username"
@@ -154,7 +157,6 @@
                     >
 
                 </div>
-
 
                 <div class="form-group">
 
@@ -164,6 +166,7 @@
 
                     <input
                         id="register-email"
+                        name="email"
                         type="email"
                         placeholder="Введите email"
                         autocomplete="email"
@@ -171,7 +174,6 @@
                     >
 
                 </div>
-
 
                 <div class="form-group">
 
@@ -181,6 +183,7 @@
 
                     <input
                         id="register-password"
+                        name="password"
                         type="password"
                         placeholder="Придумайте пароль"
                         autocomplete="new-password"
@@ -188,7 +191,6 @@
                     >
 
                 </div>
-
 
                 <div class="form-group">
 
@@ -198,6 +200,7 @@
 
                     <input
                         id="register-password-confirm"
+                        name="password_confirm"
                         type="password"
                         placeholder="Повторите пароль"
                         autocomplete="new-password"
@@ -206,12 +209,10 @@
 
                 </div>
 
-
                 <div
                     id="register-error"
                     class="form-error"
                 ></div>
-
 
                 <button
                     type="submit"
@@ -221,7 +222,6 @@
                 </button>
 
             </form>
-
 
             <div class="modal-footer">
 
@@ -244,12 +244,12 @@
 </div>
 
 
-<!-- =========================
+<!-- =========================================================
      CHAT
-     ========================= -->
+     ========================================================= -->
 
 <div
-    class="chat-container"
+    class="chat-container chat-page"
     x-data="{ sidebarOpen: false }"
 >
 
@@ -269,8 +269,13 @@
             </button>
 
             <div>
+
                 <h1>🍺 Самогон</h1>
-                <p>Лампочка горит. Сервер тоже.</p>
+
+                <p>
+                    Здесь баги разбирают по душам.
+                </p>
+
             </div>
 
         </div>
@@ -283,14 +288,13 @@
                 <a
                     href="{% url 'profile' %}"
                     class="profile-link"
-                    hx-boost="true"
                 >
                     Профиль
                 </a>
 
                 <button
                     id="logout-button"
-                    action="{% url 'logout' %}"
+                    type="button"
                 >
                     Выйти
                 </button>
@@ -317,13 +321,11 @@
             <div class="sidebar-header">
 
                 <div>
-                    <span class="eyebrow">
-                        САМОГОН
-                    </span>
+                    <h2>
+                        Комнаты у стойки
+                    </h2>
 
-                    <h2>Комнаты</h2>
                 </div>
-
 
                 <button
                     class="sidebar-close"
@@ -344,7 +346,6 @@
                     <a
                         href="{% url 'chat:chat' room_slug=chat_room.slug %}"
                         class="room-navigation-item {% if chat_room.slug == room.slug %}active{% endif %}"
-                        hx-boost="true"
                         @click="sidebarOpen = false"
                     >
 
@@ -369,6 +370,34 @@
             </nav>
 
 
+            <!-- ONLINE USERS -->
+
+            <section class="online-users">
+
+                <div class="online-title">
+
+                    <span class="online-dot"></span>
+
+                    Сейчас в баре
+
+                </div>
+
+                <div id="online-users-list"></div>
+
+            </section>
+
+            <section class="offline-users">
+
+                <div class="offline-title">
+                    <span class="offline-dot"></span>
+                    Сейчас не в сети
+                </div>
+
+                <div id="offline-users-list"></div>
+
+            </section>
+
+
             <!-- BARTENDER -->
 
             <div class="bartender-card">
@@ -379,7 +408,9 @@
 
                 <div>
 
-                    <strong>Семён</strong>
+                    <strong>
+                        Семён
+                    </strong>
 
                     <p>
                         Бармен
@@ -414,32 +445,26 @@
                 <div>
 
                     <div class="room-title">
+
                         <span>#</span>
-                        <h2>{{ room.name }}</h2>
+
+                        <h2>
+                            {{ room.name }}
+                        </h2>
+
                     </div>
 
                     {% if room.description %}
-                        <p>{{ room.description }}</p>
+
+                        <p>
+                            {{ room.description }}
+                        </p>
+
                     {% endif %}
 
                 </div>
 
             </div>
-
-
-            <!-- ONLINE -->
-
-            <section class="online-users">
-
-                <div class="online-title">
-                    <span class="online-dot"></span>
-                    Пользователи онлайн
-                </div>
-
-                <div id="online-users-list"></div>
-
-            </section>
-
 
             <!-- MESSAGES -->
 
@@ -449,36 +474,46 @@
             ></div>
 
 
+            <!-- ERROR -->
+
             <div
                 id="error-message"
                 class="error"
+                role="alert"
+                aria-live="polite"
             ></div>
 
 
             <!-- INPUT -->
 
-            <div class="chat-input">
+            <section class="chat-composer">
+                <div id="direct-recipient" class="direct-recipient hidden">
+                    <span>Личное сообщение для <strong id="direct-recipient-name"></strong></span>
+                    <button id="cancel-direct-message" type="button" aria-label="Отменить личное сообщение">×</button>
+                </div>
 
-                <input
-                    id="chat-message-input"
-                    type="text"
-                    placeholder="Написать сообщение..."
-                    autocomplete="off"
-                >
+                <div class="chat-input">
 
-                <button
-                    id="chat-message-submit"
-                    type="button"
-                >
-                    Отправить
-                </button>
+                    <input
+                        id="chat-message-input"
+                        type="text"
+                        placeholder="Написать сообщение..."
+                        autocomplete="off"
+                    >
 
-            </div>
+                    <button
+                        id="chat-message-submit"
+                        type="button"
+                    >
+                        Отправить
+                    </button>
 
+                </div>
 
-            <div class="chat-hint">
-                Enter — отправить сообщение
-            </div>
+                <div class="chat-hint">
+                    Enter — отправить · до 1000 символов
+                </div>
+            </section>
 
         </main>
 
@@ -487,30 +522,22 @@
 </div>
 
 
-<!-- =========================
-     CONFIG
-     ========================= -->
-
 <script>
-
     const chatConfig = {
         roomSlug: "{{ room.slug }}",
         roomName: "{{ room.name }}",
         username: "{{ request.user.username }}",
-        isAuthenticated:
-            {{ user.is_authenticated|yesno:"true,false" }},
+        isAuthenticated: {{ user.is_authenticated|yesno:"true,false" }},
 
-        logoutUrl: "{% url 'logout' %}",
-        loginUrl: "{% url 'login' %}",
-        registerUrl: "{% url 'register' %}",
     };
 
+    window.authConfig = {
+        logoutUrl: "{% url 'logout' %}",
+    };
 </script>
 
-
-<script
-    src="{% static 'chat/js/chat.js' %}"
-></script>
+<script src="{% static 'chat/js/chat.js' %}?v=3"></script>
+<script src="{% static 'chat/js/auth.js' %}?v=3"></script>
 
 </body>
 </html>

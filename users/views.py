@@ -1,9 +1,30 @@
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.http import require_POST
 from .forms import RegistrationForm, ProfileForm
+
+
+def is_htmx_request(request):
+    return request.headers.get("HX-Request") == "true"
+
+
+def htmx_error(request, message):
+    return render(
+        request,
+        "chat/partials/auth_error.html",
+        {"message": message},
+    )
+
+
+def registration_error_message(form):
+    errors = [
+        message
+        for field_errors in form.errors.values()
+        for message in field_errors
+    ]
+    return " ".join(errors)
 
 
 @require_POST
@@ -18,6 +39,9 @@ def login_view(request):
     )
 
     if user is None:
+        if is_htmx_request(request):
+            return htmx_error(request, "Неверный логин или пароль")
+
         return JsonResponse(
             {
                 "success": False,
@@ -27,6 +51,9 @@ def login_view(request):
         )
 
     login(request, user)
+
+    if is_htmx_request(request):
+        return HttpResponse(headers={"HX-Refresh": "true"})
 
     return JsonResponse(
         {
@@ -51,6 +78,9 @@ def register_view(request):
     form = RegistrationForm(request.POST)
 
     if not form.is_valid():
+        if is_htmx_request(request):
+            return htmx_error(request, registration_error_message(form))
+
         errors = {}
 
         for field, messages in form.errors.items():
@@ -67,6 +97,9 @@ def register_view(request):
     user = form.save()
 
     login(request, user)
+
+    if is_htmx_request(request):
+        return HttpResponse(headers={"HX-Refresh": "true"})
 
     return JsonResponse(
         {
