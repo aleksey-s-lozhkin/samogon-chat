@@ -5,10 +5,11 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>Профиль — {{ user.username }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Профиль — Самогон</title>
     <link
         rel="stylesheet"
-        href="{% static 'users/css/profile.css' %}"
+        href="{% static 'users/css/profile.css' %}?v=2"
     >
 
 </head>
@@ -19,12 +20,15 @@
 
     <div class="profile-header">
 
-        <h1>Профиль пользователя</h1>
+        <div>
+            <span class="profile-eyebrow">🍶 Самогон</span>
+            <h1>Профиль пользователя</h1>
+        </div>
 
         <div class="profile-actions">
 
-            <a href="{% url 'chat' room_name='general' %}">
-                Вернуться в чат
+            <a href="{% url 'chat:rooms' %}">
+                Вернуться к комнатам
             </a>
 
             <form method="post" action="{% url 'logout' %}">
@@ -106,6 +110,13 @@
                 {{ form.email.label_tag }}
                 {{ form.email }}
                 {{ form.email.errors }}
+            </div>
+
+            <div class="form-group message-color-setting">
+                {{ form.message_color.label_tag }}
+                {{ form.message_color }}
+                <span class="form-help">Выберите оттенок, которым будут отмечены ваши сообщения.</span>
+                {{ form.message_color.errors }}
             </div>
 
             <div class="form-group">

@@ -1,5 +1,103 @@
 from config import settings
+from django.core.exceptions import ValidationError
 from django.db import models
+
+
+class Room(models.Model):
+    class Visibility(models.TextChoices):
+        PUBLIC = "public", "Открытая"
+        PRIVATE = "private", "Тайная"
+
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    visibility = models.CharField(
+        max_length=10,
+        choices=Visibility.choices,
+        default=Visibility.PUBLIC,
+    )
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="owned_chat_rooms",
+        blank=True,
+        null=True,
+    )
+    members = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        through="RoomMembership",
+        related_name="private_chat_rooms",
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def is_private(self) -> bool:
+        return self.visibility == self.Visibility.PRIVATE
+
+    def clean(self):
+        if self.is_private and not self.owner_id:
+            raise ValidationError("У тайной комнаты должен быть владелец.")
+        if not self.is_private and self.owner_id:
+            raise ValidationError("У открытой комнаты не может быть владельца.")
+
+
+class RoomMembership(models.Model):
+    """Хранит состав тайной комнаты, включая её владельца."""
+
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.CASCADE,
+        related_name="memberships",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="private_room_memberships",
+    )
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("room", "user"),
+                name="unique_private_room_member",
+            ),
+        ]
+
+    def clean(self):
+        if not self.room.is_private:
+            raise ValidationError("Участники доступны только тайным комнатам.")
+
+
+class RoomReadState(models.Model):
+    """Отметка, до которой пользователь прочитал сообщения в комнате."""
+
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.CASCADE,
+        related_name="read_states",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="chat_read_states",
+    )
+    last_read_at = models.DateTimeField()
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("room", "user"),
+                name="unique_room_read_state",
+            ),
+        ]
 
 
 class Message(models.Model):
@@ -8,7 +106,18 @@ class Message(models.Model):
         on_delete=models.CASCADE,
         related_name="chat_messages",
     )
-    room_name = models.CharField(max_length=100)
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.CASCADE,
+        related_name="messages",
+    )
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="received_chat_messages",
+        blank=True,
+        null=True,
+    )
     text = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -1,0 +1,64 @@
+<div class="chat-log-area">
+    <div id="chat-log" class="chat-log"></div>
+
+    <button id="scroll-to-latest" class="scroll-to-latest hidden" type="button">
+        У стойки появились новые реплики
+    </button>
+</div>
+
+<section class="chat-composer">
+    <div id="typing-indicator" class="typing-indicator hidden" aria-live="polite">
+        Семён протирает стакан и подбирает слова…
+    </div>
+
+    <div id="error-message" class="error" role="alert" aria-live="polite"></div>
+
+    <div id="direct-recipient" class="direct-recipient hidden">
+        <span>
+            Личное сообщение для
+            <strong id="direct-recipient-name"></strong>
+        </span>
+        <button
+            id="cancel-direct-message"
+            type="button"
+            aria-label="Отменить личное сообщение"
+        >
+            ×
+        </button>
+    </div>
+
+    <div id="bartender-recipient" class="bartender-recipient hidden">
+        <span>Вопрос Семёну</span>
+        <div class="bartender-visibility" role="group" aria-label="Видимость вопроса Семёну">
+            <button id="bartender-public" class="selected" type="button">
+                В общем чате
+            </button>
+            <button id="bartender-private" type="button">Лично</button>
+        </div>
+        <button
+            id="cancel-bartender-message"
+            class="recipient-cancel"
+            type="button"
+            aria-label="Отменить вопрос Семёну"
+        >
+            ×
+        </button>
+    </div>
+
+    <div class="chat-input">
+        <textarea
+            id="chat-message-input"
+            rows="1"
+            placeholder="Скажите что-нибудь у стойки…"
+            autocomplete="off"
+            maxlength="1000"
+        ></textarea>
+
+        <button id="chat-message-submit" type="button">Отправить</button>
+    </div>
+
+    <div class="chat-hint">
+        <span>Enter — отправить · Shift+Enter — новая строка</span>
+        <span id="message-char-count">0 / 1000</span>
+    </div>
+</section>

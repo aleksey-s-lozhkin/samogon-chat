@@ -4,249 +4,86 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Chat — {{ room_name }}</title>
-    <link rel="stylesheet" href="{% static 'chat/css/chat.css' %}">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>{{ room.name }} — Самогон</title>
+
+    <link
+        rel="stylesheet"
+        href="{% static 'chat/css/chat.css' %}?v=7"
+    >
+
+    <script
+        src="https://unpkg.com/htmx.org@2.0.4"
+        defer
+    ></script>
+
+    <script
+        src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+        defer
+    ></script>
 </head>
 
 <body>
 
-<div id="login-modal" class="modal {% if user.is_authenticated %} hidden{% endif %}">
-    <div class="modal-content">
-
-    <!-- LOGIN -->
-
-        <div id="login-container">
-
-            <div class="modal-header">
-                <h2>Вход в чат</h2>
-                <p>Войдите, чтобы продолжить</p>
-            </div>
-
-            <form id="login-form">
-
-                {% csrf_token %}
-
-                <div class="form-group">
-                    <label for="login-username">Логин</label>
-
-                    <input
-                        id="login-username"
-                        type="text"
-                        placeholder="Введите логин"
-                        autocomplete="username"
-                        required
-                    >
-                </div>
-
-                <div class="form-group">
-                    <label for="login-password">Пароль</label>
-
-                    <input
-                        id="login-password"
-                        type="password"
-                        placeholder="Введите пароль"
-                        autocomplete="current-password"
-                        required
-                    >
-                </div>
-
-                <div id="login-error" class="form-error"></div>
-
-                <button
-                    type="submit"
-                    class="primary-button"
-                >
-                    Войти
-                </button>
-
-            </form>
-
-            <div class="modal-footer">
-                Нет аккаунта?
-
-                <button
-                    type="button"
-                    id="show-register"
-                    class="link-button"
-                >
-                    Зарегистрироваться
-                </button>
-            </div>
-
-        </div>
+{% include "chat/partials/auth_modal.html" %}
 
 
-        <!-- REGISTER -->
+<!-- =========================================================
+     CHAT
+     ========================================================= -->
 
-        <div
-            id="register-container"
-            class="hidden"
-        >
+<div
+    class="chat-container chat-page"
+    x-data="{ sidebarOpen: false }"
+>
 
-            <div class="modal-header">
-                <h2>Создание аккаунта</h2>
-                <p>Заполните данные для регистрации</p>
-            </div>
+    {% include "chat/partials/site_header.html" with header_tagline="Здесь баги разбирают по душам." show_sidebar_toggle=True ajax_logout=True %}
 
-            <form id="register-form">
 
-                {% csrf_token %}
+    <!-- CHAT LAYOUT -->
 
-                <div class="form-group">
-                    <label for="register-username">
-                        Логин
-                    </label>
+    <div class="chat-layout">
 
-                    <input
-                        id="register-username"
-                        type="text"
-                        placeholder="Придумайте логин"
-                        autocomplete="username"
-                        required
-                    >
-                </div>
 
-                <div class="form-group">
-                    <label for="register-email">
-                        Email
-                    </label>
+        {% include "chat/partials/sidebar.html" %}
 
-                    <input
-                        id="register-email"
-                        type="email"
-                        placeholder="Введите email"
-                        autocomplete="email"
-                        required
-                    >
-                </div>
 
-                <div class="form-group">
-                    <label for="register-password">
-                        Пароль
-                    </label>
+        <!-- CHAT MAIN -->
 
-                    <input
-                        id="register-password"
-                        type="password"
-                        placeholder="Придумайте пароль"
-                        autocomplete="new-password"
-                        required
-                    >
-                </div>
+        <main class="chat-main">
 
-                <div class="form-group">
-                    <label for="register-password-confirm">
-                        Повторите пароль
-                    </label>
 
-                    <input
-                        id="register-password-confirm"
-                        type="password"
-                        placeholder="Повторите пароль"
-                        autocomplete="new-password"
-                        required
-                    >
-                </div>
+            {% include "chat/partials/room_header.html" %}
+            {% include "chat/partials/composer.html" %}
 
-                <div
-                    id="register-error"
-                    class="form-error"
-                ></div>
+        </main>
 
-                <button
-                    type="submit"
-                    class="primary-button"
-                >
-                    Создать аккаунт
-                </button>
-
-            </form>
-
-            <div class="modal-footer">
-                Уже есть аккаунт?
-
-                <button
-                    type="button"
-                    id="show-login"
-                    class="link-button"
-                >
-                    Войти
-                </button>
-            </div>
-
-        </div>
-
-    </div>
-</div>
-
-<div class="chat-container">
-
-    <div class="chat-header">
-        <div>
-            <h1>Комната: {{ room_name }}</h1>
-            <p>Пользователь: {{ request.user.username }}</p>
-        </div>
-
-        {% if user.is_authenticated %}
-            <div class="user-actions">
-
-                <a
-                    href="{% url 'profile' %}"
-                    class="profile-link"
-                >
-                    Профиль
-                </a>
-
-                <button id="logout-button" action="{% url 'logout' %}">
-                    Выйти
-                </button>
-
-            </div>
-        {% endif %}
-    </div>
-
-    <div class="online-users">
-
-        <div class="online-title">
-            Пользователи онлайн
-        </div>
-
-        <div id="online-users-list"></div>
-
-    </div>
-
-    <div id="chat-log" class="chat-log"></div>
-
-    <div id="error-message" class="error"></div>
-
-    <div class="chat-input">
-        <input
-                id="chat-message-input"
-                type="text"
-                placeholder="Введите сообщение..."
-                autocomplete="off"
-        >
-
-        <button id="chat-message-submit">
-            Отправить
-        </button>
     </div>
 
 </div>
+
 
 <script>
     const chatConfig = {
-        roomName: "{{ room_name }}",
-        username: "{{ request.user.username }}",
+        roomSlug: "{{ room.slug|escapejs }}",
+        roomName: "{{ room.name|escapejs }}",
+        username: "{{ request.user.username|escapejs }}",
         isAuthenticated: {{ user.is_authenticated|yesno:"true,false" }},
 
+    };
+
+    window.authConfig = {
         logoutUrl: "{% url 'logout' %}",
-        loginUrl: "{% url 'login' %}",
-        registerUrl: "{% url 'register' %}",
     };
 </script>
 
-<script src="{% static 'chat/js/chat.js' %}"></script>
+<script src="{% static 'chat/js/chat.js' %}?v=5"></script>
+<script src="{% static 'chat/js/auth.js' %}?v=3"></script>
 
 </body>
 </html>

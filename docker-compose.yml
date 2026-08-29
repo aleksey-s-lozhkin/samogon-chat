@@ -1,0 +1,15 @@
+services:
+  samogon-web:
+    image: ${SAMOGON_IMAGE:?Set SAMOGON_IMAGE in .env.production}
+    container_name: samogon-web
+    restart: unless-stopped
+    env_file: ${SAMOGON_ENV_FILE:-.env.production}
+    volumes:
+      - ${SAMOGON_DATA_DIR:-./.runtime}/static:/app/staticfiles
+      - ${SAMOGON_DATA_DIR:-./.runtime}/media:/app/media
+    networks:
+      - infra
+
+networks:
+  infra:
+    external: true
