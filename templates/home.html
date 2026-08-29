@@ -2,229 +2,70 @@
 
 <!DOCTYPE html>
 <html lang="ru">
-
 <head>
     <meta charset="UTF-8">
-
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
-
-    <title>Django Chat</title>
-
-    <link
-        rel="stylesheet"
-        href="{% static 'home/css/home.css' %}"
-    >
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Самогон — барный чат</title>
+    <link rel="stylesheet" href="{% static 'home/css/home.css' %}?v=3">
 </head>
-
 <body>
-
 <div class="page">
-
-    <!-- HEADER -->
-
     <header class="header">
-
-        <a href="{% url 'home' %}" class="logo">
-            <span class="logo-icon">💬</span>
-            <span>Django Chat</span>
+        <a href="{% url 'home' %}" class="brand" aria-label="Самогон — главная">
+            <span class="brand-mark" aria-hidden="true">🍶</span>
+            <span>
+                <strong>Самогон</strong>
+                <small>Тёплый свет, честные разговоры.</small>
+            </span>
         </a>
-
-
         {% if user.is_authenticated %}
-
-            <div class="user-info">
-
+            <div class="account">
                 <div class="user-avatar">
-
-                    {% if user.avatar %}
-                        <img
-                            src="{{ user.avatar.url }}"
-                            alt="{{ user.username }}"
-                        >
-                    {% else %}
-                        <span>
-                            {{ user.username|first|upper }}
-                        </span>
-                    {% endif %}
-
+                    {% if user.avatar %}<img src="{{ user.avatar.url }}" alt="{{ user.username }}">{% else %}<span>{{ user.username|first|upper }}</span>{% endif %}
                 </div>
-
-                <span>
-                    {{ user.username }}
-                </span>
-
+                <span class="account-name">{{ user.username }}</span>
+                <a href="{% url 'profile' %}" class="header-link">Профиль</a>
             </div>
-
         {% endif %}
-
     </header>
 
-
-    <!-- MAIN -->
-
     <main class="main">
-
-        <div class="hero">
-
-            <div class="hero-icon">
-                💬
-            </div>
-
-
-            {% if user.is_authenticated %}
-
-                <span class="badge">
-                    ● Вы в сети
-                </span>
-
-                <h1>
-                    Добро пожаловать,
-                    <span>{{ user.username }}</span>!
-                </h1>
-
-                <p class="hero-description">
-                    Рады снова вас видеть.
-                    Продолжайте общение в реальном времени.
-                </p>
-
-
+        <section class="welcome">
+            <div class="welcome-copy">
+                <p class="eyebrow"><span></span> Барный чат для тех, кто пишет код</p>
+                {% if user.is_authenticated %}
+                    <h1>С возвращением,<br><em>{{ user.username }}</em>.</h1>
+                    <p class="lead">У стойки уже есть разговоры. Выбирайте комнату — Семён нальёт идеи, а чат донесёт сообщения без задержки.</p>
+                {% else %}
+                    <h1>Здесь код<br>становится <em>теплее.</em></h1>
+                    <p class="lead">«Самогон» — место для живых разговоров после длинного дня. Выбирайте комнату, знакомьтесь и общайтесь в реальном времени.</p>
+                {% endif %}
                 <div class="actions">
-
-                    <a
-                        href="{% url 'chat' room_name='general' %}"
-                        class="button button-primary"
-                    >
-                        <span>💬</span>
-                        Открыть чат
-                    </a>
-
-                    <a
-                        href="{% url 'profile' %}"
-                        class="button button-secondary"
-                    >
-                        <span>👤</span>
-                        Мой профиль
-                    </a>
-
+                    <a href="{% url 'chat:rooms' %}" class="button button-primary">Зайти в комнаты <span aria-hidden="true">→</span></a>
+                    {% if user.is_authenticated %}<a href="{% url 'profile' %}" class="button button-secondary">Мой профиль</a>{% endif %}
                 </div>
-
-
-            {% else %}
-
-                <span class="badge">
-                    ● Онлайн-чат
-                </span>
-
-                <h1>
-                    Общайтесь
-                    <span>в реальном времени</span>
-                </h1>
-
-                <p class="hero-description">
-                    Простой и быстрый чат на Django Channels.
-                    Общайтесь с другими пользователями
-                    без обновления страницы.
-                </p>
-
-
-                <div class="actions">
-
-                    <a
-                        href="{% url 'chat' room_name='general' %}"
-                        class="button button-primary"
-                    >
-                        <span>💬</span>
-                        Войти в чат
-                    </a>
-
-                </div>
-
-            {% endif %}
-
-        </div>
-
-
-        <!-- FEATURES -->
-
-        <section class="features">
-
-            <div class="feature">
-
-                <div class="feature-icon">
-                    ⚡
-                </div>
-
-                <h3>
-                    Real-time
-                </h3>
-
-                <p>
-                    Сообщения появляются
-                    мгновенно благодаря
-                    WebSocket.
-                </p>
-
+                <p class="hint">Внутри: комнаты, люди онлайн и бармен Семён.</p>
             </div>
 
-
-            <div class="feature">
-
-                <div class="feature-icon">
-                    👥
+            <aside class="bar-card" aria-label="Бармен Семён онлайн">
+                <div class="bar-glow"></div>
+                <div class="card-topline"><span class="open-status"><i></i> Стойка открыта</span><span class="time">сейчас</span></div>
+                <div class="bartender">
+                    <div class="bartender-avatar" aria-hidden="true">С</div>
+                    <div><p class="bartender-role">Ваш бармен</p><h2>Семён</h2><p class="bartender-note">«Чем помочь: с идеей, багом или настроением?»</p></div>
                 </div>
-
-                <h3>
-                    Пользователи онлайн
-                </h3>
-
-                <p>
-                    Видите, кто сейчас
-                    находится в комнате.
-                </p>
-
-            </div>
-
-
-            <div class="feature">
-
-                <div class="feature-icon">
-                    🔐
-                </div>
-
-                <h3>
-                    Авторизация
-                </h3>
-
-                <p>
-                    Личный профиль и
-                    защищённая авторизация.
-                </p>
-
-            </div>
-
+                <div class="counter-message"><span class="message-icon" aria-hidden="true">✦</span><span>Связь есть. Наливаю первую тему.</span></div>
+            </aside>
         </section>
 
+        <section class="features" aria-label="Что есть в Самогоне">
+            <article class="feature"><span class="feature-icon" aria-hidden="true">↯</span><h2>Без ожидания</h2><p>Сообщения появляются сразу — пока вы допиваете чай, собеседник уже отвечает.</p></article>
+            <article class="feature"><span class="feature-icon" aria-hidden="true">●</span><h2>Свои у стойки</h2><p>В каждой комнате видно, кто сейчас онлайн. Заходите туда, где горит свет.</p></article>
+            <article class="feature"><span class="feature-icon" aria-hidden="true">✦</span><h2>Семён рядом</h2><p>Бармен поможет распутать мысль, обсудить задачу или просто начать разговор.</p></article>
+        </section>
     </main>
 
-
-    <!-- FOOTER -->
-
-    <footer class="footer">
-
-        <span>
-            Django Chat
-        </span>
-
-        <span>
-            Django • Channels • WebSocket
-        </span>
-
-    </footer>
-
+    <footer class="footer"><span>🍶 Самогон</span><span>Сделано для хороших разговоров</span></footer>
 </div>
-
 </body>
 </html>

@@ -1,0 +1,18 @@
+<header class="room-header">
+    <div>
+        <div class="room-title">
+            <span>{% if room.is_private %}◌{% else %}#{% endif %}</span>
+            <h2>{{ room.name }}</h2>
+        </div>
+
+        <p>
+            {% if room.is_private %}
+                Только для своих. Разговор остаётся за этим столиком.
+            {% elif room.description %}
+                {{ room.description }}
+            {% else %}
+                Здесь пока слышно только эхо.
+            {% endif %}
+        </p>
+    </div>
+</header>

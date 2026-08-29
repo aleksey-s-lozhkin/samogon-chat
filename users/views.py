@@ -1,13 +1,58 @@
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
-from django.shortcuts import render, redirect
+from django.conf import settings
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
-from .forms import RegistrationForm, ProfileForm
+
+from config.rate_limit import request_is_allowed
+
+from .forms import ProfileForm, RegistrationForm
+
+
+def is_htmx_request(request):
+    """Определяет, ожидает ли браузер HTML-фрагмент вместо JSON."""
+    return request.headers.get("HX-Request") == "true"
+
+
+def htmx_error(request, message, status=200):
+    return render(
+        request,
+        "chat/partials/auth_error.html",
+        {"message": message},
+        status=status,
+    )
+
+
+def registration_error_message(form):
+    errors = [
+        message
+        for field_errors in form.errors.values()
+        for message in field_errors
+    ]
+    return " ".join(errors)
+
+
+def rate_limit_error(request, message):
+    """Возвращает понятную ошибку, не раскрывая детали лимита."""
+    if is_htmx_request(request):
+        return htmx_error(request, message, status=429)
+
+    return JsonResponse({"success": False, "error": message}, status=429)
 
 
 @require_POST
 def login_view(request):
+    if not request_is_allowed(
+        request,
+        bucket="login",
+        limit=settings.LOGIN_RATE_LIMIT,
+    ):
+        return rate_limit_error(
+            request,
+            "Слишком много попыток входа. Подождите минуту.",
+        )
+
     username = request.POST.get("username", "").strip()
     password = request.POST.get("password", "")
 
@@ -18,6 +63,9 @@ def login_view(request):
     )
 
     if user is None:
+        if is_htmx_request(request):
+            return htmx_error(request, "Неверный логин или пароль")
+
         return JsonResponse(
             {
                 "success": False,
@@ -28,6 +76,9 @@ def login_view(request):
 
     login(request, user)
 
+    if is_htmx_request(request):
+        return HttpResponse(headers={"HX-Refresh": "true"})
+
     return JsonResponse(
         {
             "success": True,
@@ -35,22 +86,34 @@ def login_view(request):
         }
     )
 
+
 @require_POST
 def logout_view(request):
-    """Выход пользователя из системы."""
+    """Завершает пользовательскую сессию."""
 
-    if request.method == "POST":
-        logout(request)
-
+    logout(request)
     return redirect("home")
+
 
 @require_POST
 def register_view(request):
     """Регистрирует нового пользователя."""
+    if not request_is_allowed(
+        request,
+        bucket="registration",
+        limit=settings.REGISTRATION_RATE_LIMIT,
+    ):
+        return rate_limit_error(
+            request,
+            "Регистрация временно слишком занята. Подождите минуту.",
+        )
 
     form = RegistrationForm(request.POST)
 
     if not form.is_valid():
+        if is_htmx_request(request):
+            return htmx_error(request, registration_error_message(form))
+
         errors = {}
 
         for field, messages in form.errors.items():
@@ -67,6 +130,9 @@ def register_view(request):
     user = form.save()
 
     login(request, user)
+
+    if is_htmx_request(request):
+        return HttpResponse(headers={"HX-Refresh": "true"})
 
     return JsonResponse(
         {
