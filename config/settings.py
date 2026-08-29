@@ -170,12 +170,47 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost")
 
 REDIS_URL = os.getenv("REDIS_URL")
 
+if REDIS_URL:
+    # Один Redis хранит Channels-события и общие для всех Daphne лимиты.
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+        },
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "samogon-local",
+        },
+    }
+
+REGISTRATION_INVITE_CODE = os.getenv("REGISTRATION_INVITE_CODE", "")
+RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
+LOGIN_RATE_LIMIT = int(os.getenv("LOGIN_RATE_LIMIT", "10"))
+REGISTRATION_RATE_LIMIT = int(os.getenv("REGISTRATION_RATE_LIMIT", "5"))
+MESSAGE_RATE_LIMIT = int(os.getenv("MESSAGE_RATE_LIMIT", "20"))
+BARTENDER_RATE_LIMIT = int(os.getenv("BARTENDER_RATE_LIMIT", "5"))
+
 # Ollama runs on a separate machine in the local network.  Keeping this in an
 # environment variable lets local development and production use different
 # hosts without changing application code.
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://192.168.0.78:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "samogon-semen")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "samogon-semen-gemma")
 OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "20"))
+OLLAMA_KEEP_ALIVE_RAW = os.getenv("OLLAMA_KEEP_ALIVE", "-1")
+try:
+    # Число -1 сообщает Ollama не выгружать модель из памяти.
+    OLLAMA_KEEP_ALIVE = int(OLLAMA_KEEP_ALIVE_RAW)
+except ValueError:
+    # Строковые интервалы вроде "10m" Ollama также принимает.
+    OLLAMA_KEEP_ALIVE = OLLAMA_KEEP_ALIVE_RAW
+OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.5"))
+OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "80"))
+BARTENDER_RESPONSE_MAX_LENGTH = int(
+    os.getenv("BARTENDER_RESPONSE_MAX_LENGTH", "200")
+)
 BARTENDER_USERNAME = os.getenv("BARTENDER_USERNAME", "semen")
 
 if REDIS_URL:
@@ -205,6 +240,10 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 31_536_000
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    CSRF_COOKIE_SAMESITE = "Lax"
+    X_FRAME_OPTIONS = "DENY"
     STORAGES = {
         "staticfiles": {
             "BACKEND": (

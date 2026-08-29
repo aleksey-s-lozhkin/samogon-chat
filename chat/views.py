@@ -49,6 +49,10 @@ def rooms_page(request):
     add_unread_counts(rooms, request.user)
     public_rooms = [room for room in rooms if not room.is_private]
     private_rooms = [room for room in rooms if room.is_private]
+    owned_private_room = next(
+        (room for room in private_rooms if room.owner_id == request.user.id),
+        None,
+    ) if request.user.is_authenticated else None
 
     return render(
         request,
@@ -56,6 +60,7 @@ def rooms_page(request):
         {
             "rooms": public_rooms,
             "private_rooms": private_rooms,
+            "owned_private_room": owned_private_room,
             "private_room_form": PrivateRoomForm(user=request.user),
         },
     )
@@ -113,6 +118,7 @@ def create_private_room(request):
             {
                 "rooms": [room for room in rooms if not room.is_private],
                 "private_rooms": [room for room in rooms if room.is_private],
+                "owned_private_room": None,
                 "private_room_form": form,
             },
             status=400,

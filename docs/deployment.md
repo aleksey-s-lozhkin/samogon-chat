@@ -110,6 +110,8 @@ nano /srv/config/env/samogon.env
 
 - `SECRET_KEY` — вывод `openssl rand -base64 48`;
 - пароль в `DATABASE_URL` — на тот же, что использован для роли `samogon`;
+- `REGISTRATION_INVITE_CODE` — вывод `openssl rand -hex 24`, только для
+  приглашённых тестеров;
 - SMTP-параметры, если приложение должно отправлять почту.
 
 Оставьте следующие значения как есть:
@@ -119,7 +121,17 @@ ALLOWED_HOSTS=sam.pyconstrictor.ru
 CSRF_TRUSTED_ORIGINS=https://sam.pyconstrictor.ru
 REDIS_URL=redis://redis:6379/0
 OLLAMA_BASE_URL=http://192.168.0.78:11434
-OLLAMA_MODEL=samogon-semen-fast
+OLLAMA_MODEL=samogon-semen-gemma
+OLLAMA_KEEP_ALIVE=-1
+OLLAMA_TEMPERATURE=0.5
+OLLAMA_NUM_PREDICT=80
+BARTENDER_RESPONSE_MAX_LENGTH=200
+REGISTRATION_INVITE_CODE=replace-with-a-long-random-invite-code
+RATE_LIMIT_WINDOW_SECONDS=60
+LOGIN_RATE_LIMIT=10
+REGISTRATION_RATE_LIMIT=5
+MESSAGE_RATE_LIMIT=20
+BARTENDER_RATE_LIMIT=5
 SAMOGON_DATA_DIR=/srv/data/samogon
 SAMOGON_IMAGE=docker.io/alserloz/samogon_chat:latest
 ```
@@ -138,6 +150,33 @@ SAMOGON_IMAGE=docker.io/alserloz/samogon_chat:latest
 curl --fail http://192.168.0.78:11434/api/tags
 ```
 
+### Профиль Семёна на Gemma 3 4B
+
+На VM с Ollama один раз создайте профиль. В репозитории уже лежит готовый
+`deployment/ollama/Modelfile.semen-gemma`:
+
+```bash
+ollama pull gemma3:4b
+ollama create samogon-semen-gemma \
+  -f /path/to/samogon/deployment/ollama/Modelfile.semen-gemma
+bash /path/to/samogon/deployment/ollama/benchmark-api.sh samogon-semen-gemma
+```
+
+`OLLAMA_KEEP_ALIVE=-1` удерживает профиль в VRAM до перезапуска Ollama или
+необходимости освободить память. `benchmark-api.sh` проверяет модель через тот
+же API и с тем же системным промптом, что использует Django. Порт Ollama
+по-прежнему оставьте доступным только во внутренней сети.
+
+### Закрытая регистрация и лимиты
+
+При `DEBUG=0` пустой `REGISTRATION_INVITE_CODE` отключает регистрацию. Тестер
+вводит код в форме, но код нигде не хранится и не попадает в базу данных.
+
+Django использует общий Redis для лимитов: по умолчанию один IP может сделать
+до 10 попыток входа и 5 регистраций за минуту, один пользователь — до 20
+сообщений и 5 обращений к Семёну за минуту. Nginx добавляет внешний барьер до
+приложения. Значения меняются только в `/srv/config/env/samogon.env`.
+
 ## 5. Запуск контейнера приложения
 
 ```bash
@@ -154,9 +193,13 @@ docker compose logs -f samogon-web
 
 ## 6. Конфигурация существующего Nginx
 
-Скопируйте шаблон в уже смонтированный каталог конфигураций:
+После запуска `samogon-web` скопируйте файлы в уже смонтированный каталог
+конфигураций. Первый объявляет зоны лимитов, второй использует их для входа,
+регистрации и новых WebSocket-подключений:
 
 ```bash
+cp deployment/nginx/samogon-rate-limits.conf \
+  /srv/config/nginx/conf.d/samogon-rate-limits.conf
 cp deployment/nginx/sam.pyconstrictor.ru.conf \
   /srv/config/nginx/conf.d/sam.pyconstrictor.ru.conf
 docker exec nginx nginx -t
@@ -164,7 +207,9 @@ docker exec nginx nginx -s reload
 ```
 
 Шаблон использует `/etc/letsencrypt`, поэтому сертификат автоматически
-подхватится после перезагрузки Nginx.
+подхватится после перезагрузки Nginx. Контейнер `samogon-web` не должен
+получать собственный опубликованный порт: весь трафик проходит только через
+Nginx.
 
 ## 7. Боевая проверка
 

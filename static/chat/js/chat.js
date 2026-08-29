@@ -8,14 +8,26 @@ let bartenderMode = false;
 let bartenderPrivate = false;
 let loadingHistory = false;
 let lastMessageDay = null;
+let presenceUsers = [];
+let presenceOnlineUsers = [];
+const expandedPresenceLists = new Set();
+const PRESENCE_PREVIEW_LIMIT = 6;
 
 const TAGLINES = [
+    "Семён протирает стакан и слушает логи.",
     "Здесь баги разбирают по душам.",
-    "Код крепкий, разговоры — ещё крепче.",
-    "Спорим о табах, миримся на пробелах.",
     "Заходите с вопросом, выходите с планом.",
-    "Тихий бар для громких идей.",
+    "Связь есть. Наливаю первую тему.",
+    "У стойки спорят о табах и мирятся на пробелах.",
 ];
+const COMPOSER_HINTS = [
+    "Скажите что-нибудь у стойки…",
+    "Опишите баг — Семён нальёт контекст…",
+    "Есть идея? Ставьте её на стойку…",
+    "Код, вопрос или тост за удачный деплой…",
+];
+let taglineIndex = 0;
+let composerHintIndex = 0;
 
 if (isAuthenticated) {
     connectWebSocket();
@@ -98,6 +110,8 @@ function increaseUnreadCount(data) {
 }
 
 function updateUserPresence(users, online) {
+    presenceUsers = users;
+    presenceOnlineUsers = online;
     const onlineUsers = new Set(online.map(normalizeUsername));
     const contacts = users.filter(
         (username) => normalizeUsername(username) !== normalizeUsername(currentUsername),
@@ -108,12 +122,16 @@ function updateUserPresence(users, online) {
         contacts.filter((username) => onlineUsers.has(normalizeUsername(username))),
         "online-user",
         "Сейчас вы один у стойки",
+        "online-users-count",
+        "toggle-online-users",
     );
     renderUserList(
         "offline-users-list",
         contacts.filter((username) => !onlineUsers.has(normalizeUsername(username))),
         "offline-user",
         "Все сейчас в баре",
+        "offline-users-count",
+        "toggle-offline-users",
     );
 }
 
@@ -121,10 +139,23 @@ function normalizeUsername(username) {
     return String(username || "").trim().toLocaleLowerCase();
 }
 
-function renderUserList(containerId, usernames, className, emptyText) {
+function renderUserList(
+    containerId,
+    usernames,
+    className,
+    emptyText,
+    countId,
+    toggleId,
+) {
     const container = document.getElementById(containerId);
     if (!container) {
         return;
+    }
+
+    const count = document.getElementById(countId);
+    const toggle = document.getElementById(toggleId);
+    if (count) {
+        count.textContent = String(usernames.length);
     }
 
     if (!usernames.length) {
@@ -132,11 +163,16 @@ function renderUserList(containerId, usernames, className, emptyText) {
         empty.className = "users-empty";
         empty.textContent = emptyText;
         container.replaceChildren(empty);
+        toggle?.classList.add("hidden");
         return;
     }
 
+    const isExpanded = expandedPresenceLists.has(containerId);
+    const visibleUsers = isExpanded
+        ? usernames
+        : usernames.slice(0, PRESENCE_PREVIEW_LIMIT);
     container.replaceChildren(
-        ...usernames.map((username) => {
+        ...visibleUsers.map((username) => {
             const button = document.createElement("button");
             button.type = "button";
             button.className = `online-user user-contact ${className}`;
@@ -150,6 +186,23 @@ function renderUserList(containerId, usernames, className, emptyText) {
             return button;
         }),
     );
+
+    if (!toggle) {
+        return;
+    }
+    toggle.classList.toggle("hidden", usernames.length <= PRESENCE_PREVIEW_LIMIT);
+    toggle.textContent = isExpanded
+        ? "Свернуть список"
+        : `Показать всех (${usernames.length})`;
+}
+
+function togglePresenceList(containerId) {
+    if (expandedPresenceLists.has(containerId)) {
+        expandedPresenceLists.delete(containerId);
+    } else {
+        expandedPresenceLists.add(containerId);
+    }
+    updateUserPresence(presenceUsers, presenceOnlineUsers);
 }
 
 function setDirectRecipient(username) {
@@ -176,7 +229,7 @@ function clearDirectRecipient(focus = true) {
     const input = document.getElementById("chat-message-input");
     banner?.classList.add("hidden");
     if (input) {
-        input.placeholder = "Написать сообщение...";
+        setComposerPlaceholder(input);
         if (focus) {
             input.focus();
         }
@@ -212,6 +265,9 @@ function clearBartenderMode(focus = true) {
     const input = document.getElementById("chat-message-input");
     if (input?.value.startsWith(`@${BARTENDER_USERNAME}`)) {
         input.value = input.value.slice(BARTENDER_USERNAME.length + 1).trimStart();
+    }
+    if (input && !directRecipient) {
+        setComposerPlaceholder(input);
     }
     updateInputSize();
     if (focus) {
@@ -389,7 +445,46 @@ function updateInputSize() {
 function initialiseAtmosphere() {
     const tagline = document.getElementById("brand-tagline");
     if (tagline) {
-        tagline.textContent = TAGLINES[Math.floor(Math.random() * TAGLINES.length)];
+        taglineIndex = Math.floor(Math.random() * TAGLINES.length);
+        tagline.textContent = TAGLINES[taglineIndex];
+    }
+
+    const input = document.getElementById("chat-message-input");
+    setComposerPlaceholder(input);
+
+    window.setInterval(() => {
+        if (!document.hidden) {
+            rotateTagline(tagline);
+            rotateComposerHint(input);
+        }
+    }, 30000);
+}
+
+function rotateTagline(tagline) {
+    if (!tagline) {
+        return;
+    }
+
+    tagline.classList.add("is-changing");
+    window.setTimeout(() => {
+        taglineIndex = (taglineIndex + 1) % TAGLINES.length;
+        tagline.textContent = TAGLINES[taglineIndex];
+        tagline.classList.remove("is-changing");
+    }, 180);
+}
+
+function rotateComposerHint(input) {
+    if (!input || input.value || directRecipient || bartenderMode) {
+        return;
+    }
+
+    composerHintIndex = (composerHintIndex + 1) % COMPOSER_HINTS.length;
+    setComposerPlaceholder(input);
+}
+
+function setComposerPlaceholder(input) {
+    if (input && !input.value && !directRecipient && !bartenderMode) {
+        input.placeholder = COMPOSER_HINTS[composerHintIndex];
     }
 }
 
@@ -418,6 +513,12 @@ document.getElementById("scroll-to-latest")?.addEventListener("click", () => {
         chatLog.scrollTop = chatLog.scrollHeight;
     }
     document.getElementById("scroll-to-latest")?.classList.add("hidden");
+});
+document.getElementById("toggle-online-users")?.addEventListener("click", () => {
+    togglePresenceList("online-users-list");
+});
+document.getElementById("toggle-offline-users")?.addEventListener("click", () => {
+    togglePresenceList("offline-users-list");
 });
 
 initialiseAtmosphere();

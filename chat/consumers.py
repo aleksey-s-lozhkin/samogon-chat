@@ -1,9 +1,12 @@
 import json
 
+from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.conf import settings
 from django.contrib.auth import get_user_model
+
+from config.rate_limit import is_allowed
 
 from .models import Room
 from .services.bartender import BartenderUnavailable, bartender
@@ -90,6 +93,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         Личное обращение к Семёну не попадает в общий канал комнаты.
         """
+        if not await self.is_rate_allowed(
+            bucket="message",
+            limit=settings.MESSAGE_RATE_LIMIT,
+        ):
+            await self.send_error("Слишком много сообщений. Подождите минуту.")
+            return
+
         message_text, error = validate_message(text_data)
         if error:
             await self.send_error(error)
@@ -105,6 +115,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         bartender_question = bartender.is_mentioned(message_text)
+        if bartender_question and not await self.is_rate_allowed(
+            bucket="bartender",
+            limit=settings.BARTENDER_RATE_LIMIT,
+        ):
+            await self.send_error("Семён занят у стойки. Попробуйте через минуту.")
+            return
+
         if bartender_private and not bartender_question:
             await self.send_error("Личным может быть только вопрос Семёну")
             return
@@ -231,6 +248,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def send_error(self, message):
         await self.send(
             text_data=json.dumps({"type": "error", "message": message})
+        )
+
+    async def is_rate_allowed(self, *, bucket, limit):
+        """Не даёт одному гостю засорять чат или очередь Семёна."""
+        return await sync_to_async(is_allowed)(
+            identifier=f"user:{self.user.id}",
+            bucket=bucket,
+            limit=limit,
+            window_seconds=settings.RATE_LIMIT_WINDOW_SECONDS,
         )
 
     async def reply_as_bartender(self, message_text, recipient=None):

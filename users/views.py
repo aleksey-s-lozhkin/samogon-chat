@@ -1,8 +1,11 @@
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
+
+from config.rate_limit import request_is_allowed
 
 from .forms import ProfileForm, RegistrationForm
 
@@ -12,11 +15,12 @@ def is_htmx_request(request):
     return request.headers.get("HX-Request") == "true"
 
 
-def htmx_error(request, message):
+def htmx_error(request, message, status=200):
     return render(
         request,
         "chat/partials/auth_error.html",
         {"message": message},
+        status=status,
     )
 
 
@@ -29,8 +33,26 @@ def registration_error_message(form):
     return " ".join(errors)
 
 
+def rate_limit_error(request, message):
+    """Возвращает понятную ошибку, не раскрывая детали лимита."""
+    if is_htmx_request(request):
+        return htmx_error(request, message, status=429)
+
+    return JsonResponse({"success": False, "error": message}, status=429)
+
+
 @require_POST
 def login_view(request):
+    if not request_is_allowed(
+        request,
+        bucket="login",
+        limit=settings.LOGIN_RATE_LIMIT,
+    ):
+        return rate_limit_error(
+            request,
+            "Слишком много попыток входа. Подождите минуту.",
+        )
+
     username = request.POST.get("username", "").strip()
     password = request.POST.get("password", "")
 
@@ -76,6 +98,15 @@ def logout_view(request):
 @require_POST
 def register_view(request):
     """Регистрирует нового пользователя."""
+    if not request_is_allowed(
+        request,
+        bucket="registration",
+        limit=settings.REGISTRATION_RATE_LIMIT,
+    ):
+        return rate_limit_error(
+            request,
+            "Регистрация временно слишком занята. Подождите минуту.",
+        )
 
     form = RegistrationForm(request.POST)
 

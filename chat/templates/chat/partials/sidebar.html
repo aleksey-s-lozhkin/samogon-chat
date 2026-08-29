@@ -53,20 +53,36 @@
         </section>
     {% endif %}
 
-    <section class="online-users">
-        <div class="online-title">
-            <span class="online-dot"></span>
-            За стойкой сейчас
+    <section class="online-users user-presence-panel">
+        <div class="presence-panel-title">
+            <div class="online-title">
+                <span class="online-dot"></span>
+                За стойкой
+            </div>
+            <span id="online-users-count" class="presence-count">0</span>
         </div>
         <div id="online-users-list"></div>
+        <button
+            id="toggle-online-users"
+            class="presence-toggle hidden"
+            type="button"
+        ></button>
     </section>
 
-    <section class="offline-users">
-        <div class="offline-title">
-            <span class="offline-dot"></span>
-            Отошли ненадолго
+    <section class="offline-users user-presence-panel">
+        <div class="presence-panel-title">
+            <div class="offline-title">
+                <span class="offline-dot"></span>
+                Отошли ненадолго
+            </div>
+            <span id="offline-users-count" class="presence-count">0</span>
         </div>
         <div id="offline-users-list"></div>
+        <button
+            id="toggle-offline-users"
+            class="presence-toggle hidden"
+            type="button"
+        ></button>
     </section>
 
     <button id="bartender-card" class="bartender-card" type="button">

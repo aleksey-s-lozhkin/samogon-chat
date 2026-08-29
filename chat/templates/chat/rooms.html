@@ -13,7 +13,7 @@
 
     <link
         rel="stylesheet"
-        href="{% static 'chat/css/chat.css' %}?v=5"
+        href="{% static 'chat/css/chat.css' %}?v=7"
     >
 
     <script
@@ -23,6 +23,10 @@
 </head>
 
 <body>
+
+{% if not user.is_authenticated %}
+    {% include "chat/partials/auth_modal.html" with modal_hidden=True %}
+{% endif %}
 
 <div
     class="chat-container rooms-page"
@@ -145,19 +149,28 @@
 
         {% if user.is_authenticated %}
             <section class="private-room-create">
-                <div>
-                    <span class="eyebrow">ТАЙНЫЙ СТОЛИК</span>
-                    <h2>Сообразим на троих</h2>
-                    <p>
-                        Один столик — ваш. Позовите до двух гостей,
-                        и разговор останется только между своими.
-                    </p>
+                <div class="private-room-intro">
+                    <span class="private-room-lock" aria-hidden="true">◌</span>
+                    <div>
+                        <span class="eyebrow">ТАЙНЫЙ СТОЛИК</span>
+                        <h2>Сообразим на троих</h2>
+                        <p>
+                            Один столик — ваш. Позовите одного или двух гостей,
+                            и разговор останется только между своими.
+                        </p>
+                    </div>
                 </div>
 
-                {% if private_rooms %}
-                    <p class="private-room-created">
-                        Ваш тайный столик уже открыт. Найдёте его в списке выше.
-                    </p>
+                {% if owned_private_room %}
+                    <a
+                        class="private-room-open-link"
+                        href="{% url 'chat:chat' room_slug=owned_private_room.slug %}"
+                    >
+                        <span>
+                            Ваш столик открыт: <strong>{{ owned_private_room.name }}</strong>
+                        </span>
+                        <span aria-hidden="true">→</span>
+                    </a>
                 {% else %}
                     <form method="post" action="{% url 'chat:create_private_room' %}">
                         {% csrf_token %}
@@ -168,15 +181,37 @@
                         {{ private_room_form.name }}
                         {{ private_room_form.name.errors }}
 
-                        <fieldset>
-                            <legend>{{ private_room_form.members.label }}</legend>
-                            {{ private_room_form.members }}
+                        <fieldset class="private-room-members">
+                            <div class="private-room-members-heading">
+                                <legend>{{ private_room_form.members.label }}</legend>
+                                <span id="private-room-members-count">0 из 2</span>
+                            </div>
+                            <div class="private-room-members-list">
+                                {{ private_room_form.members }}
+                            </div>
                             {{ private_room_form.members.errors }}
                         </fieldset>
                         <p class="form-help">{{ private_room_form.members.help_text }}</p>
                         <button type="submit">Открыть столик</button>
                     </form>
                 {% endif %}
+            </section>
+        {% else %}
+            <section class="private-room-create private-room-guest">
+                <div class="private-room-intro">
+                    <span class="private-room-lock" aria-hidden="true">◌</span>
+                    <div>
+                        <span class="eyebrow">ТАЙНЫЙ СТОЛИК</span>
+                        <h2>Сообразим на троих</h2>
+                        <p>
+                            Войдите, чтобы открыть личный столик и позвать
+                            одного или двух гостей.
+                        </p>
+                    </div>
+                </div>
+                <button class="private-room-auth-button" type="button" data-open-auth>
+                    Войти и открыть столик
+                </button>
             </section>
         {% endif %}
 
@@ -186,6 +221,13 @@
     {% include "chat/partials/rooms_footer.html" %}
 
 </div>
+
+<script
+    src="https://unpkg.com/htmx.org@2.0.4"
+    defer
+></script>
+<script src="{% static 'chat/js/rooms.js' %}?v=1" defer></script>
+<script src="{% static 'chat/js/auth.js' %}?v=4" defer></script>
 
 </body>
 </html>

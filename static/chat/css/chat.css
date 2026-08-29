@@ -3,14 +3,14 @@
    ========================================================= */
 
 :root {
-    --bg: #1e1e1e;
-    --bg-soft: #252525;
-    --panel: #2a2a2a;
-    --panel-hover: #333333;
-    --panel-light: #3d3d3d;
+    --bg: #1a1a1a;
+    --bg-soft: #202020;
+    --panel: #252525;
+    --panel-hover: #303030;
+    --panel-light: #393939;
 
-    --border: #3d3d3d;
-    --border-strong: #4f4f4f;
+    --border: #3a3734;
+    --border-strong: #504940;
 
     --text: #e8e8e8;
     --text-soft: #c9c9c9;
@@ -1973,6 +1973,255 @@ a {
 
 
 /* =========================================================
+   ROOMS AND PRESENCE — DENSE BUT CALM
+   ========================================================= */
+
+.rooms-content {
+    background:
+        linear-gradient(145deg, rgba(37, 37, 37, 0.97), rgba(29, 28, 27, 0.95));
+    box-shadow: var(--shadow);
+}
+
+.rooms-heading {
+    padding: 4px 0 24px;
+    border-bottom: 1px solid var(--border);
+}
+
+.user-presence-panel {
+    min-height: 0;
+    margin-top: 10px;
+    padding: 12px;
+    background: rgba(16, 16, 16, 0.3);
+}
+
+.presence-panel-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.presence-count {
+    display: inline-flex;
+    min-width: 22px;
+    height: 20px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+#online-users-list,
+#offline-users-list {
+    max-height: 118px;
+    overflow-y: auto;
+    padding-right: 2px;
+}
+
+.presence-toggle {
+    width: 100%;
+    margin-top: 9px;
+    padding: 0;
+    border: 0;
+    color: var(--amber-light);
+    background: transparent;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: left;
+}
+
+.presence-toggle:hover {
+    color: var(--text);
+}
+
+.private-room-create {
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: minmax(0, 0.78fr) minmax(320px, 1.22fr);
+    gap: 28px;
+    padding: 28px;
+    border-color: rgba(198, 117, 58, 0.32);
+    background:
+        radial-gradient(circle at 98% 100%, rgba(198, 117, 58, 0.16), transparent 17rem),
+        linear-gradient(135deg, rgba(59, 45, 33, 0.72), rgba(37, 37, 37, 0.98) 56%);
+    box-shadow: 0 18px 46px rgba(0, 0, 0, 0.2);
+}
+
+.private-room-create::after {
+    position: absolute;
+    right: 22px;
+    bottom: -30px;
+    color: rgba(240, 189, 116, 0.1);
+    content: "◌";
+    font-family: Georgia, serif;
+    font-size: 148px;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.private-room-intro {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+
+.private-room-lock {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    place-items: center;
+    border: 1px solid rgba(198, 117, 58, 0.45);
+    border-radius: 14px;
+    color: var(--amber-light);
+    background: rgba(198, 117, 58, 0.12);
+    font-size: 26px;
+}
+
+.private-room-create h2 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 27px;
+    font-weight: 500;
+}
+
+.private-room-create form,
+.private-room-open-link,
+.private-room-auth-button {
+    position: relative;
+    z-index: 1;
+}
+
+.private-room-create form {
+    margin-top: 0;
+}
+
+.private-room-members {
+    padding: 12px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px;
+    background: rgba(10, 10, 10, 0.22);
+}
+
+.private-room-members-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.private-room-members-heading span {
+    color: var(--amber-light);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.private-room-members-list {
+    max-height: 130px;
+    margin-top: 9px;
+    overflow-y: auto;
+}
+
+.private-room-create ul {
+    align-content: flex-start;
+    max-height: none;
+}
+
+.private-room-create li label {
+    min-height: 30px;
+    border-color: rgba(232, 232, 232, 0.14);
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.private-room-create li label:has(input:checked) {
+    border-color: rgba(198, 117, 58, 0.58);
+    color: var(--amber-light);
+    background: rgba(198, 117, 58, 0.12);
+}
+
+.private-room-create button,
+.private-room-auth-button {
+    min-height: 44px;
+    border-radius: 11px;
+    box-shadow: 0 10px 24px rgba(125, 72, 25, 0.22);
+}
+
+.private-room-open-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 92px;
+    gap: 16px;
+    padding: 18px;
+    border: 1px solid rgba(198, 117, 58, 0.38);
+    border-radius: 14px;
+    color: var(--text-soft);
+    background: rgba(10, 10, 10, 0.22);
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.private-room-open-link:hover {
+    border-color: var(--primary-hover);
+    background: rgba(198, 117, 58, 0.12);
+}
+
+.private-room-open-link strong {
+    display: block;
+    margin-top: 4px;
+    color: var(--amber-light);
+    font-size: 17px;
+}
+
+.private-room-open-link > span:last-child {
+    color: var(--amber-light);
+    font-size: 25px;
+}
+
+.private-room-guest {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+}
+
+.private-room-auth-button {
+    justify-self: end;
+    padding: 0 18px;
+    border: 0;
+    color: #25190b;
+    background: var(--primary);
+    font-weight: 800;
+}
+
+@media (max-width: 900px) {
+    .private-room-create {
+        grid-template-columns: 1fr;
+    }
+
+    .private-room-guest {
+        grid-template-columns: 1fr;
+    }
+
+    .private-room-auth-button {
+        justify-self: start;
+    }
+}
+
+@media (max-width: 700px) {
+    .private-room-create {
+        padding: 20px 16px;
+    }
+
+    .private-room-create::after {
+        right: 8px;
+    }
+}
+
+
+/* =========================================================
    SMALL PHONES
    ========================================================= */
 
@@ -2006,23 +2255,17 @@ a {
 
 /* =========================================================
    BAR BACKDROP
-   Тёплый свет, зерно и выцветшие постеры на дальней стене.
-   Все иллюстрации встроены в CSS как простые SVG: без внешних файлов.
+   Один тёплый свет, лёгкое зерно и две почти незаметные детали интерьера.
    ========================================================= */
 
 body {
     background:
         radial-gradient(
-            circle at 14% 8%,
-            rgba(198, 117, 58, 0.18) 0,
-            transparent 26rem
+            ellipse 58rem 28rem at 74% -8%,
+            rgba(198, 117, 58, 0.13) 0,
+            transparent 70%
         ),
-        radial-gradient(
-            circle at 88% 78%,
-            rgba(198, 117, 58, 0.1) 0,
-            transparent 32rem
-        ),
-        linear-gradient(145deg, #1a1a1a 0%, #0d0d0d 100%);
+        linear-gradient(145deg, #1a1a1a 0%, #101010 56%, #0d0d0d 100%);
 }
 
 /* Лёгкое плёночное зерно убирает ощущение плоского цифрового фона. */
@@ -2032,46 +2275,29 @@ body::before {
     inset: 0;
     pointer-events: none;
     content: "";
-    opacity: 0.1;
+    opacity: 0.055;
+    mix-blend-mode: soft-light;
     background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='.55'/%3E%3C/svg%3E");
 }
 
-/* Полупрозрачная «стена» с постерами остаётся только декоративным фоном. */
+/* Бутылка и старый билет — детали, а не самостоятельный сюжет страницы. */
 body::after {
     position: fixed;
     z-index: -1;
     inset: 0;
     pointer-events: none;
     content: "";
-    opacity: 0.17;
+    opacity: 0.065;
     background-repeat: no-repeat;
     background-size:
-        135px 196px,
-        164px 96px,
-        182px 120px,
-        168px 98px,
-        142px 110px;
+        130px 250px,
+        178px 108px;
     background-position:
-        4% 32%,
-        86% 16%,
-        76% 52%,
-        10% 82%,
-        88% 87%;
+        4% 76%,
+        95% 16%;
     background-image:
-        /* Чебурашка: только абстрактный силуэт с круглыми ушами. */
-        url("data:image/svg+xml,%3Csvg viewBox='0 0 150 220' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23c6753a' stroke-width='4'%3E%3Ccircle cx='30' cy='80' r='28'/%3E%3Ccircle cx='120' cy='80' r='28'/%3E%3Ccircle cx='75' cy='92' r='42'/%3E%3Cellipse cx='75' cy='160' rx='35' ry='48'/%3E%3C/g%3E%3Ctext x='75' y='210' text-anchor='middle' fill='%23e8e8e8' font-family='sans-serif' font-size='13'%3E1970s%3C/text%3E%3C/svg%3E"),
-
-        /* ГрОб: плакатная типографика без внешнего изображения. */
-        url("data:image/svg+xml,%3Csvg viewBox='0 0 170 100' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='3' y='3' width='164' height='94' fill='none' stroke='%23c6753a' stroke-width='3'/%3E%3Ctext x='85' y='61' text-anchor='middle' fill='%23e8e8e8' font-family='serif' font-size='43' font-weight='bold'%3E%D0%93%D1%80%D0%9E%D0%B1%3C/text%3E%3C/svg%3E"),
-
-        /* Punk Not Dead. */
-        url("data:image/svg+xml,%3Csvg viewBox='0 0 190 125' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='4' y='4' width='182' height='117' fill='none' stroke='%23e8e8e8' stroke-width='3'/%3E%3Ctext x='95' y='51' text-anchor='middle' fill='%23c6753a' font-family='monospace' font-size='22' font-weight='bold'%3EPUNK%3C/text%3E%3Ctext x='95' y='82' text-anchor='middle' fill='%23e8e8e8' font-family='monospace' font-size='20'%3ENOT DEAD%3C/text%3E%3C/svg%3E"),
-
-        /* Metallica: стилизованная надпись и гитарные углы. */
-        url("data:image/svg+xml,%3Csvg viewBox='0 0 175 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5 72 35 28 47 72M170 72 140 28 128 72' fill='none' stroke='%23c6753a' stroke-width='4'/%3E%3Ctext x='88' y='63' text-anchor='middle' fill='%23e8e8e8' font-family='serif' font-size='24' font-weight='bold'%3EMETALLICA%3C/text%3E%3C/svg%3E"),
-
-        /* AC/DC: текст и декоративная молния. */
-        url("data:image/svg+xml,%3Csvg viewBox='0 0 145 115' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='4' y='4' width='137' height='107' fill='none' stroke='%23c6753a' stroke-width='3'/%3E%3Ctext x='35' y='69' text-anchor='middle' fill='%23e8e8e8' font-family='serif' font-size='28' font-weight='bold'%3EAC%3C/text%3E%3Cpath d='M72 34 61 61h13L67 84l20-31H75z' fill='%23c6753a'/%3E%3Ctext x='110' y='69' text-anchor='middle' fill='%23e8e8e8' font-family='serif' font-size='28' font-weight='bold'%3EDC%3C/text%3E%3C/svg%3E");
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 130 250' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M50 9h30v34l13 21v161c0 9-7 16-16 16H53c-9 0-16-7-16-16V64l13-21z' fill='none' stroke='%23c6753a' stroke-width='3'/%3E%3Cpath d='M42 135h46M42 143h46' stroke='%23e8e8e8' stroke-width='2'/%3E%3Ctext x='65' y='185' text-anchor='middle' fill='%23c6753a' font-family='serif' font-size='12'%3ESAMOGON%3C/text%3E%3C/svg%3E"),
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 180 110' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M6 6h168v98H6zM20 6v98M160 6v98' fill='none' stroke='%23c6753a' stroke-width='2'/%3E%3Ctext x='90' y='49' text-anchor='middle' fill='%23e8e8e8' font-family='monospace' font-size='17' font-weight='bold'%3EPUNK NOT DEAD%3C/text%3E%3Ctext x='90' y='75' text-anchor='middle' fill='%23c6753a' font-family='monospace' font-size='10'%3EONE NIGHT ONLY%3C/text%3E%3C/svg%3E");
 }
 
 /* У карточек остаётся отдельная скруглённая рамка, а не сетка таблицы. */
@@ -2084,7 +2310,7 @@ body::after {
 .online-users,
 .offline-users,
 .bartender-card {
-    background-color: rgba(37, 37, 37, 0.88);
+    background-color: rgba(37, 37, 37, 0.94);
     box-shadow: var(--shadow);
     backdrop-filter: blur(12px);
 }
@@ -2095,9 +2321,24 @@ body::after {
     background-color: #252525;
 }
 
+/* Плавная смена реплики в шапке — без прыжков интерфейса. */
+#brand-tagline {
+    transition: opacity 180ms ease, transform 180ms ease;
+}
+
+#brand-tagline.is-changing {
+    opacity: 0;
+    transform: translateY(-2px);
+}
+
 @media (max-width: 700px) {
     body::after {
-        opacity: 0.09;
-        background-size: 100px 148px, 116px 68px, 130px 86px, 116px 68px, 100px 78px;
+        opacity: 0.04;
+        background-size: 84px 162px, 120px 72px;
     }
+}
+
+/* Финальные уточнения: эти блоки должны оставаться темнее общего фона. */
+.user-presence-panel {
+    background: rgba(16, 16, 16, 0.3);
 }

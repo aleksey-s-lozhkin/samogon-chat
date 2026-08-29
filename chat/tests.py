@@ -5,6 +5,7 @@ from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
+from django.conf import settings
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -225,7 +226,7 @@ class PrivateRoomViewsTests(TestCase):
 
         response = self.client.post(
             reverse("chat:create_private_room"),
-            {"name": "Сообразим на троих"},
+            {"name": "Сообразим на троих", "members": [self.first_guest.id]},
         )
 
         self.assertEqual(response.status_code, 302)
@@ -235,6 +236,21 @@ class PrivateRoomViewsTests(TestCase):
                 visibility=Room.Visibility.PRIVATE,
             ).count(),
             2,
+        )
+
+    def test_private_room_requires_at_least_one_guest(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("chat:create_private_room"),
+            {"name": "Пустой столик"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(
+            response,
+            "Позовите хотя бы одного гостя",
+            status_code=400,
         )
 
 
@@ -285,8 +301,11 @@ class BartenderServiceTests(TestCase):
         self.assertEqual(reply.text, "Готово, лог посмотрел.")
         request = mock_urlopen.call_args.args[0]
         payload = json.loads(request.data)
-        self.assertEqual(payload["model"], "samogon-semen")
+        self.assertEqual(payload["model"], settings.OLLAMA_MODEL)
         self.assertFalse(payload["think"])
+        self.assertEqual(payload["keep_alive"], -1)
+        self.assertEqual(payload["options"]["temperature"], 0.5)
+        self.assertEqual(payload["options"]["num_predict"], 80)
         self.assertIn("Гость @alex", payload["messages"][1]["content"])
 
     @patch("chat.services.bartender.urlopen")
@@ -299,6 +318,18 @@ class BartenderServiceTests(TestCase):
         reply = bartender.reply(room_name="Python", username="alex", text="@Семён помоги")
 
         self.assertEqual(reply.text, "Помогу найти ошибку.")
+        self.assertEqual(mock_urlopen.call_count, 2)
+
+    @patch("chat.services.bartender.urlopen")
+    def test_reply_retries_when_model_replies_only_in_english(self, mock_urlopen):
+        mock_urlopen.return_value.__enter__.return_value.read.side_effect = [
+            '{"message": {"content": "I can only answer in Russian."}}'.encode(),
+            '{"message": {"content": "Отвечу по-русски, без лишнего шума."}}'.encode(),
+        ]
+
+        reply = bartender.reply(room_name="Python", username="alex", text="@Семён помоги")
+
+        self.assertEqual(reply.text, "Отвечу по-русски, без лишнего шума.")
         self.assertEqual(mock_urlopen.call_count, 2)
 
     @patch("chat.services.bartender.urlopen")

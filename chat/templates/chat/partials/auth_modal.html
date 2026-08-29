@@ -1,4 +1,7 @@
-<div id="login-modal" class="modal {% if user.is_authenticated %}hidden{% endif %}">
+<div
+    id="login-modal"
+    class="modal {% if user.is_authenticated or modal_hidden %}hidden{% endif %}"
+>
     <div class="modal-content">
         <section id="login-container">
             <header class="modal-header">
@@ -80,6 +83,16 @@
                         placeholder="Введите email"
                         autocomplete="email"
                         required
+                    >
+                </div>
+                <div class="form-group">
+                    <label for="register-invite-code">Код приглашения</label>
+                    <input
+                        id="register-invite-code"
+                        name="invite_code"
+                        type="password"
+                        placeholder="Его выдаёт хозяин стойки"
+                        autocomplete="off"
                     >
                 </div>
                 <div class="form-group">

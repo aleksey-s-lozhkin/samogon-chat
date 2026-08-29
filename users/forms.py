@@ -1,6 +1,8 @@
 from io import BytesIO
+from secrets import compare_digest
 
 from django import forms
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
 
@@ -22,6 +24,12 @@ class RegistrationForm(forms.ModelForm):
         widget=forms.PasswordInput,
     )
 
+    invite_code = forms.CharField(
+        label="Код приглашения",
+        required=False,
+        widget=forms.PasswordInput(attrs={"autocomplete": "off"}),
+    )
+
     class Meta:
         model = User
         fields = (
@@ -39,6 +47,16 @@ class RegistrationForm(forms.ModelForm):
 
         if password and password_confirm and password != password_confirm:
             raise forms.ValidationError("Пароли не совпадают.")
+
+        invite_code = cleaned_data.get("invite_code", "")
+        expected_code = settings.REGISTRATION_INVITE_CODE
+        if expected_code and not compare_digest(invite_code, expected_code):
+            self.add_error("invite_code", "Код приглашения не подошёл.")
+        elif not settings.DEBUG and not expected_code:
+            self.add_error(
+                "invite_code",
+                "Регистрация временно доступна только по приглашению.",
+            )
 
         return cleaned_data
 

@@ -9,7 +9,7 @@ User = get_user_model()
 
 
 class PrivateRoomForm(forms.Form):
-    """Форма создания личного столика максимум для трёх гостей."""
+    """Создаёт личный столик владельца и одного или двух гостей."""
 
     name = forms.CharField(
         label="Название",
@@ -21,7 +21,7 @@ class PrivateRoomForm(forms.Form):
         queryset=User.objects.none(),
         required=False,
         widget=forms.CheckboxSelectMultiple,
-        help_text="Можно пригласить не больше двух человек.",
+        help_text="Выберите одного или двух гостей.",
     )
 
     def __init__(self, *args, user=None, **kwargs):
@@ -37,6 +37,10 @@ class PrivateRoomForm(forms.Form):
 
     def clean_members(self):
         members = self.cleaned_data["members"]
+        if not members:
+            raise forms.ValidationError(
+                "Позовите хотя бы одного гостя за тайный столик."
+            )
         if members.count() > 2:
             raise forms.ValidationError(
                 "У тайного столика может быть только два приглашённых гостя."

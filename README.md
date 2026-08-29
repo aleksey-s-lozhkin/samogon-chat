@@ -12,6 +12,7 @@ Channels.
 - authenticated WebSocket chat with a 50-message history;
 - room presence, online and offline user lists;
 - private messages between users;
+- one private table per owner with one or two invited guests;
 - configurable message colours;
 - Semyon, a local Ollama assistant: mention `@Семён` or use the bartender card;
 - public or private questions to Semyon.
@@ -33,15 +34,31 @@ poetry run python manage.py check
 poetry run python manage.py test
 ```
 
+Create local demo accounts for a long user-list check:
+
+```bash
+poetry run python manage.py seed_demo_users --count 60
+```
+
+The command is blocked outside `DEBUG` by default. It creates offline accounts;
+testing real online presence also needs persistent WebSocket connections.
+
 Ollama is optional during local development. Configure it through environment
 variables when it is available:
 
 ```dotenv
 OLLAMA_BASE_URL=http://192.168.0.78:11434
-OLLAMA_MODEL=samogon-semen
+OLLAMA_MODEL=samogon-semen-gemma
 OLLAMA_TIMEOUT_SECONDS=20
+OLLAMA_KEEP_ALIVE=-1
+OLLAMA_TEMPERATURE=0.5
+OLLAMA_NUM_PREDICT=80
+BARTENDER_RESPONSE_MAX_LENGTH=200
 REDIS_URL=redis://127.0.0.1:6379/0
 ```
+
+`OLLAMA_KEEP_ALIVE=-1` keeps the selected model in VRAM between requests.
+Use it only when the Ollama server has enough free GPU memory.
 
 For the intended two-VM deployment, see [docs/deployment.md](docs/deployment.md).
 Never expose the Ollama port to the public Internet.
@@ -69,6 +86,7 @@ HTMX и Alpine.js, а сообщения в реальном времени до
 - WebSocket-чат для авторизованных пользователей и история из 50 сообщений;
 - пользователи онлайн/офлайн по комнатам;
 - личные сообщения;
+- один тайный столик на владельца с одним или двумя приглашёнными гостями;
 - выбор оттенка сообщений в профиле;
 - Семён на локальной Ollama: упоминание `@Семён` или клик по его карточке;
 - вопрос Семёну можно отправить в общий чат или лично.
@@ -89,6 +107,16 @@ poetry run python manage.py runserver
 poetry run python manage.py check
 poetry run python manage.py test
 ```
+
+Чтобы проверить длинный список пользователей локально, создайте тестовые
+аккаунты:
+
+```bash
+poetry run python manage.py seed_demo_users --count 60
+```
+
+Команда по умолчанию заблокирована вне `DEBUG`. Она создаёт офлайн-аккаунты;
+для проверки реального присутствия понадобятся постоянные WebSocket-подключения.
 
 Ollama при локальной разработке необязательна. Если она доступна, задайте
 переменные окружения из английского раздела выше. Подробности развёртывания на
