@@ -1,12 +1,14 @@
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render, redirect
+from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
-from .forms import RegistrationForm, ProfileForm
+
+from .forms import ProfileForm, RegistrationForm
 
 
 def is_htmx_request(request):
+    """Определяет, ожидает ли браузер HTML-фрагмент вместо JSON."""
     return request.headers.get("HX-Request") == "true"
 
 
@@ -62,14 +64,14 @@ def login_view(request):
         }
     )
 
+
 @require_POST
 def logout_view(request):
-    """Выход пользователя из системы."""
+    """Завершает пользовательскую сессию."""
 
-    if request.method == "POST":
-        logout(request)
-
+    logout(request)
     return redirect("home")
+
 
 @require_POST
 def register_view(request):

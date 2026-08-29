@@ -37,30 +37,20 @@ class RegistrationForm(forms.ModelForm):
         password = cleaned_data.get("password")
         password_confirm = cleaned_data.get("password_confirm")
 
-        if (
-            password
-            and password_confirm
-            and password != password_confirm
-        ):
-            raise forms.ValidationError(
-                "Пароли не совпадают."
-            )
+        if password and password_confirm and password != password_confirm:
+            raise forms.ValidationError("Пароли не совпадают.")
 
         return cleaned_data
 
     def save(self, commit=True):
         user = super().save(commit=False)
 
-        user.set_password(
-            self.cleaned_data["password"]
-        )
+        user.set_password(self.cleaned_data["password"])
 
         if commit:
             user.save()
 
         return user
-
-
 
 class ProfileForm(forms.ModelForm):
     """Форма редактирования профиля пользователя."""
@@ -102,10 +92,11 @@ class ProfileForm(forms.ModelForm):
 
         try:
             resized_image = resize_avatar(avatar)
-        except Exception:
+        except Exception as error:
+            # Ошибка изображения не должна ронять страницу профиля.
             raise forms.ValidationError(
                 "Не удалось обработать изображение."
-            )
+            ) from error
 
         buffer = BytesIO()
 

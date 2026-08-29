@@ -1,13 +1,19 @@
+import json
+
 from asgiref.sync import async_to_sync
 from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.test import TestCase, TransactionTestCase
+from django.urls import reverse
+from django.utils import timezone
+from unittest.mock import patch
 
-from .models import Message, Room
+from .models import Message, Room, RoomMembership, RoomReadState
 from .routing import websocket_urlpatterns
 from .services.messages import MessageService
+from .services.bartender import BARTENDER_LANGUAGE_FALLBACK, bartender
 from .validators import validate_message
 
 
@@ -108,6 +114,129 @@ class MessageServiceTests(TestCase):
         self.assertEqual([message["message"] for message in recipient_messages], ["Для всех", "Только для Марии"])
         self.assertEqual([message["message"] for message in outsider_messages], ["Для всех"])
 
+    def test_unread_count_uses_only_messages_addressed_to_user_in_public_room(self):
+        sender = User.objects.create_user(username="maria")
+        RoomReadState.objects.create(
+            room=self.room,
+            user=self.user,
+            last_read_at=timezone.now(),
+        )
+        MessageService.create_message(
+            user_id=sender.id,
+            room=self.room,
+            text="Общее сообщение",
+        )
+        MessageService.create_message(
+            user_id=sender.id,
+            room=self.room,
+            text="Лично для Алекса",
+            recipient_id=self.user.id,
+        )
+
+        unread_count = MessageService.get_unread_count(
+            room=self.room,
+            user_id=self.user.id,
+        )
+
+        self.assertEqual(unread_count, 1)
+
+    def test_unread_count_in_private_room_includes_messages_from_other_members(self):
+        guest = User.objects.create_user(username="maria")
+        private_room = Room.objects.create(
+            name="Тайный столик",
+            slug="taynyy-stolik",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.user,
+        )
+        RoomMembership.objects.bulk_create(
+            [
+                RoomMembership(room=private_room, user=self.user),
+                RoomMembership(room=private_room, user=guest),
+            ]
+        )
+        RoomReadState.objects.create(
+            room=private_room,
+            user=self.user,
+            last_read_at=timezone.now(),
+        )
+        MessageService.create_message(
+            user_id=guest.id,
+            room=private_room,
+            text="Только для своих",
+        )
+
+        unread_count = MessageService.get_unread_count(
+            room=private_room,
+            user_id=self.user.id,
+        )
+
+        self.assertEqual(unread_count, 1)
+
+
+class PrivateRoomViewsTests(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username="alex")
+        self.first_guest = User.objects.create_user(username="maria")
+        self.second_guest = User.objects.create_user(username="ivan")
+
+    def test_owner_can_create_one_private_room_for_up_to_two_guests(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("chat:create_private_room"),
+            {
+                "name": "Сообразим на троих",
+                "members": [self.first_guest.id, self.second_guest.id],
+            },
+        )
+
+        room = Room.objects.get(owner=self.owner)
+        self.assertRedirects(response, reverse("chat:chat", args=[room.slug]))
+        self.assertTrue(room.is_private)
+        self.assertEqual(
+            set(room.members.values_list("username", flat=True)),
+            {"alex", "maria", "ivan"},
+        )
+
+    def test_private_room_is_hidden_from_uninvited_guest(self):
+        outsider = User.objects.create_user(username="outsider")
+        room = Room.objects.create(
+            name="Тайный столик",
+            slug="taynyy-stolik",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.owner,
+        )
+        RoomMembership.objects.create(room=room, user=self.owner)
+        self.client.force_login(outsider)
+
+        response = self.client.get(reverse("chat:chat", args=[room.slug]))
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_different_owners_can_use_the_same_private_room_name(self):
+        another_owner = User.objects.create_user(username="petr")
+        Room.objects.create(
+            name="Сообразим на троих",
+            slug="soobrazim-na-troih-alex",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.owner,
+        )
+        self.client.force_login(another_owner)
+
+        response = self.client.post(
+            reverse("chat:create_private_room"),
+            {"name": "Сообразим на троих"},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            Room.objects.filter(
+                name="Сообразим на троих",
+                visibility=Room.Visibility.PRIVATE,
+            ).count(),
+            2,
+        )
+
 
 class MessageValidationTests(TestCase):
     def test_accepts_trimmed_message(self):
@@ -135,6 +264,55 @@ class MessageValidationTests(TestCase):
                 self.assertEqual(error, expected_error)
 
 
+class BartenderServiceTests(TestCase):
+    def test_bartender_mention_supports_cyrillic_name(self):
+        self.assertTrue(bartender.is_mentioned("@Семён, помоги с логом"))
+        self.assertTrue(bartender.is_mentioned("@семен привет"))
+        self.assertFalse(bartender.is_mentioned("Семён, помоги с логом"))
+
+    @patch("chat.services.bartender.urlopen")
+    def test_reply_uses_ollama_and_removes_thinking_trace(self, mock_urlopen):
+        mock_urlopen.return_value.__enter__.return_value.read.return_value = (
+            '{"message": {"content": "<think>hidden</think>\\nГотово, лог посмотрел."}}'.encode()
+        )
+
+        reply = bartender.reply(
+            room_name="Python",
+            username="alex",
+            text="@Семён, помоги с логом",
+        )
+
+        self.assertEqual(reply.text, "Готово, лог посмотрел.")
+        request = mock_urlopen.call_args.args[0]
+        payload = json.loads(request.data)
+        self.assertEqual(payload["model"], "samogon-semen")
+        self.assertFalse(payload["think"])
+        self.assertIn("Гость @alex", payload["messages"][1]["content"])
+
+    @patch("chat.services.bartender.urlopen")
+    def test_reply_retries_when_model_mixes_in_chinese_characters(self, mock_urlopen):
+        mock_urlopen.return_value.__enter__.return_value.read.side_effect = [
+            '{"message": {"content": "Помогу 指出错误."}}'.encode(),
+            '{"message": {"content": "Помогу найти ошибку."}}'.encode(),
+        ]
+
+        reply = bartender.reply(room_name="Python", username="alex", text="@Семён помоги")
+
+        self.assertEqual(reply.text, "Помогу найти ошибку.")
+        self.assertEqual(mock_urlopen.call_count, 2)
+
+    @patch("chat.services.bartender.urlopen")
+    def test_reply_uses_safe_fallback_after_second_mixed_language_reply(self, mock_urlopen):
+        mock_urlopen.return_value.__enter__.return_value.read.side_effect = [
+            '{"message": {"content": "Помогу 指出错误."}}'.encode(),
+            '{"message": {"content": "仍然不 по-русски."}}'.encode(),
+        ]
+
+        reply = bartender.reply(room_name="Python", username="alex", text="@Семён помоги")
+
+        self.assertEqual(reply.text, BARTENDER_LANGUAGE_FALLBACK)
+
+
 class ChatConsumerTests(TransactionTestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="alex")
@@ -143,6 +321,30 @@ class ChatConsumerTests(TransactionTestCase):
 
     def test_anonymous_user_is_rejected_before_accepting_connection(self):
         async_to_sync(self._assert_anonymous_user_is_rejected)()
+
+    def test_uninvited_user_cannot_connect_to_private_room(self):
+        outsider = User.objects.create_user(username="maria")
+        private_room = Room.objects.create(
+            name="Тайный столик",
+            slug="taynyy-stolik",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.user,
+        )
+        RoomMembership.objects.create(room=private_room, user=self.user)
+
+        async_to_sync(self._assert_private_room_is_rejected)(outsider)
+
+    async def _assert_private_room_is_rejected(self, outsider):
+        communicator = WebsocketCommunicator(
+            self.application,
+            "/ws/chat/taynyy-stolik/",
+        )
+        communicator.scope["user"] = outsider
+
+        connected, close_code = await communicator.connect()
+
+        self.assertFalse(connected)
+        self.assertEqual(close_code, 4403)
 
     async def _assert_anonymous_user_is_rejected(self):
         communicator = WebsocketCommunicator(self.application, "/ws/chat/general/")

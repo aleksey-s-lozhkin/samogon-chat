@@ -1,0 +1,2 @@
+# PostgreSQL driver is only needed by the production container.
+psycopg[binary]==3.2.12

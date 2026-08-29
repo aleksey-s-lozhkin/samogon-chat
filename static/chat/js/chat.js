@@ -1,8 +1,21 @@
 const { isAuthenticated, roomSlug, username: currentUsername } = chatConfig;
 const MESSAGE_MAX_LENGTH = 1000;
+const BARTENDER_USERNAME = "Семён";
 
 let chatSocket = null;
 let directRecipient = null;
+let bartenderMode = false;
+let bartenderPrivate = false;
+let loadingHistory = false;
+let lastMessageDay = null;
+
+const TAGLINES = [
+    "Здесь баги разбирают по душам.",
+    "Код крепкий, разговоры — ещё крепче.",
+    "Спорим о табах, миримся на пробелах.",
+    "Заходите с вопросом, выходите с планом.",
+    "Тихий бар для громких идей.",
+];
 
 if (isAuthenticated) {
     connectWebSocket();
@@ -20,11 +33,19 @@ function connectWebSocket() {
 
 function handleServerEvent(data) {
     if (data.type === "history") {
+        loadingHistory = true;
+        lastMessageDay = null;
         data.messages.forEach(addMessage);
+        loadingHistory = false;
+        finishHistoryLoading();
     }
 
     if (data.type === "message") {
-        addMessage(data);
+        if (!data.room_slug || data.room_slug === roomSlug) {
+            addMessage(data);
+        } else {
+            increaseUnreadCount(data);
+        }
     }
 
     if (data.type === "user_presence") {
@@ -32,26 +53,72 @@ function handleServerEvent(data) {
     }
 
     if (data.type === "error") {
+        setBartenderTyping(false);
         showError(data.message);
     }
 }
 
+function finishHistoryLoading() {
+    const chatLog = document.getElementById("chat-log");
+    if (!chatLog) {
+        return;
+    }
+
+    if (!chatLog.querySelector(".message")) {
+        renderEmptyState(chatLog);
+        return;
+    }
+    chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function increaseUnreadCount(data) {
+    const isIncoming = normalizeUsername(data.username) !== normalizeUsername(currentUsername);
+    if (!isIncoming || !(data.private || data.room_private)) {
+        return;
+    }
+
+    const roomLink = document.querySelector(
+        `.room-navigation-item[data-room-slug="${CSS.escape(data.room_slug)}"]`,
+    );
+    if (!roomLink) {
+        return;
+    }
+
+    const badge = roomLink.querySelector(".room-unread-count");
+    const currentCount = Number.parseInt(badge?.textContent || "0", 10);
+    if (badge) {
+        badge.textContent = String(currentCount + 1);
+        return;
+    }
+
+    const unread = document.createElement("span");
+    unread.className = "room-unread-count";
+    unread.textContent = "1";
+    roomLink.append(unread);
+}
+
 function updateUserPresence(users, online) {
-    const onlineUsers = new Set(online);
-    const contacts = users.filter((username) => username !== currentUsername);
+    const onlineUsers = new Set(online.map(normalizeUsername));
+    const contacts = users.filter(
+        (username) => normalizeUsername(username) !== normalizeUsername(currentUsername),
+    );
 
     renderUserList(
         "online-users-list",
-        contacts.filter((username) => onlineUsers.has(username)),
+        contacts.filter((username) => onlineUsers.has(normalizeUsername(username))),
         "online-user",
         "Сейчас вы один у стойки",
     );
     renderUserList(
         "offline-users-list",
-        contacts.filter((username) => !onlineUsers.has(username)),
+        contacts.filter((username) => !onlineUsers.has(normalizeUsername(username))),
         "offline-user",
         "Все сейчас в баре",
     );
+}
+
+function normalizeUsername(username) {
+    return String(username || "").trim().toLocaleLowerCase();
 }
 
 function renderUserList(containerId, usernames, className, emptyText) {
@@ -73,7 +140,12 @@ function renderUserList(containerId, usernames, className, emptyText) {
             const button = document.createElement("button");
             button.type = "button";
             button.className = `online-user user-contact ${className}`;
-            button.textContent = `@${username}`;
+            const avatar = document.createElement("span");
+            avatar.className = "user-avatar";
+            avatar.textContent = username.slice(0, 1).toUpperCase();
+            const name = document.createElement("span");
+            name.textContent = `@${username}`;
+            button.append(avatar, name);
             button.addEventListener("click", () => setDirectRecipient(username));
             return button;
         }),
@@ -81,6 +153,7 @@ function renderUserList(containerId, usernames, className, emptyText) {
 }
 
 function setDirectRecipient(username) {
+    clearBartenderMode(false);
     directRecipient = username;
 
     const banner = document.getElementById("direct-recipient");
@@ -96,7 +169,7 @@ function setDirectRecipient(username) {
     input.focus();
 }
 
-function clearDirectRecipient() {
+function clearDirectRecipient(focus = true) {
     directRecipient = null;
 
     const banner = document.getElementById("direct-recipient");
@@ -104,8 +177,53 @@ function clearDirectRecipient() {
     banner?.classList.add("hidden");
     if (input) {
         input.placeholder = "Написать сообщение...";
-        input.focus();
+        if (focus) {
+            input.focus();
+        }
     }
+}
+
+function activateBartender() {
+    clearDirectRecipient(false);
+    bartenderMode = true;
+    bartenderPrivate = false;
+    updateBartenderMode();
+
+    const input = document.getElementById("chat-message-input");
+    if (!input) {
+        return;
+    }
+    if (!input.value.trim().startsWith(`@${BARTENDER_USERNAME}`)) {
+        input.value = `@${BARTENDER_USERNAME} ${input.value.trim()}`.trimEnd() + " ";
+    }
+    input.focus();
+}
+
+function setBartenderVisibility(isPrivate) {
+    bartenderPrivate = isPrivate;
+    updateBartenderMode();
+}
+
+function clearBartenderMode(focus = true) {
+    bartenderMode = false;
+    bartenderPrivate = false;
+    document.getElementById("bartender-recipient")?.classList.add("hidden");
+
+    const input = document.getElementById("chat-message-input");
+    if (input?.value.startsWith(`@${BARTENDER_USERNAME}`)) {
+        input.value = input.value.slice(BARTENDER_USERNAME.length + 1).trimStart();
+    }
+    updateInputSize();
+    if (focus) {
+        input?.focus();
+    }
+}
+
+function updateBartenderMode() {
+    const banner = document.getElementById("bartender-recipient");
+    banner?.classList.toggle("hidden", !bartenderMode);
+    document.getElementById("bartender-public")?.classList.toggle("selected", !bartenderPrivate);
+    document.getElementById("bartender-private")?.classList.toggle("selected", bartenderPrivate);
 }
 
 function addMessage(data) {
@@ -114,12 +232,17 @@ function addMessage(data) {
         return;
     }
 
+    const wasNearBottom = isNearBottom(chatLog);
+    chatLog.querySelector(".chat-empty-state")?.remove();
+    const timestamp = data.timestamp || data.created_at;
+    appendDayDivider(chatLog, timestamp);
+
     const message = document.createElement("div");
     message.className = "message";
     if (data.private) {
         message.classList.add("private");
     }
-    if (data.username === currentUsername) {
+    if (normalizeUsername(data.username) === normalizeUsername(currentUsername)) {
         message.classList.add("own");
     }
     if (["amber", "blue", "sage", "plum"].includes(data.color)) {
@@ -131,7 +254,9 @@ function addMessage(data) {
 
     const author = document.createElement("div");
     author.className = "message-username";
-    author.textContent = data.private && data.username === currentUsername
+    author.textContent = data.username === BARTENDER_USERNAME
+        ? BARTENDER_USERNAME
+        : data.private && data.username === currentUsername
         ? `Вы → @${data.recipient}`
         : `@${data.username}`;
 
@@ -141,7 +266,6 @@ function addMessage(data) {
 
     const time = document.createElement("div");
     time.className = "message-time";
-    const timestamp = data.timestamp || data.created_at;
     if (timestamp) {
         time.textContent = new Date(timestamp).toLocaleTimeString([], {
             hour: "2-digit",
@@ -152,7 +276,50 @@ function addMessage(data) {
     content.append(author, text, time);
     message.append(content);
     chatLog.append(message);
-    chatLog.scrollTop = chatLog.scrollHeight;
+
+    if (data.username === BARTENDER_USERNAME) {
+        setBartenderTyping(false);
+    }
+
+    if (loadingHistory || wasNearBottom) {
+        chatLog.scrollTop = chatLog.scrollHeight;
+    } else if (!message.classList.contains("own")) {
+        document.getElementById("scroll-to-latest")?.classList.remove("hidden");
+    }
+}
+
+function appendDayDivider(chatLog, timestamp) {
+    if (!timestamp) {
+        return;
+    }
+
+    const date = new Date(timestamp);
+    const dayKey = date.toLocaleDateString("ru-RU");
+    if (dayKey === lastMessageDay) {
+        return;
+    }
+    lastMessageDay = dayKey;
+
+    const divider = document.createElement("div");
+    divider.className = "day-divider";
+    const today = new Date().toLocaleDateString("ru-RU");
+    divider.textContent = dayKey === today ? "Сегодня" : dayKey;
+    chatLog.append(divider);
+}
+
+function renderEmptyState(chatLog) {
+    const state = document.createElement("div");
+    state.className = "chat-empty-state";
+    const title = document.createElement("strong");
+    title.textContent = "У стойки пока тихо.";
+    const description = document.createElement("span");
+    description.textContent = "Первое слово — за вами.";
+    state.append(title, description);
+    chatLog.append(state);
+}
+
+function isNearBottom(chatLog) {
+    return chatLog.scrollHeight - chatLog.scrollTop - chatLog.clientHeight < 48;
 }
 
 function showError(message) {
@@ -185,16 +352,73 @@ function sendMessage() {
         return;
     }
 
-    chatSocket.send(JSON.stringify({ message, recipient: directRecipient }));
-    input.value = "";
+    chatSocket.send(JSON.stringify({
+        message,
+        recipient: directRecipient,
+        bartender_private: bartenderMode && bartenderPrivate,
+    }));
+    if (bartenderMode || isBartenderRequest(message)) {
+        setBartenderTyping(true);
+    }
+    input.value = bartenderMode ? `@${BARTENDER_USERNAME} ` : "";
+    updateInputSize();
     input.focus();
+}
+
+function isBartenderRequest(message) {
+    return message.toLocaleLowerCase().startsWith("@семён")
+        || message.toLocaleLowerCase().startsWith("@семен");
+}
+
+function setBartenderTyping(isTyping) {
+    document.getElementById("typing-indicator")?.classList.toggle("hidden", !isTyping);
+}
+
+function updateInputSize() {
+    const input = document.getElementById("chat-message-input");
+    const counter = document.getElementById("message-char-count");
+    if (!input || !counter) {
+        return;
+    }
+
+    input.style.height = "auto";
+    input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+    counter.textContent = `${input.value.length} / ${MESSAGE_MAX_LENGTH}`;
+}
+
+function initialiseAtmosphere() {
+    const tagline = document.getElementById("brand-tagline");
+    if (tagline) {
+        tagline.textContent = TAGLINES[Math.floor(Math.random() * TAGLINES.length)];
+    }
 }
 
 document.getElementById("chat-message-submit")?.addEventListener("click", sendMessage);
 document.getElementById("cancel-direct-message")?.addEventListener("click", clearDirectRecipient);
-document.getElementById("chat-message-input")?.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
+document.getElementById("bartender-card")?.addEventListener("click", activateBartender);
+document.getElementById("bartender-public")?.addEventListener("click", () => setBartenderVisibility(false));
+document.getElementById("bartender-private")?.addEventListener("click", () => setBartenderVisibility(true));
+document.getElementById("cancel-bartender-message")?.addEventListener("click", clearBartenderMode);
+const chatInput = document.getElementById("chat-message-input");
+chatInput?.addEventListener("input", updateInputSize);
+chatInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         sendMessage();
     }
+    if (event.key === "Escape") {
+        clearDirectRecipient(false);
+        clearBartenderMode(false);
+        chatInput.focus();
+    }
 });
+document.getElementById("scroll-to-latest")?.addEventListener("click", () => {
+    const chatLog = document.getElementById("chat-log");
+    if (chatLog) {
+        chatLog.scrollTop = chatLog.scrollHeight;
+    }
+    document.getElementById("scroll-to-latest")?.classList.add("hidden");
+});
+
+initialiseAtmosphere();
+updateInputSize();

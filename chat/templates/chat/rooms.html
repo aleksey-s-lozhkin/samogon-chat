@@ -13,7 +13,7 @@
 
     <link
         rel="stylesheet"
-        href="{% static 'chat/css/chat.css' %}"
+        href="{% static 'chat/css/chat.css' %}?v=5"
     >
 
     <script
@@ -29,38 +29,18 @@
     x-data="{ menuOpen: false }"
 >
 
-    <header class="chat-header">
-
-        <div>
-            <h1>🍺 Самогон</h1>
-            <p>Тёплый свет, честные разговоры и немного магии.</p>
-        </div>
-
-        {% if user.is_authenticated %}
-            <div class="user-actions">
-
-                <a
-                    href="{% url 'profile' %}"
-                    class="profile-link"
-                >
-                    Профиль
-                </a>
-
-                <form method="post" action="{% url 'logout' %}">
-                    {% csrf_token %}
-
-                    <button type="submit">
-                        Выйти
-                    </button>
-                </form>
-
-            </div>
-        {% endif %}
-
-    </header>
+    {% include "chat/partials/site_header.html" with header_tagline="Тёплый свет, честные разговоры и немного магии." %}
 
 
     <main class="rooms-content">
+
+        {% if messages %}
+            <div class="room-notices" aria-live="polite">
+                {% for message in messages %}
+                    <p class="room-notice {{ message.tags }}">{{ message }}</p>
+                {% endfor %}
+            </div>
+        {% endif %}
 
         <div class="rooms-heading">
 
@@ -105,6 +85,10 @@
 
                     </div>
 
+                    {% if room.unread_count %}
+                        <span class="room-unread-count">{{ room.unread_count }}</span>
+                    {% endif %}
+
                     <div class="room-arrow">
                         →
                     </div>
@@ -132,14 +116,74 @@
 
         </section>
 
+        {% if private_rooms %}
+            <section class="private-rooms-list">
+                <div class="private-rooms-heading">
+                    <span class="eyebrow">ТОЛЬКО ДЛЯ СВОИХ</span>
+                    <h2>Тайные столики</h2>
+                </div>
+                <div class="rooms-list">
+                    {% for room in private_rooms %}
+                        <a
+                            href="{% url 'chat:chat' room_slug=room.slug %}"
+                            class="room-card private-room-card"
+                        >
+                            <div class="room-icon">◌</div>
+                            <div class="room-info">
+                                <h3>{{ room.name }}</h3>
+                                <p>{{ room.description }}</p>
+                            </div>
+                            {% if room.unread_count %}
+                                <span class="room-unread-count">{{ room.unread_count }}</span>
+                            {% endif %}
+                            <div class="room-arrow">→</div>
+                        </a>
+                    {% endfor %}
+                </div>
+            </section>
+        {% endif %}
+
+        {% if user.is_authenticated %}
+            <section class="private-room-create">
+                <div>
+                    <span class="eyebrow">ТАЙНЫЙ СТОЛИК</span>
+                    <h2>Сообразим на троих</h2>
+                    <p>
+                        Один столик — ваш. Позовите до двух гостей,
+                        и разговор останется только между своими.
+                    </p>
+                </div>
+
+                {% if private_rooms %}
+                    <p class="private-room-created">
+                        Ваш тайный столик уже открыт. Найдёте его в списке выше.
+                    </p>
+                {% else %}
+                    <form method="post" action="{% url 'chat:create_private_room' %}">
+                        {% csrf_token %}
+                        {{ private_room_form.non_field_errors }}
+                        <label for="{{ private_room_form.name.id_for_label }}">
+                            {{ private_room_form.name.label }}
+                        </label>
+                        {{ private_room_form.name }}
+                        {{ private_room_form.name.errors }}
+
+                        <fieldset>
+                            <legend>{{ private_room_form.members.label }}</legend>
+                            {{ private_room_form.members }}
+                            {{ private_room_form.members.errors }}
+                        </fieldset>
+                        <p class="form-help">{{ private_room_form.members.help_text }}</p>
+                        <button type="submit">Открыть столик</button>
+                    </form>
+                {% endif %}
+            </section>
+        {% endif %}
+
     </main>
 
 
-    <footer class="rooms-footer">
-        <span>🍸 Семён за стойкой</span>
-        <span>·</span>
-        <span>У каждой хорошей истории есть первая реплика</span>
-    </footer>
+    {% include "chat/partials/rooms_footer.html" %}
 
 </div>
 

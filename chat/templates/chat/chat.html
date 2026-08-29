@@ -14,7 +14,7 @@
 
     <link
         rel="stylesheet"
-        href="{% static 'chat/css/chat.css' %}"
+        href="{% static 'chat/css/chat.css' %}?v=5"
     >
 
     <script
@@ -30,218 +30,7 @@
 
 <body>
 
-<!-- =========================================================
-     AUTH MODAL
-     ========================================================= -->
-
-<div
-    id="login-modal"
-    class="modal {% if user.is_authenticated %}hidden{% endif %}"
->
-
-    <div class="modal-content">
-
-        <!-- LOGIN -->
-
-        <div id="login-container">
-
-            <div class="modal-header">
-                <h2>Вход в чат</h2>
-                <p>Войдите, чтобы продолжить</p>
-            </div>
-
-            <form
-                id="login-form"
-                hx-post="{% url 'login' %}"
-                hx-target="#login-error"
-                hx-swap="innerHTML"
-            >
-
-                {% csrf_token %}
-
-                <div class="form-group">
-                    <label for="login-username">
-                        Логин
-                    </label>
-
-                    <input
-                        id="login-username"
-                        name="username"
-                        type="text"
-                        placeholder="Введите логин"
-                        autocomplete="username"
-                        required
-                    >
-                </div>
-
-                <div class="form-group">
-                    <label for="login-password">
-                        Пароль
-                    </label>
-
-                    <input
-                        id="login-password"
-                        name="password"
-                        type="password"
-                        placeholder="Введите пароль"
-                        autocomplete="current-password"
-                        required
-                    >
-                </div>
-
-                <div
-                    id="login-error"
-                    class="form-error"
-                ></div>
-
-                <button
-                    type="submit"
-                    class="primary-button"
-                >
-                    Войти
-                </button>
-
-            </form>
-
-            <div class="modal-footer">
-
-                Нет аккаунта?
-
-                <button
-                    type="button"
-                    id="show-register"
-                    class="link-button"
-                >
-                    Зарегистрироваться
-                </button>
-
-            </div>
-
-        </div>
-
-
-        <!-- REGISTER -->
-
-        <div
-            id="register-container"
-            class="hidden"
-        >
-
-            <div class="modal-header">
-                <h2>Создание аккаунта</h2>
-                <p>Заполните данные для регистрации</p>
-            </div>
-
-            <form
-                id="register-form"
-                hx-post="{% url 'register' %}"
-                hx-target="#register-error"
-                hx-swap="innerHTML"
-            >
-
-                {% csrf_token %}
-
-                <div class="form-group">
-
-                    <label for="register-username">
-                        Логин
-                    </label>
-
-                    <input
-                        id="register-username"
-                        name="username"
-                        type="text"
-                        placeholder="Придумайте логин"
-                        autocomplete="username"
-                        required
-                    >
-
-                </div>
-
-                <div class="form-group">
-
-                    <label for="register-email">
-                        Email
-                    </label>
-
-                    <input
-                        id="register-email"
-                        name="email"
-                        type="email"
-                        placeholder="Введите email"
-                        autocomplete="email"
-                        required
-                    >
-
-                </div>
-
-                <div class="form-group">
-
-                    <label for="register-password">
-                        Пароль
-                    </label>
-
-                    <input
-                        id="register-password"
-                        name="password"
-                        type="password"
-                        placeholder="Придумайте пароль"
-                        autocomplete="new-password"
-                        required
-                    >
-
-                </div>
-
-                <div class="form-group">
-
-                    <label for="register-password-confirm">
-                        Повторите пароль
-                    </label>
-
-                    <input
-                        id="register-password-confirm"
-                        name="password_confirm"
-                        type="password"
-                        placeholder="Повторите пароль"
-                        autocomplete="new-password"
-                        required
-                    >
-
-                </div>
-
-                <div
-                    id="register-error"
-                    class="form-error"
-                ></div>
-
-                <button
-                    type="submit"
-                    class="primary-button"
-                >
-                    Создать аккаунт
-                </button>
-
-            </form>
-
-            <div class="modal-footer">
-
-                Уже есть аккаунт?
-
-                <button
-                    type="button"
-                    id="show-login"
-                    class="link-button"
-                >
-                    Войти
-                </button>
-
-            </div>
-
-        </div>
-
-    </div>
-
-</div>
+{% include "chat/partials/auth_modal.html" %}
 
 
 <!-- =========================================================
@@ -253,57 +42,7 @@
     x-data="{ sidebarOpen: false }"
 >
 
-    <!-- HEADER -->
-
-    <header class="chat-header">
-
-        <div class="brand">
-
-            <button
-                class="mobile-menu-button"
-                type="button"
-                @click="sidebarOpen = !sidebarOpen"
-                aria-label="Открыть комнаты"
-            >
-                ☰
-            </button>
-
-            <div>
-
-                <h1>🍺 Самогон</h1>
-
-                <p>
-                    Здесь баги разбирают по душам.
-                </p>
-
-            </div>
-
-        </div>
-
-
-        {% if user.is_authenticated %}
-
-            <div class="user-actions">
-
-                <a
-                    href="{% url 'profile' %}"
-                    class="profile-link"
-                >
-                    Профиль
-                </a>
-
-                <button
-                    id="logout-button"
-                    type="button"
-                >
-                    Выйти
-                </button>
-
-            </div>
-
-        {% endif %}
-
-    </header>
+    {% include "chat/partials/site_header.html" with header_tagline="Здесь баги разбирают по душам." show_sidebar_toggle=True ajax_logout=True %}
 
 
     <!-- CHAT LAYOUT -->
@@ -311,126 +50,7 @@
     <div class="chat-layout">
 
 
-        <!-- SIDEBAR -->
-
-        <aside
-            class="rooms-sidebar"
-            :class="{ 'is-open': sidebarOpen }"
-        >
-
-            <div class="sidebar-header">
-
-                <div>
-                    <h2>
-                        Комнаты у стойки
-                    </h2>
-
-                </div>
-
-                <button
-                    class="sidebar-close"
-                    type="button"
-                    @click="sidebarOpen = false"
-                    aria-label="Закрыть меню"
-                >
-                    ×
-                </button>
-
-            </div>
-
-
-            <nav class="rooms-navigation">
-
-                {% for chat_room in rooms %}
-
-                    <a
-                        href="{% url 'chat:chat' room_slug=chat_room.slug %}"
-                        class="room-navigation-item {% if chat_room.slug == room.slug %}active{% endif %}"
-                        @click="sidebarOpen = false"
-                    >
-
-                        <span class="room-navigation-icon">
-                            #
-                        </span>
-
-                        <span>
-                            {{ chat_room.name }}
-                        </span>
-
-                    </a>
-
-                {% empty %}
-
-                    <span class="rooms-empty">
-                        Комнат пока нет
-                    </span>
-
-                {% endfor %}
-
-            </nav>
-
-
-            <!-- ONLINE USERS -->
-
-            <section class="online-users">
-
-                <div class="online-title">
-
-                    <span class="online-dot"></span>
-
-                    Сейчас в баре
-
-                </div>
-
-                <div id="online-users-list"></div>
-
-            </section>
-
-            <section class="offline-users">
-
-                <div class="offline-title">
-                    <span class="offline-dot"></span>
-                    Сейчас не в сети
-                </div>
-
-                <div id="offline-users-list"></div>
-
-            </section>
-
-
-            <!-- BARTENDER -->
-
-            <div class="bartender-card">
-
-                <div class="bartender-avatar">
-                    С
-                </div>
-
-                <div>
-
-                    <strong>
-                        Семён
-                    </strong>
-
-                    <p>
-                        Бармен
-                    </p>
-
-                </div>
-
-            </div>
-
-        </aside>
-
-
-        <!-- MOBILE OVERLAY -->
-
-        <div
-            class="sidebar-overlay"
-            x-show="sidebarOpen"
-            @click="sidebarOpen = false"
-            x-transition
-        ></div>
+        {% include "chat/partials/sidebar.html" %}
 
 
         <!-- CHAT MAIN -->
@@ -438,82 +58,8 @@
         <main class="chat-main">
 
 
-            <!-- ROOM HEADER -->
-
-            <div class="room-header">
-
-                <div>
-
-                    <div class="room-title">
-
-                        <span>#</span>
-
-                        <h2>
-                            {{ room.name }}
-                        </h2>
-
-                    </div>
-
-                    {% if room.description %}
-
-                        <p>
-                            {{ room.description }}
-                        </p>
-
-                    {% endif %}
-
-                </div>
-
-            </div>
-
-            <!-- MESSAGES -->
-
-            <div
-                id="chat-log"
-                class="chat-log"
-            ></div>
-
-
-            <!-- ERROR -->
-
-            <div
-                id="error-message"
-                class="error"
-                role="alert"
-                aria-live="polite"
-            ></div>
-
-
-            <!-- INPUT -->
-
-            <section class="chat-composer">
-                <div id="direct-recipient" class="direct-recipient hidden">
-                    <span>Личное сообщение для <strong id="direct-recipient-name"></strong></span>
-                    <button id="cancel-direct-message" type="button" aria-label="Отменить личное сообщение">×</button>
-                </div>
-
-                <div class="chat-input">
-
-                    <input
-                        id="chat-message-input"
-                        type="text"
-                        placeholder="Написать сообщение..."
-                        autocomplete="off"
-                    >
-
-                    <button
-                        id="chat-message-submit"
-                        type="button"
-                    >
-                        Отправить
-                    </button>
-
-                </div>
-
-                <div class="chat-hint">
-                    Enter — отправить · до 1000 символов
-                </div>
-            </section>
+            {% include "chat/partials/room_header.html" %}
+            {% include "chat/partials/composer.html" %}
 
         </main>
 
@@ -524,9 +70,9 @@
 
 <script>
     const chatConfig = {
-        roomSlug: "{{ room.slug }}",
-        roomName: "{{ room.name }}",
-        username: "{{ request.user.username }}",
+        roomSlug: "{{ room.slug|escapejs }}",
+        roomName: "{{ room.name|escapejs }}",
+        username: "{{ request.user.username|escapejs }}",
         isAuthenticated: {{ user.is_authenticated|yesno:"true,false" }},
 
     };
@@ -536,7 +82,7 @@
     };
 </script>
 
-<script src="{% static 'chat/js/chat.js' %}?v=3"></script>
+<script src="{% static 'chat/js/chat.js' %}?v=4"></script>
 <script src="{% static 'chat/js/auth.js' %}?v=3"></script>
 
 </body>

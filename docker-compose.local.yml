@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: samogon
+      POSTGRES_USER: samogon
+      POSTGRES_PASSWORD: samogon
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U samogon -d samogon"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - samogon_postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:8-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build: .
+    env_file: ${SAMOGON_LOCAL_ENV_FILE:-.env.docker}
+    environment:
+      # Не даём redis-py 8 оборвать blocking read Channels ровно на 5 секундах.
+      REDIS_URL: redis://redis:6379/0?socket_timeout=10
+    # Bind-mount с macOS не сохраняет executable-бит entrypoint.
+    entrypoint: ["/bin/sh", "/app/deployment/docker/entrypoint.sh"]
+    command: python manage.py runserver 0.0.0.0:8000
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - samogon_staticfiles:/app/staticfiles
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  samogon_postgres_data:
+  samogon_staticfiles:

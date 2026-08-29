@@ -1,0 +1,86 @@
+<aside class="rooms-sidebar" :class="{ 'is-open': sidebarOpen }">
+    <div class="sidebar-header">
+        <h2>Комнаты у стойки</h2>
+
+        <button
+            class="sidebar-close"
+            type="button"
+            @click="sidebarOpen = false"
+            aria-label="Закрыть меню"
+        >
+            ×
+        </button>
+    </div>
+
+    <nav class="rooms-navigation" aria-label="Открытые комнаты">
+        {% for chat_room in public_rooms %}
+            <a
+                href="{% url 'chat:chat' room_slug=chat_room.slug %}"
+                class="room-navigation-item {% if chat_room.slug == room.slug %}active{% endif %}"
+                data-room-slug="{{ chat_room.slug }}"
+                @click="sidebarOpen = false"
+            >
+                <span class="room-navigation-icon">#</span>
+                <span>{{ chat_room.name }}</span>
+                {% if chat_room.unread_count %}
+                    <span class="room-unread-count">{{ chat_room.unread_count }}</span>
+                {% endif %}
+            </a>
+        {% empty %}
+            <span class="rooms-empty">Комнат пока нет</span>
+        {% endfor %}
+    </nav>
+
+    {% if private_rooms %}
+        <section class="private-rooms">
+            <div class="sidebar-section-title">Тайные столики</div>
+            <nav class="rooms-navigation" aria-label="Тайные комнаты">
+                {% for chat_room in private_rooms %}
+                    <a
+                        href="{% url 'chat:chat' room_slug=chat_room.slug %}"
+                        class="room-navigation-item {% if chat_room.slug == room.slug %}active{% endif %}"
+                        data-room-slug="{{ chat_room.slug }}"
+                        @click="sidebarOpen = false"
+                    >
+                        <span class="room-navigation-icon">◌</span>
+                        <span>{{ chat_room.name }}</span>
+                        {% if chat_room.unread_count %}
+                            <span class="room-unread-count">{{ chat_room.unread_count }}</span>
+                        {% endif %}
+                    </a>
+                {% endfor %}
+            </nav>
+        </section>
+    {% endif %}
+
+    <section class="online-users">
+        <div class="online-title">
+            <span class="online-dot"></span>
+            За стойкой сейчас
+        </div>
+        <div id="online-users-list"></div>
+    </section>
+
+    <section class="offline-users">
+        <div class="offline-title">
+            <span class="offline-dot"></span>
+            Отошли ненадолго
+        </div>
+        <div id="offline-users-list"></div>
+    </section>
+
+    <button id="bartender-card" class="bartender-card" type="button">
+        <span class="bartender-avatar" aria-hidden="true">С</span>
+        <span>
+            <strong>Семён</strong>
+            <span class="bartender-card-hint">Нажмите, чтобы позвать</span>
+        </span>
+    </button>
+</aside>
+
+<div
+    class="sidebar-overlay"
+    x-show="sidebarOpen"
+    @click="sidebarOpen = false"
+    x-transition
+></div>

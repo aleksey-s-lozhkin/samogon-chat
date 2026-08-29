@@ -5,7 +5,7 @@ from django.conf import settings
 
 
 class OnlineUsersService:
-    """Tracks WebSocket connections and returns distinct users per room."""
+    """Хранит WebSocket-подключения и уникальных пользователей комнат."""
 
     def __init__(self):
         self._local_connections = defaultdict(dict)
@@ -13,14 +13,22 @@ class OnlineUsersService:
         self._local_lock = asyncio.Lock()
         self._redis = None
 
-    async def connect(self, *, room_slug: str, channel_name: str, username: str) -> list[str]:
+    async def connect(
+        self,
+        *,
+        room_slug: str,
+        channel_name: str,
+        username: str,
+    ) -> list[str]:
         if settings.REDIS_URL:
+            # Redis объединяет присутствие между несколькими ASGI-процессами.
             client = await self._get_redis()
             await client.hset(self._redis_key(room_slug), channel_name, username)
             await client.hset(self._redis_all_key(), channel_name, username)
             return await self._redis_users(client, room_slug)
 
         async with self._local_lock:
+            # Локальное хранилище подходит для разработки без Redis.
             self._local_connections[room_slug][channel_name] = username
             self._local_all_connections[channel_name] = username
             return self._local_users(room_slug)

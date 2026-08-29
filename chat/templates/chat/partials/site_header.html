@@ -1,0 +1,34 @@
+<header class="chat-header">
+    <div class="brand">
+        {% if show_sidebar_toggle %}
+            <button
+                class="mobile-menu-button"
+                type="button"
+                @click="sidebarOpen = !sidebarOpen"
+                aria-label="Открыть комнаты"
+            >
+                ☰
+            </button>
+        {% endif %}
+
+        <div>
+            <h1>🍺 Самогон</h1>
+            <p id="brand-tagline">{{ header_tagline }}</p>
+        </div>
+    </div>
+
+    {% if user.is_authenticated %}
+        <div class="user-actions">
+            <a href="{% url 'profile' %}" class="profile-link">Профиль</a>
+
+            {% if ajax_logout %}
+                <button id="logout-button" type="button">Выйти</button>
+            {% else %}
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit">Выйти</button>
+                </form>
+            {% endif %}
+        </div>
+    {% endif %}
+</header>

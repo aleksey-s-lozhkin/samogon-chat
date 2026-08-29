@@ -5,6 +5,7 @@ MESSAGE_MAX_LENGTH = 1000
 
 
 def validate_message(text_data):
+    """Проверяет входящий WebSocket-пакет до обращения к базе данных."""
     try:
         data = json.loads(text_data)
     except json.JSONDecodeError:
@@ -24,6 +25,9 @@ def validate_message(text_data):
         return None, "Сообщение не может быть пустым"
 
     if len(message) > MESSAGE_MAX_LENGTH:
-        return None, f"Сообщение не может быть длиннее {MESSAGE_MAX_LENGTH} символов"
+        return (
+            None,
+            f"Сообщение не может быть длиннее {MESSAGE_MAX_LENGTH} символов",
+        )
 
     return message, None

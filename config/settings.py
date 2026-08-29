@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -8,13 +9,22 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-6pyk#-eh!)ua&470yk(us%w=ot^u6r8q-y71nata*p&p*l=$4f'
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
+# Локальная разработка остаётся простой, а production получает секрет из .env.
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "django-insecure-local-development-only",
+)
+DEBUG = os.getenv("DEBUG", "1") == "1"
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv("ALLOWED_HOSTS", "").split(",")
+    if host.strip()
+]
+CSRF_TRUSTED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",")
+    if origin.strip()
+]
 
 
 # Application definition
@@ -70,12 +80,29 @@ ASGI_APPLICATION = 'config.asgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    parsed_database_url = urlparse(database_url)
+    if parsed_database_url.scheme not in {"postgres", "postgresql"}:
+        raise ValueError("DATABASE_URL должен использовать схему postgresql://")
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.postgresql",
+            "NAME": parsed_database_url.path.lstrip("/"),
+            "USER": unquote(parsed_database_url.username or ""),
+            "PASSWORD": unquote(parsed_database_url.password or ""),
+            "HOST": parsed_database_url.hostname or "localhost",
+            "PORT": str(parsed_database_url.port or 5432),
+            "CONN_MAX_AGE": 60,
+        },
     }
-}
+else:
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
+        },
+    }
 
 
 # Password validation
@@ -113,6 +140,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
@@ -121,16 +149,34 @@ STATICFILES_DIRS = [
 ]
 
 
-# Email
-# https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
-
+# Почтовый вывод в консоль удобен локально; production использует SMTP.
 MAILERS = {
-    'default': {
-        'BACKEND': 'django.core.mail.backends.console.EmailBackend',
-    },
+    "default": (
+        {"BACKEND": "django.core.mail.backends.console.EmailBackend"}
+        if DEBUG
+        else {
+            "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
+            "OPTIONS": {
+                "host": os.getenv("EMAIL_HOST", "localhost"),
+                "port": int(os.getenv("EMAIL_PORT", "587")),
+                "username": os.getenv("EMAIL_HOST_USER", ""),
+                "password": os.getenv("EMAIL_HOST_PASSWORD", ""),
+                "use_tls": os.getenv("EMAIL_USE_TLS", "1") == "1",
+            },
+        }
+    ),
 }
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost")
 
 REDIS_URL = os.getenv("REDIS_URL")
+
+# Ollama runs on a separate machine in the local network.  Keeping this in an
+# environment variable lets local development and production use different
+# hosts without changing application code.
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://192.168.0.78:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "samogon-semen")
+OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "20"))
+BARTENDER_USERNAME = os.getenv("BARTENDER_USERNAME", "semen")
 
 if REDIS_URL:
     CHANNEL_LAYERS = {
@@ -147,3 +193,22 @@ else:
     }
 
 AUTH_USER_MODEL = 'users.User'
+
+if not DEBUG:
+    # TLS завершается на Nginx, поэтому Django доверяет заголовку прокси.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_REFERRER_POLICY = "same-origin"
+    SECURE_HSTS_SECONDS = 31_536_000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    STORAGES = {
+        "staticfiles": {
+            "BACKEND": (
+                "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
+            ),
+        },
+    }

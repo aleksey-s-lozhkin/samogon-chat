@@ -1,0 +1,43 @@
+name: Verify pull request
+
+on:
+  pull_request:
+    branches: [develop]
+
+permissions:
+  contents: read
+
+jobs:
+  django:
+    name: Django checks and tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: poetry
+
+      - name: Install dependencies
+        run: pip install poetry && poetry install --no-interaction
+
+      - name: Check Django configuration
+        run: poetry run python manage.py check
+
+      - name: Run tests
+        run: poetry run python manage.py test
+
+  docker:
+    name: Build Docker image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Build image without publishing
+        run: docker build --tag samogon:pull-request .

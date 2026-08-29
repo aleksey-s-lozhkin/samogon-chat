@@ -1,9 +1,15 @@
+from django.conf import settings
 from django.db.models import Q
+from django.utils import timezone
 
-from chat.models import Message, Room
+from chat.models import Message, Room, RoomReadState
 
 
 class MessageService:
+    @staticmethod
+    def display_username(username: str) -> str:
+        return "Семён" if username == settings.BARTENDER_USERNAME else username
+
     @staticmethod
     def create_message(
         *,
@@ -26,6 +32,7 @@ class MessageService:
         viewer_id: int | None = None,
         limit: int | None = None,
     ) -> list[dict]:
+        # Личные сообщения видят только отправитель и получатель.
         messages = (
             Message.objects
             .filter(room=room)
@@ -46,10 +53,14 @@ class MessageService:
 
         return [
             {
-                "username": message.user.username,
+                "username": MessageService.display_username(message.user.username),
                 "message": message.text,
                 "created_at": message.created_at.isoformat(),
-                "recipient": message.recipient.username if message.recipient else None,
+                "recipient": (
+                    MessageService.display_username(message.recipient.username)
+                    if message.recipient
+                    else None
+                ),
                 "private": message.recipient_id is not None,
                 "color": message.user.message_color,
             }
@@ -60,10 +71,38 @@ class MessageService:
     def serialize_message(message: Message) -> dict:
         return {
             "id": message.id,
-            "username": message.user.username,
+            "username": MessageService.display_username(message.user.username),
             "message": message.text,
             "created_at": message.created_at.isoformat(),
-            "recipient": message.recipient.username if message.recipient else None,
+            "recipient": (
+                MessageService.display_username(message.recipient.username)
+                if message.recipient
+                else None
+            ),
             "private": message.recipient_id is not None,
             "color": message.user.message_color,
         }
+
+    @staticmethod
+    def mark_room_as_read(*, room: Room, user_id: int) -> None:
+        """Фиксирует момент открытия комнаты пользователем."""
+        RoomReadState.objects.update_or_create(
+            room=room,
+            user_id=user_id,
+            defaults={"last_read_at": timezone.now()},
+        )
+
+    @staticmethod
+    def get_unread_count(*, room: Room, user_id: int) -> int:
+        """Считает непрочитанные личные сообщения или реплики тайной комнаты."""
+        read_state = RoomReadState.objects.filter(
+            room=room,
+            user_id=user_id,
+        ).only("last_read_at").first()
+        messages = room.messages.exclude(user_id=user_id)
+        if read_state:
+            messages = messages.filter(created_at__gt=read_state.last_read_at)
+
+        if not room.is_private:
+            messages = messages.filter(recipient_id=user_id)
+        return messages.count()

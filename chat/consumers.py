@@ -2,9 +2,11 @@ import json
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
+from django.conf import settings
 from django.contrib.auth import get_user_model
 
 from .models import Room
+from .services.bartender import BartenderUnavailable, bartender
 from .services.messages import MessageService
 from .services.presence import online_users
 from .validators import validate_message
@@ -17,6 +19,10 @@ PRESENCE_GROUP_NAME = "chat_presence"
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
+        """Подключает авторизованного пользователя к комнате и presence-каналам.
+
+        Presence-каналы нужны для списка пользователей онлайн.
+        """
         user = self.scope.get("user")
         if not user or user.is_anonymous:
             await self.close(code=4401)
@@ -26,6 +32,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         self.room = await self.get_room(self.room_slug)
         if self.room is None:
             await self.close(code=4404)
+            return
+        if not await self.can_access_room(user.id):
+            await self.close(code=4403)
             return
 
         self.user = user
@@ -38,7 +47,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.accept()
 
         messages = await self.get_messages()
-        await self.send(text_data=json.dumps({"type": "history", "messages": messages}))
+        await self.send(
+            text_data=json.dumps({"type": "history", "messages": messages})
+        )
 
         users = await online_users.connect(
             room_slug=self.room.slug,
@@ -59,8 +70,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             room_slug=self.room.slug,
             channel_name=self.channel_name,
         )
-        await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
-        await self.channel_layer.group_discard(self.user_group_name, self.channel_name)
+        await self.channel_layer.group_discard(
+            self.room_group_name,
+            self.channel_name,
+        )
+        await self.channel_layer.group_discard(
+            self.user_group_name,
+            self.channel_name,
+        )
         await self.channel_layer.group_discard(PRESENCE_GROUP_NAME, self.channel_name)
         await self.channel_layer.group_send(
             self.room_group_name,
@@ -69,16 +86,45 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.broadcast_presence()
 
     async def receive(self, text_data):
+        """Сохраняет сообщение и рассылает его адресатам.
+
+        Личное обращение к Семёну не попадает в общий канал комнаты.
+        """
         message_text, error = validate_message(text_data)
         if error:
             await self.send_error(error)
             return
 
-        recipient_username = json.loads(text_data).get("recipient")
+        data = json.loads(text_data)
+        recipient_username = data.get("recipient")
+        bartender_private = data.get("bartender_private", False)
+        if not isinstance(bartender_private, bool):
+            await self.send_error(
+                "Настройка видимости вопроса Семёну указана некорректно"
+            )
+            return
+
+        bartender_question = bartender.is_mentioned(message_text)
+        if bartender_private and not bartender_question:
+            await self.send_error("Личным может быть только вопрос Семёну")
+            return
+        if bartender_private and recipient_username is not None:
+            await self.send_error(
+                "Выберите либо личное сообщение, либо вопрос Семёну"
+            )
+            return
+
         recipient = None
-        if recipient_username is not None:
-            if not isinstance(recipient_username, str) or not recipient_username.strip():
-                await self.send_error("Получатель личного сообщения указан некорректно")
+        if bartender_private:
+            recipient = await self.get_bartender_user()
+        elif recipient_username is not None:
+            if (
+                not isinstance(recipient_username, str)
+                or not recipient_username.strip()
+            ):
+                await self.send_error(
+                    "Получатель личного сообщения указан некорректно"
+                )
                 return
 
             recipient = await self.get_user(recipient_username.strip())
@@ -86,7 +132,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.send_error("Пользователь не найден")
                 return
             if recipient.id == self.user.id:
-                await self.send_error("Себе можно написать только в заметки — их пока нет")
+                await self.send_error(
+                    "Себе можно написать только в заметки — их пока нет"
+                )
+                return
+            if self.room.is_private and not await self.is_room_member(recipient.id):
+                await self.send_error("Этот гость не сидит за вашим тайным столиком")
                 return
 
         message = await self.create_message(
@@ -99,17 +150,31 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "username": self.user.username,
             "message": message.text,
             "timestamp": message.created_at.isoformat(),
-            "recipient": recipient.username if recipient else None,
+            "recipient": (
+                "Семён"
+                if bartender_private
+                else recipient.username if recipient else None
+            ),
             "private": recipient is not None,
             "color": self.user.message_color,
+            "room_slug": self.room.slug,
+            "room_private": self.room.is_private,
         }
 
         if recipient:
             await self.channel_layer.group_send(self.user_group_name, event)
             await self.channel_layer.group_send(f"chat_user_{recipient.id}", event)
+            if bartender_question and bartender_private:
+                await self.reply_as_bartender(message_text, recipient=self.user)
             return
 
-        await self.channel_layer.group_send(self.room_group_name, event)
+        if self.room.is_private:
+            await self.send_to_private_room(event)
+        else:
+            await self.channel_layer.group_send(self.room_group_name, event)
+
+        if bartender_question:
+            await self.reply_as_bartender(message_text)
 
     async def chat_message(self, event):
         await self.send_message(event)
@@ -118,6 +183,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.send_message(event)
 
     async def send_message(self, event):
+        """Преобразует событие Channels в формат сообщения клиента."""
         await self.send(
             text_data=json.dumps(
                 {
@@ -128,12 +194,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "recipient": event["recipient"],
                     "private": event["private"],
                     "color": event["color"],
+                    "room_slug": event["room_slug"],
+                    "room_private": event["room_private"],
                 }
             )
         )
 
     async def online_users(self, event):
-        await self.send(text_data=json.dumps({"type": "online_users", "users": event["users"]}))
+        await self.send(
+            text_data=json.dumps(
+                {"type": "online_users", "users": event["users"]}
+            )
+        )
 
     async def presence_update(self, event):
         await self.send(
@@ -157,7 +229,52 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def send_error(self, message):
-        await self.send(text_data=json.dumps({"type": "error", "message": message}))
+        await self.send(
+            text_data=json.dumps({"type": "error", "message": message})
+        )
+
+    async def reply_as_bartender(self, message_text, recipient=None):
+        try:
+            reply = await self.get_bartender_reply(message_text)
+        except BartenderUnavailable:
+            await self.send_error(
+                "Семён сейчас отошёл от стойки. Попробуйте чуть позже."
+            )
+            return
+
+        bartender_user = await self.get_bartender_user()
+        message = await self.create_message(
+            user=bartender_user,
+            text=reply,
+            recipient=recipient,
+        )
+        event = {
+            "type": "direct_message" if recipient else "chat_message",
+            "username": "Семён",
+            "message": message.text,
+            "timestamp": message.created_at.isoformat(),
+            "recipient": recipient.username if recipient else None,
+            "private": recipient is not None,
+            "color": "amber",
+            "room_slug": self.room.slug,
+            "room_private": self.room.is_private,
+        }
+        if recipient:
+            await self.channel_layer.group_send(f"chat_user_{recipient.id}", event)
+            return
+
+        if self.room.is_private:
+            await self.send_to_private_room(event)
+        else:
+            await self.channel_layer.group_send(self.room_group_name, event)
+
+    async def send_to_private_room(self, event):
+        """Доставляет реплику всем участникам тайного столика."""
+        for user_id in await self.get_room_member_ids():
+            await self.channel_layer.group_send(
+                f"chat_user_{user_id}",
+                event,
+            )
 
     @database_sync_to_async
     def get_room(self, room_slug):
@@ -165,6 +282,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return Room.objects.get(slug=room_slug)
         except Room.DoesNotExist:
             return None
+
+    @database_sync_to_async
+    def can_access_room(self, user_id):
+        if not self.room.is_private:
+            return True
+        return self.room.memberships.filter(user_id=user_id).exists()
+
+    @database_sync_to_async
+    def is_room_member(self, user_id):
+        return self.room.memberships.filter(user_id=user_id).exists()
+
+    @database_sync_to_async
+    def get_room_member_ids(self):
+        return list(self.room.memberships.values_list("user_id", flat=True))
 
     @database_sync_to_async
     def get_user(self, username):
@@ -175,7 +306,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_all_usernames(self):
-        return list(User.objects.filter(is_active=True).order_by("username").values_list("username", flat=True))
+        """Возвращает активных пользователей без технического аккаунта."""
+        return list(
+            User.objects.filter(is_active=True)
+            .exclude(username=settings.BARTENDER_USERNAME)
+            .order_by("username")
+            .values_list("username", flat=True)
+        )
+
+    @database_sync_to_async
+    def get_bartender_reply(self, message_text):
+        return bartender.reply(
+            room_name=self.room.name,
+            username=self.user.username,
+            text=message_text,
+        ).text
+
+    @database_sync_to_async
+    def get_bartender_user(self):
+        return bartender.get_bartender_user()
 
     @database_sync_to_async
     def get_messages(self):
@@ -187,6 +336,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def create_message(self, user, text, recipient):
+        """Сохраняет сообщение после проверки WebSocket-пакета."""
         return MessageService.create_message(
             user_id=user.id,
             room=self.room,

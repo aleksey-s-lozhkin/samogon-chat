@@ -3,24 +3,26 @@
    ========================================================= */
 
 :root {
-    --bg: #0b111d;
-    --bg-soft: #111a28;
-    --panel: #172238;
-    --panel-hover: #202d41;
-    --panel-light: #26344c;
+    --bg: #1e1e1e;
+    --bg-soft: #252525;
+    --panel: #2a2a2a;
+    --panel-hover: #333333;
+    --panel-light: #3d3d3d;
 
-    --border: rgba(245, 234, 213, 0.12);
-    --border-strong: rgba(245, 234, 213, 0.2);
+    --border: #3d3d3d;
+    --border-strong: #4f4f4f;
 
-    --text: #f5ead5;
-    --text-soft: #b6bdc8;
-    --text-muted: #7f8a9c;
+    --text: #e8e8e8;
+    --text-soft: #c9c9c9;
+    --text-muted: #8d8d8d;
 
-    --primary: #e1a14b;
-    --primary-hover: #ffd186;
-    --primary-soft: rgba(225, 161, 75, 0.16);
+    --primary: #c6753a;
+    --primary-hover: #e0a15d;
+    --primary-soft: rgba(198, 117, 58, 0.18);
+    --amber: #c6753a;
+    --amber-light: #f0bd74;
 
-    --success: #42d392;
+    --success: #2e8b57;
     --danger: #ff6b6b;
 
     --radius: 18px;
@@ -59,7 +61,7 @@ body {
     background:
         radial-gradient(
             circle at 50% 0%,
-            rgba(225, 161, 75, 0.13),
+            rgba(198, 117, 58, 0.12),
             transparent 40%
         ),
         var(--bg);
@@ -68,7 +70,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
     font: inherit;
 }
 
@@ -131,7 +134,7 @@ a {
     border: 1px solid var(--border);
     border-radius: 22px;
 
-    background: rgba(11, 18, 32, 0.82);
+    background: rgba(42, 42, 42, 0.86);
 
     backdrop-filter: blur(14px);
 }
@@ -337,6 +340,36 @@ a {
         border-color 0.2s ease;
 }
 
+.sidebar-section-title {
+    padding: 18px 20px 4px;
+
+    color: var(--text-muted);
+
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+}
+
+.room-unread-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    min-width: 20px;
+    height: 20px;
+    margin-left: auto;
+    padding: 0 6px;
+
+    border-radius: 999px;
+
+    background: var(--primary);
+    color: #25190b;
+
+    font-size: 11px;
+    font-weight: 800;
+}
+
 .room-navigation-item:hover {
     background: rgba(255, 255, 255, 0.045);
 
@@ -346,7 +379,7 @@ a {
 .room-navigation-item.active {
     background: var(--primary-soft);
 
-    border-color: rgba(225, 161, 75, 0.36);
+    border-color: rgba(198, 117, 58, 0.46);
 
     color: #ffffff;
 }
@@ -369,7 +402,7 @@ a {
 }
 
 .room-navigation-item.active .room-navigation-icon {
-    background: rgba(225, 161, 75, 0.2);
+    background: rgba(198, 117, 58, 0.2);
 
     color: var(--primary-hover);
 }
@@ -399,6 +432,18 @@ a {
     border-radius: 12px;
 
     background: rgba(255, 255, 255, 0.025);
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+
+    transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.bartender-card:hover,
+.bartender-card:focus-visible {
+    border-color: rgba(198, 117, 58, 0.6);
+    background: rgba(198, 117, 58, 0.08);
+    outline: none;
 }
 
 .bartender-avatar {
@@ -434,6 +479,16 @@ a {
     font-size: 12px;
 }
 
+.bartender-card-hint {
+    display: block;
+
+    margin-top: 3px;
+
+    color: var(--text-muted);
+
+    font-size: 12px;
+}
+
 
 /* =========================================================
    CHAT MAIN
@@ -447,7 +502,7 @@ a {
     overflow: hidden;
 
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr) auto auto;
+    grid-template-rows: auto minmax(0, 1fr) auto;
     gap: 12px;
 }
 
@@ -579,6 +634,10 @@ a {
 }
 
 .online-user {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+
     padding: 4px 9px;
 
     border: 1px solid var(--border);
@@ -590,6 +649,23 @@ a {
     color: var(--text-soft);
 
     font-size: 11px;
+}
+
+.user-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    width: 17px;
+    height: 17px;
+
+    border-radius: 50%;
+
+    background: var(--primary-soft);
+    color: var(--primary-hover);
+
+    font-size: 9px;
+    font-weight: 800;
 }
 
 .users-empty {
@@ -610,11 +686,11 @@ a {
 }
 
 .user-contact:hover {
-    border-color: rgba(225, 161, 75, 0.5);
+    border-color: rgba(198, 117, 58, 0.5);
 
     color: var(--amber-light);
 
-    background: rgba(225, 161, 75, 0.1);
+    background: rgba(198, 117, 58, 0.1);
 }
 
 .offline-user {
@@ -627,6 +703,7 @@ a {
    ========================================================= */
 
 .chat-log {
+    height: 100%;
     min-height: 0;
 
     overflow-y: auto;
@@ -644,10 +721,51 @@ a {
     background:
         radial-gradient(
             circle at 50% 0%,
-            rgba(225, 161, 75, 0.07),
+            rgba(198, 117, 58, 0.06),
             transparent 42%
         ),
-        rgba(8, 14, 24, 0.32);
+        rgba(30, 30, 30, 0.88);
+}
+
+.chat-log-area {
+    position: relative;
+
+    min-height: 0;
+}
+
+.day-divider {
+    align-self: center;
+
+    padding: 5px 10px;
+
+    border: 1px solid var(--border);
+    border-radius: 999px;
+
+    color: var(--text-muted);
+    background: var(--bg-soft);
+
+    font-size: 11px;
+}
+
+.chat-empty-state {
+    display: grid;
+    place-items: center;
+    gap: 5px;
+
+    width: 100%;
+    min-height: 160px;
+
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.chat-empty-state strong {
+    color: var(--text-soft);
+    font-size: 15px;
+}
+
+.chat-empty-state span {
+    font-size: 13px;
 }
 
 
@@ -737,19 +855,20 @@ a {
 .message.own,
 .message-own {
     align-self: flex-end;
+    margin-left: auto;
 
-    border-color: rgba(225, 161, 75, 0.38);
+    border-color: rgba(198, 117, 58, 0.38);
 
     background:
         linear-gradient(
             135deg,
-            rgba(225, 161, 75, 0.2),
-            rgba(225, 161, 75, 0.09)
+            rgba(198, 117, 58, 0.2),
+            rgba(198, 117, 58, 0.09)
         );
 }
 
 .message[data-color="amber"] {
-    border-color: rgba(225, 161, 75, 0.42);
+    border-color: rgba(198, 117, 58, 0.42);
     background: linear-gradient(135deg, rgba(151, 98, 37, 0.34), rgba(69, 45, 26, 0.25));
 }
 
@@ -802,6 +921,7 @@ a {
 .chat-input {
     display: flex;
     gap: 10px;
+    align-items: flex-end;
 
     padding: 16px 16px 8px;
 }
@@ -811,8 +931,9 @@ a {
 
     min-width: 0;
     min-height: 46px;
+    max-height: 120px;
 
-    padding: 0 15px;
+    padding: 12px 15px;
 
     border: 1px solid var(--border-strong);
     border-radius: 10px;
@@ -822,6 +943,9 @@ a {
     background: rgba(255, 255, 255, 0.04);
 
     color: var(--text);
+
+    resize: none;
+    line-height: 1.4;
 
     transition:
         border-color 0.2s ease,
@@ -834,12 +958,12 @@ a {
 }
 
 #chat-message-input:focus {
-    border-color: rgba(225, 161, 75, 0.75);
+    border-color: rgba(198, 117, 58, 0.75);
 
     background: rgba(255, 255, 255, 0.055);
 
     box-shadow:
-        0 0 0 3px rgba(225, 161, 75, 0.13);
+        0 0 0 3px rgba(198, 117, 58, 0.13);
 }
 
 #chat-message-submit {
@@ -872,6 +996,10 @@ a {
 }
 
 .chat-hint {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+
     padding: 0 16px 15px;
 
     color: var(--text-muted);
@@ -879,11 +1007,50 @@ a {
     font-size: 11px;
 }
 
+.typing-indicator,
+.scroll-to-latest {
+    border: 1px solid rgba(198, 117, 58, 0.42);
+    border-radius: 999px;
+
+    background: rgba(42, 42, 42, 0.96);
+    color: var(--amber-light);
+
+    font-size: 12px;
+}
+
+.typing-indicator {
+    width: fit-content;
+    margin: 10px 16px 0;
+    padding: 8px 14px;
+
+    font-style: italic;
+}
+
+.scroll-to-latest {
+    position: absolute;
+    right: 18px;
+    bottom: 18px;
+    z-index: 2;
+
+    padding: 9px 14px;
+
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.scroll-to-latest:hover {
+    border-color: var(--primary);
+    background: var(--panel-hover);
+}
+
+.hidden {
+    display: none !important;
+}
+
 .chat-composer {
     border: 1px solid var(--border);
     border-radius: var(--radius);
 
-    background: rgba(11, 18, 32, 0.72);
+    background: rgba(42, 42, 42, 0.9);
 }
 
 .direct-recipient {
@@ -900,7 +1067,7 @@ a {
 
     font-size: 12px;
 
-    background: rgba(225, 161, 75, 0.08);
+    background: rgba(198, 117, 58, 0.08);
 }
 
 .direct-recipient strong {
@@ -926,6 +1093,59 @@ a {
     background: rgba(255, 255, 255, 0.12);
 }
 
+.bartender-recipient {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    padding: 10px 16px;
+
+    border-bottom: 1px solid var(--border);
+
+    color: var(--text-soft);
+
+    font-size: 12px;
+
+    background: rgba(198, 117, 58, 0.08);
+}
+
+.bartender-visibility {
+    display: flex;
+    gap: 6px;
+
+    margin-left: auto;
+}
+
+.bartender-visibility button,
+.recipient-cancel {
+    min-height: 26px;
+    padding: 0 9px;
+
+    border: 1px solid var(--border-strong);
+    border-radius: 7px;
+
+    color: var(--text-soft);
+    background: rgba(255, 255, 255, 0.04);
+
+    font: inherit;
+    cursor: pointer;
+}
+
+.bartender-visibility button.selected {
+    border-color: rgba(198, 117, 58, 0.65);
+    color: var(--amber-light);
+    background: rgba(198, 117, 58, 0.16);
+}
+
+.recipient-cancel {
+    width: 26px;
+    padding: 0;
+
+    border-radius: 50%;
+    font-size: 18px;
+    line-height: 1;
+}
+
 
 /* =========================================================
    ROOMS PAGE
@@ -947,7 +1167,7 @@ a {
     border: 1px solid var(--border);
     border-radius: 22px;
 
-    background: rgba(11, 18, 32, 0.56);
+    background: rgba(42, 42, 42, 0.72);
 }
 
 .rooms-heading {
@@ -985,6 +1205,134 @@ a {
     gap: 14px;
 }
 
+.private-rooms-list {
+    margin-top: 36px;
+}
+
+.private-rooms-heading h2,
+.private-room-create h2 {
+    margin: 7px 0;
+
+    font-size: 22px;
+}
+
+.private-room-card .room-icon {
+    color: var(--primary-hover);
+}
+
+.private-room-create {
+    margin-top: 36px;
+    padding: 24px;
+
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.private-room-create > div > p,
+.private-room-created,
+.form-help {
+    margin: 0;
+
+    color: var(--text-soft);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.private-room-create form {
+    display: grid;
+    gap: 12px;
+
+    margin-top: 20px;
+}
+
+.private-room-create label,
+.private-room-create legend {
+    color: var(--text-soft);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.private-room-create input[type="text"] {
+    min-height: 42px;
+    padding: 0 12px;
+
+    border: 1px solid var(--border-strong);
+    border-radius: 9px;
+
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+}
+
+.private-room-create fieldset {
+    display: grid;
+    gap: 8px;
+
+    margin: 0;
+    padding: 0;
+
+    border: 0;
+}
+
+.private-room-create ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+
+    margin: 0;
+    padding: 0;
+
+    list-style: none;
+}
+
+.private-room-create li label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+
+    padding: 6px 9px;
+
+    border: 1px solid var(--border);
+    border-radius: 999px;
+
+    cursor: pointer;
+}
+
+.private-room-create button {
+    justify-self: start;
+
+    min-height: 42px;
+    padding: 0 16px;
+
+    border: 0;
+    border-radius: 9px;
+
+    background: var(--primary);
+    color: #25190b;
+
+    font-weight: 800;
+}
+
+.room-notices {
+    margin-bottom: 20px;
+}
+
+.room-notice {
+    margin: 0;
+    padding: 10px 12px;
+
+    border: 1px solid var(--border);
+    border-radius: 9px;
+
+    color: var(--text-soft);
+    font-size: 13px;
+}
+
+.room-notice.error {
+    display: block;
+}
+
 .room-card {
     display: flex;
     align-items: center;
@@ -1018,12 +1366,12 @@ a {
 .room-card:hover {
     transform: translateY(-2px);
 
-    border-color: rgba(225, 161, 75, 0.45);
+    border-color: rgba(198, 117, 58, 0.45);
 
     background:
         linear-gradient(
             135deg,
-            rgba(225, 161, 75, 0.12),
+            rgba(198, 117, 58, 0.12),
             rgba(255, 255, 255, 0.025)
         );
 
@@ -1194,8 +1542,8 @@ a {
     background:
         linear-gradient(
             180deg,
-            #172238,
-            #111a2b
+            #333333,
+            #252525
         );
 
     box-shadow:
@@ -1261,10 +1609,10 @@ a {
 }
 
 .form-group input:focus {
-    border-color: rgba(225, 161, 75, 0.75);
+    border-color: rgba(198, 117, 58, 0.75);
 
     box-shadow:
-        0 0 0 3px rgba(225, 161, 75, 0.13);
+        0 0 0 3px rgba(198, 117, 58, 0.13);
 }
 
 .form-group input::placeholder {
@@ -1494,7 +1842,7 @@ a {
 
         transition: transform 0.25s ease;
 
-        background: #111a2b;
+        background: var(--bg-soft);
 
         box-shadow:
             15px 0 50px rgba(0, 0, 0, 0.35);
@@ -1562,6 +1910,17 @@ a {
 
     .chat-hint {
         padding: 0 16px 12px;
+    }
+
+    .bartender-recipient {
+        flex-wrap: wrap;
+    }
+
+    .bartender-visibility {
+        order: 3;
+
+        width: 100%;
+        margin-left: 0;
     }
 
     /* ROOMS */
@@ -1635,5 +1994,110 @@ a {
         min-width: 70px;
 
         font-size: 12px;
+    }
+
+    .bartender-visibility button {
+        flex: 1;
+        padding: 0 6px;
+        font-size: 11px;
+    }
+}
+
+
+/* =========================================================
+   BAR BACKDROP
+   Тёплый свет, зерно и выцветшие постеры на дальней стене.
+   Все иллюстрации встроены в CSS как простые SVG: без внешних файлов.
+   ========================================================= */
+
+body {
+    background:
+        radial-gradient(
+            circle at 14% 8%,
+            rgba(198, 117, 58, 0.18) 0,
+            transparent 26rem
+        ),
+        radial-gradient(
+            circle at 88% 78%,
+            rgba(198, 117, 58, 0.1) 0,
+            transparent 32rem
+        ),
+        linear-gradient(145deg, #1a1a1a 0%, #0d0d0d 100%);
+}
+
+/* Лёгкое плёночное зерно убирает ощущение плоского цифрового фона. */
+body::before {
+    position: fixed;
+    z-index: -2;
+    inset: 0;
+    pointer-events: none;
+    content: "";
+    opacity: 0.1;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='.55'/%3E%3C/svg%3E");
+}
+
+/* Полупрозрачная «стена» с постерами остаётся только декоративным фоном. */
+body::after {
+    position: fixed;
+    z-index: -1;
+    inset: 0;
+    pointer-events: none;
+    content: "";
+    opacity: 0.17;
+    background-repeat: no-repeat;
+    background-size:
+        135px 196px,
+        164px 96px,
+        182px 120px,
+        168px 98px,
+        142px 110px;
+    background-position:
+        4% 32%,
+        86% 16%,
+        76% 52%,
+        10% 82%,
+        88% 87%;
+    background-image:
+        /* Чебурашка: только абстрактный силуэт с круглыми ушами. */
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 150 220' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' stroke='%23c6753a' stroke-width='4'%3E%3Ccircle cx='30' cy='80' r='28'/%3E%3Ccircle cx='120' cy='80' r='28'/%3E%3Ccircle cx='75' cy='92' r='42'/%3E%3Cellipse cx='75' cy='160' rx='35' ry='48'/%3E%3C/g%3E%3Ctext x='75' y='210' text-anchor='middle' fill='%23e8e8e8' font-family='sans-serif' font-size='13'%3E1970s%3C/text%3E%3C/svg%3E"),
+
+        /* ГрОб: плакатная типографика без внешнего изображения. */
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 170 100' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='3' y='3' width='164' height='94' fill='none' stroke='%23c6753a' stroke-width='3'/%3E%3Ctext x='85' y='61' text-anchor='middle' fill='%23e8e8e8' font-family='serif' font-size='43' font-weight='bold'%3E%D0%93%D1%80%D0%9E%D0%B1%3C/text%3E%3C/svg%3E"),
+
+        /* Punk Not Dead. */
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 190 125' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='4' y='4' width='182' height='117' fill='none' stroke='%23e8e8e8' stroke-width='3'/%3E%3Ctext x='95' y='51' text-anchor='middle' fill='%23c6753a' font-family='monospace' font-size='22' font-weight='bold'%3EPUNK%3C/text%3E%3Ctext x='95' y='82' text-anchor='middle' fill='%23e8e8e8' font-family='monospace' font-size='20'%3ENOT DEAD%3C/text%3E%3C/svg%3E"),
+
+        /* Metallica: стилизованная надпись и гитарные углы. */
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 175 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5 72 35 28 47 72M170 72 140 28 128 72' fill='none' stroke='%23c6753a' stroke-width='4'/%3E%3Ctext x='88' y='63' text-anchor='middle' fill='%23e8e8e8' font-family='serif' font-size='24' font-weight='bold'%3EMETALLICA%3C/text%3E%3C/svg%3E"),
+
+        /* AC/DC: текст и декоративная молния. */
+        url("data:image/svg+xml,%3Csvg viewBox='0 0 145 115' xmlns='http://www.w3.org/2000/svg'%3E%3Crect x='4' y='4' width='137' height='107' fill='none' stroke='%23c6753a' stroke-width='3'/%3E%3Ctext x='35' y='69' text-anchor='middle' fill='%23e8e8e8' font-family='serif' font-size='28' font-weight='bold'%3EAC%3C/text%3E%3Cpath d='M72 34 61 61h13L67 84l20-31H75z' fill='%23c6753a'/%3E%3Ctext x='110' y='69' text-anchor='middle' fill='%23e8e8e8' font-family='serif' font-size='28' font-weight='bold'%3EDC%3C/text%3E%3C/svg%3E");
+}
+
+/* У карточек остаётся отдельная скруглённая рамка, а не сетка таблицы. */
+.chat-header,
+.rooms-sidebar,
+.room-header,
+.chat-log,
+.chat-composer,
+.room-card,
+.online-users,
+.offline-users,
+.bartender-card {
+    background-color: rgba(37, 37, 37, 0.88);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(12px);
+}
+
+/* Медианный размер сохраняет читаемость коротких сообщений. */
+.message {
+    border-radius: 16px;
+    background-color: #252525;
+}
+
+@media (max-width: 700px) {
+    body::after {
+        opacity: 0.09;
+        background-size: 100px 148px, 116px 68px, 130px 86px, 116px 68px, 100px 78px;
     }
 }
