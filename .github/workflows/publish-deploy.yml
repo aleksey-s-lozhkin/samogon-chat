@@ -19,6 +19,7 @@ jobs:
   publish:
     name: Publish image to Docker Hub
     runs-on: ubuntu-latest
+    environment: production
     outputs:
       image: ${{ steps.image.outputs.name }}
 
