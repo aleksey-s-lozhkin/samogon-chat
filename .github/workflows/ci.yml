@@ -22,7 +22,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install dependencies
-        run: pip install poetry && poetry install --no-interaction
+        run: pip install poetry && poetry install --no-interaction --no-root
 
       - name: Check Django configuration
         run: poetry run python manage.py check
