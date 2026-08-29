@@ -20,8 +20,6 @@ jobs:
     name: Publish image to Docker Hub
     runs-on: ubuntu-latest
     environment: production
-    outputs:
-      image: ${{ steps.image.outputs.name }}
 
     steps:
       - name: Check out repository
@@ -44,10 +42,6 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:latest
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
-
-      - name: Prepare immutable image name
-        id: image
-        run: echo "name=${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
   deploy:
     name: Deploy on infra-dev
@@ -84,12 +78,17 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          IMAGE: ${{ needs.publish.outputs.image }}
+          IMAGE: ${{ env.IMAGE_NAME }}:${{ github.sha }}
         run: |
           ssh -o StrictHostKeyChecking=yes -p "$DEPLOY_PORT" \
             "$DEPLOY_USER@$DEPLOY_HOST" \
             "cd /srv/compose/samogon && \
-             export SAMOGON_IMAGE='$IMAGE' SAMOGON_ENV_FILE=/srv/config/env/samogon.env && \
-             docker compose pull samogon-web && \
-             docker compose up -d --no-build samogon-web && \
-             docker compose ps"
+             env SAMOGON_IMAGE='$IMAGE' \
+                 SAMOGON_ENV_FILE=/srv/config/env/samogon.env \
+                 SAMOGON_DATA_DIR=/srv/data/samogon \
+                 docker compose -f compose.yaml pull samogon-web && \
+             env SAMOGON_IMAGE='$IMAGE' \
+                 SAMOGON_ENV_FILE=/srv/config/env/samogon.env \
+                 SAMOGON_DATA_DIR=/srv/data/samogon \
+                 docker compose -f compose.yaml up -d --no-build samogon-web && \
+             docker compose -f compose.yaml ps"
