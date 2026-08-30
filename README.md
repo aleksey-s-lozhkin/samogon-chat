@@ -16,6 +16,8 @@ Channels.
 - configurable message colours;
 - Semyon, a local Ollama assistant: mention `@Семён` or use the bartender card;
 - public or private questions to Semyon.
+- moderation through Django Admin: message hiding, timed bans and audit trail;
+- optional Cloudflare Turnstile protection for registration.
 
 ### Local development
 
@@ -63,6 +65,9 @@ Use it only when the Ollama server has enough free GPU memory.
 For the intended two-VM deployment, see [docs/deployment.md](docs/deployment.md).
 Never expose the Ollama port to the public Internet.
 
+The agreed product roadmap is maintained in
+[docs/product-specification.md](docs/product-specification.md).
+
 ### Project structure
 
 ```text
@@ -90,6 +95,8 @@ HTMX и Alpine.js, а сообщения в реальном времени до
 - выбор оттенка сообщений в профиле;
 - Семён на локальной Ollama: упоминание `@Семён` или клик по его карточке;
 - вопрос Семёну можно отправить в общий чат или лично.
+- модерация через Django Admin: скрытие сообщений, временные баны и журнал;
+- защита регистрации Cloudflare Turnstile при включённых ключах.
 
 ### Локальный запуск
 
@@ -122,6 +129,9 @@ Ollama при локальной разработке необязательна
 переменные окружения из английского раздела выше. Подробности развёртывания на
 двух VM — в [docs/deployment.md](docs/deployment.md). Порт Ollama не должен быть
 доступен из интернета.
+
+Согласованное ТЗ и roadmap следующего этапа — в
+[docs/product-specification.md](docs/product-specification.md).
 
 ### Архитектура
 

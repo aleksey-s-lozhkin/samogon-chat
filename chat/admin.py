@@ -1,6 +1,7 @@
 from django.contrib import admin
+from django.utils import timezone
 
-from .models import Message, Room, RoomMembership, RoomReadState
+from .models import Message, ModerationEvent, Room, RoomMembership, RoomReadState
 
 
 @admin.register(Room)
@@ -12,8 +13,65 @@ class RoomAdmin(admin.ModelAdmin):
 
 @admin.register(Message)
 class MessageAdmin(admin.ModelAdmin):
-    list_display = ("user", "room", "text", "created_at")
+    list_display = ("user", "room", "text", "hidden_at", "created_at")
     list_filter = ("room",)
+    actions = ("hide_messages", "restore_messages")
+
+    @admin.action(description="Скрыть выбранные сообщения")
+    def hide_messages(self, request, queryset):
+        """Убирает сообщения из чата, сохраняя их для проверки в админке."""
+        messages = queryset.filter(hidden_at__isnull=True)
+        now = timezone.now()
+        messages.update(
+            hidden_at=now,
+            hidden_by=request.user,
+            hidden_reason="Скрыто модератором.",
+        )
+        ModerationEvent.objects.bulk_create(
+            [
+                ModerationEvent(
+                    action=ModerationEvent.Action.HIDE_MESSAGE,
+                    moderator=request.user,
+                    target_user=message.user,
+                    message=message,
+                    reason="Скрыто модератором.",
+                )
+                for message in messages.select_related("user")
+            ]
+        )
+
+    @admin.action(description="Вернуть выбранные сообщения")
+    def restore_messages(self, request, queryset):
+        """Возвращает в ленту ранее скрытые сообщения."""
+        messages = queryset.filter(hidden_at__isnull=False)
+        messages.update(hidden_at=None, hidden_by=None, hidden_reason="")
+        ModerationEvent.objects.bulk_create(
+            [
+                ModerationEvent(
+                    action=ModerationEvent.Action.RESTORE_MESSAGE,
+                    moderator=request.user,
+                    target_user=message.user,
+                    message=message,
+                    reason="Сообщение возвращено модератором.",
+                )
+                for message in messages.select_related("user")
+            ]
+        )
+
+    def get_readonly_fields(self, request, obj=None):
+        """Модератор скрывает сообщения действием, но не редактирует текст."""
+        if request.user.is_superuser:
+            return ()
+        return (
+            "user",
+            "room",
+            "recipient",
+            "text",
+            "created_at",
+            "hidden_at",
+            "hidden_by",
+            "hidden_reason",
+        )
 
 
 @admin.register(RoomMembership)
@@ -24,3 +82,33 @@ class RoomMembershipAdmin(admin.ModelAdmin):
 @admin.register(RoomReadState)
 class RoomReadStateAdmin(admin.ModelAdmin):
     list_display = ("room", "user", "last_read_at")
+
+
+@admin.register(ModerationEvent)
+class ModerationEventAdmin(admin.ModelAdmin):
+    """Журнал решений доступен для проверки, но не редактируется вручную."""
+
+    list_display = (
+        "action",
+        "target_user",
+        "moderator",
+        "expires_at",
+        "created_at",
+    )
+    list_filter = ("action",)
+    search_fields = ("target_user__username", "reason")
+    readonly_fields = (
+        "action",
+        "moderator",
+        "target_user",
+        "message",
+        "reason",
+        "expires_at",
+        "created_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

@@ -3,6 +3,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase, override_settings
+from django.utils import timezone
 
 from config.rate_limit import is_allowed
 
@@ -145,6 +146,53 @@ class AuthenticationHtmxTests(TestCase):
             "Регистрация временно слишком занята",
             status_code=429,
         )
+
+    @patch("users.views.verify_turnstile", return_value=False)
+    @override_settings(
+        TURNSTILE_ENABLED=True,
+        TURNSTILE_SITE_KEY="test-site-key",
+        TURNSTILE_SECRET_KEY="test-secret-key",
+    )
+    def test_registration_rejects_invalid_turnstile(self, _mock_turnstile):
+        response = self.client.post(
+            "/users/register/",
+            {
+                "username": "new-user",
+                "email": "new@example.com",
+                "password": "safe-password",
+                "password_confirm": "safe-password",
+            },
+            **self.htmx_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, "Не удалось подтвердить", status_code=400)
+        self.assertFalse(User.objects.filter(username="new-user").exists())
+
+    def test_banned_user_cannot_log_in(self):
+        self.user.banned_at = timezone.now()
+        self.user.save(update_fields=("banned_at",))
+
+        response = self.client.post(
+            "/users/login/",
+            {"username": "alex", "password": "test-password"},
+            **self.htmx_headers,
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(response, "аккаунт временно недоступен", status_code=403)
+
+
+class BannedUserMiddlewareTests(TestCase):
+    def test_banned_session_is_logged_out_on_next_request(self):
+        user = User.objects.create_user(username="banned-user")
+        user.banned_at = timezone.now()
+        user.save(update_fields=("banned_at",))
+        self.client.force_login(user)
+
+        response = self.client.get("/users/profile/")
+
+        self.assertRedirects(response, "/")
 
 
 class RateLimitTests(TestCase):

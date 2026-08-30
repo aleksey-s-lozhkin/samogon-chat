@@ -117,6 +117,13 @@
                         required
                     >
                 </div>
+                {% if turnstile_site_key %}
+                    <div
+                        class="cf-turnstile"
+                        data-sitekey="{{ turnstile_site_key }}"
+                        data-theme="dark"
+                    ></div>
+                {% endif %}
                 <div id="register-error" class="form-error"></div>
                 <button type="submit" class="primary-button">Создать аккаунт</button>
             </form>
@@ -128,3 +135,11 @@
         </section>
     </div>
 </div>
+
+{% if turnstile_site_key %}
+    <script
+        src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+        async
+        defer
+    ></script>
+{% endif %}

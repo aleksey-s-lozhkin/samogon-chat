@@ -8,6 +8,7 @@ from django.views.decorators.http import require_POST
 from config.rate_limit import request_is_allowed
 
 from .forms import ProfileForm, RegistrationForm
+from .turnstile import verify_turnstile
 
 
 def is_htmx_request(request):
@@ -41,6 +42,13 @@ def rate_limit_error(request, message):
     return JsonResponse({"success": False, "error": message}, status=429)
 
 
+def authentication_error(request, message, status=400):
+    """Возвращает ошибку формы в формате, который ждёт текущий клиент."""
+    if is_htmx_request(request):
+        return htmx_error(request, message, status=status)
+    return JsonResponse({"success": False, "error": message}, status=status)
+
+
 @require_POST
 def login_view(request):
     if not request_is_allowed(
@@ -72,6 +80,13 @@ def login_view(request):
                 "error": "Неверный логин или пароль",
             },
             status=400,
+        )
+
+    if user.is_banned:
+        return authentication_error(
+            request,
+            "Этот аккаунт временно недоступен. Обратитесь к модератору.",
+            status=403,
         )
 
     login(request, user)
@@ -109,6 +124,16 @@ def register_view(request):
         )
 
     form = RegistrationForm(request.POST)
+
+    if not verify_turnstile(
+        request.POST.get("cf-turnstile-response", ""),
+        request.META.get("HTTP_X_REAL_IP") or request.META.get("REMOTE_ADDR"),
+    ):
+        return authentication_error(
+            request,
+            "Не удалось подтвердить, что вы человек. Попробуйте ещё раз.",
+            status=400,
+        )
 
     if not form.is_valid():
         if is_htmx_request(request):
