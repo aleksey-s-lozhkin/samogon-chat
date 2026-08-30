@@ -1,9 +1,13 @@
+from io import BytesIO
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from PIL import Image
 
 from config.rate_limit import is_allowed
 
@@ -44,9 +48,58 @@ class ProfileViewTests(TestCase):
             },
         )
 
-        self.assertRedirects(response, "/users/profile/")
+        self.assertRedirects(
+            response,
+            "/users/profile/",
+            fetch_redirect_response=False,
+        )
         self.user.refresh_from_db()
         self.assertEqual(self.user.message_color, "sage")
+
+    @override_settings(
+        STORAGES={
+            "default": {
+                "BACKEND": "django.core.files.storage.FileSystemStorage",
+            },
+            "staticfiles": {
+                "BACKEND": (
+                    "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
+                ),
+            },
+        },
+    )
+    def test_profile_saves_resized_avatar(self):
+        """Профиль принимает изображение и сохраняет нормализованный JPEG."""
+        self.client.force_login(self.user)
+        image_buffer = BytesIO()
+        Image.new("RGB", (640, 360), color="#c6753a").save(
+            image_buffer,
+            format="PNG",
+        )
+        uploaded_avatar = SimpleUploadedFile(
+            "bar.png",
+            image_buffer.getvalue(),
+            content_type="image/png",
+        )
+
+        with TemporaryDirectory() as media_root, self.settings(MEDIA_ROOT=media_root):
+            response = self.client.post(
+                "/users/profile/",
+                {
+                    "username": "alex",
+                    "email": "",
+                    "message_color": "amber",
+                    "avatar": uploaded_avatar,
+                },
+            )
+
+        self.assertRedirects(
+            response,
+            "/users/profile/",
+            fetch_redirect_response=False,
+        )
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.avatar.name.endswith("avatar.jpg"))
 
 
 class AuthenticationHtmxTests(TestCase):

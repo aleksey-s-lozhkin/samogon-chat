@@ -271,6 +271,10 @@ if not DEBUG:
     CSRF_COOKIE_SAMESITE = "Lax"
     X_FRAME_OPTIONS = "DENY"
     STORAGES = {
+        # Аватары и другие пользовательские файлы сохраняются в MEDIA_ROOT.
+        "default": {
+            "BACKEND": "django.core.files.storage.FileSystemStorage",
+        },
         "staticfiles": {
             "BACKEND": (
                 "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
