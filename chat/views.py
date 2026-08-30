@@ -1,7 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Case, IntegerField, Q, Value, When
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.text import slugify
@@ -9,6 +9,16 @@ from django.utils.text import slugify
 from .forms import PrivateRoomForm
 from .models import Room, RoomMembership
 from .services.messages import MessageService
+
+
+# Порядок повторяет маршрут гостя по бару, а не алфавитный список.
+PUBLIC_ROOM_ORDER = (
+    "u-stoyki",
+    "vozle-bilyarda",
+    "kurilka",
+    "podval",
+    "posle-zakrytiya",
+)
 
 
 def get_visible_rooms(user):
@@ -19,7 +29,19 @@ def get_visible_rooms(user):
             Q(visibility=Room.Visibility.PUBLIC)
             | Q(memberships__user=user),
         ).distinct()
-    return rooms.order_by("visibility", "name")
+    public_room_order = Case(
+        *[
+            When(slug=slug, then=Value(position))
+            for position, slug in enumerate(PUBLIC_ROOM_ORDER)
+        ],
+        default=Value(len(PUBLIC_ROOM_ORDER)),
+        output_field=IntegerField(),
+    )
+    return rooms.annotate(room_order=public_room_order).order_by(
+        "visibility",
+        "room_order",
+        "name",
+    )
 
 
 def add_unread_counts(rooms, user):

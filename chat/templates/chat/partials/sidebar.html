@@ -1,11 +1,11 @@
-<aside class="rooms-sidebar" :class="{ 'is-open': sidebarOpen }">
+<aside class="rooms-sidebar" :class="{ 'is-open': roomsOpen }" aria-label="Комнаты">
     <div class="sidebar-header">
-        <h2>Комнаты у стойки</h2>
+        <h2>Комнаты</h2>
 
         <button
             class="sidebar-close"
             type="button"
-            @click="sidebarOpen = false"
+            @click="roomsOpen = false"
             aria-label="Закрыть меню"
         >
             ×
@@ -18,9 +18,9 @@
                 href="{% url 'chat:chat' room_slug=chat_room.slug %}"
                 class="room-navigation-item {% if chat_room.slug == room.slug %}active{% endif %}"
                 data-room-slug="{{ chat_room.slug }}"
-                @click="sidebarOpen = false"
+                @click="roomsOpen = false"
             >
-                <span class="room-navigation-icon">#</span>
+                <span class="room-navigation-icon" aria-hidden="true">&lt;/&gt;</span>
                 <span>{{ chat_room.name }}</span>
                 {% if chat_room.unread_count %}
                     <span class="room-unread-count">{{ chat_room.unread_count }}</span>
@@ -40,9 +40,9 @@
                         href="{% url 'chat:chat' room_slug=chat_room.slug %}"
                         class="room-navigation-item {% if chat_room.slug == room.slug %}active{% endif %}"
                         data-room-slug="{{ chat_room.slug }}"
-                        @click="sidebarOpen = false"
+                        @click="roomsOpen = false"
                     >
-                        <span class="room-navigation-icon">◌</span>
+                        <span class="room-navigation-icon" aria-hidden="true">&lt;/&gt;</span>
                         <span>{{ chat_room.name }}</span>
                         {% if chat_room.unread_count %}
                             <span class="room-unread-count">{{ chat_room.unread_count }}</span>
@@ -53,50 +53,11 @@
         </section>
     {% endif %}
 
-    <section class="online-users user-presence-panel">
-        <div class="presence-panel-title">
-            <div class="online-title">
-                <span class="online-dot"></span>
-                За стойкой
-            </div>
-            <span id="online-users-count" class="presence-count">0</span>
-        </div>
-        <div id="online-users-list"></div>
-        <button
-            id="toggle-online-users"
-            class="presence-toggle hidden"
-            type="button"
-        ></button>
-    </section>
-
-    <section class="offline-users user-presence-panel">
-        <div class="presence-panel-title">
-            <div class="offline-title">
-                <span class="offline-dot"></span>
-                Отошли ненадолго
-            </div>
-            <span id="offline-users-count" class="presence-count">0</span>
-        </div>
-        <div id="offline-users-list"></div>
-        <button
-            id="toggle-offline-users"
-            class="presence-toggle hidden"
-            type="button"
-        ></button>
-    </section>
-
-    <button id="bartender-card" class="bartender-card" type="button">
-        <span class="bartender-avatar" aria-hidden="true">С</span>
-        <span>
-            <strong>Семён</strong>
-            <span class="bartender-card-hint">Нажмите, чтобы позвать</span>
-        </span>
-    </button>
 </aside>
 
 <div
-    class="sidebar-overlay"
-    x-show="sidebarOpen"
-    @click="sidebarOpen = false"
+    class="layout-overlay"
+    x-show="roomsOpen"
+    @click="roomsOpen = false"
     x-transition
 ></div>

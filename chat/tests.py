@@ -272,6 +272,32 @@ class PrivateRoomViewsTests(TestCase):
         )
 
 
+class ChatLayoutViewsTests(TestCase):
+    """Проверяет опорные элементы адаптивной раскладки чата."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="alex")
+        self.room = Room.objects.create(
+            name="Тестовая раскладка",
+            slug="layout-test-room",
+        )
+
+    def test_chat_has_separate_people_panel_and_bartender_trigger(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+
+        self.assertContains(response, 'class="rooms-sidebar"')
+        self.assertContains(response, 'class="presence-sidebar"')
+        self.assertContains(response, 'id="bartender-trigger"')
+
+    def test_robots_disallows_indexing_closed_beta(self):
+        response = self.client.get(reverse("robots"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Disallow: /")
+
+
 class MessageValidationTests(TestCase):
     def test_accepts_trimmed_message(self):
         message, error = validate_message('{"message": "  Привет  "}')
@@ -446,6 +472,7 @@ class ChatConsumerTests(TransactionTestCase):
                 "messages": [
                     {
                         "username": "alex",
+                        "avatar_url": None,
                         "message": "Earlier",
                         "created_at": created_at,
                         "recipient": None,
@@ -461,7 +488,10 @@ class ChatConsumerTests(TransactionTestCase):
         )
         presence_message = await communicator.receive_json_from()
         self.assertEqual(presence_message["type"], "user_presence")
-        self.assertEqual(presence_message["users"], ["alex"])
+        self.assertEqual(
+            presence_message["users"],
+            [{"username": "alex", "avatar_url": None}],
+        )
         self.assertEqual(presence_message["online"], ["alex"])
 
         await communicator.send_to(text_data="not json")
@@ -474,6 +504,7 @@ class ChatConsumerTests(TransactionTestCase):
         delivered_message = await communicator.receive_json_from()
         self.assertEqual(delivered_message["type"], "message")
         self.assertEqual(delivered_message["username"], "alex")
+        self.assertIsNone(delivered_message["avatar_url"])
         self.assertEqual(delivered_message["message"], "New message")
         self.assertFalse(delivered_message["private"])
         self.assertEqual(delivered_message["color"], "amber")

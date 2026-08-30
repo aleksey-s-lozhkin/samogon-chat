@@ -2,10 +2,11 @@
     <div class="brand">
         {% if show_sidebar_toggle %}
             <button
-                class="mobile-menu-button"
+                class="layout-toggle rooms-toggle"
                 type="button"
-                @click="sidebarOpen = !sidebarOpen"
+                @click="roomsOpen = !roomsOpen; peopleOpen = false"
                 aria-label="Открыть комнаты"
+                :aria-expanded="roomsOpen.toString()"
             >
                 ☰
             </button>
@@ -17,8 +18,21 @@
         </div>
     </div>
 
-    {% if user.is_authenticated %}
-        <div class="user-actions">
+    <div class="header-actions">
+        {% if show_sidebar_toggle and user.is_authenticated %}
+            <button
+                class="layout-toggle people-toggle"
+                type="button"
+                @click="peopleOpen = !peopleOpen; roomsOpen = false"
+                aria-label="Открыть список гостей"
+                :aria-expanded="peopleOpen.toString()"
+            >
+                ♟
+            </button>
+        {% endif %}
+
+        {% if user.is_authenticated %}
+            <div class="user-actions">
             <a href="{% url 'profile' %}" class="profile-link">Профиль</a>
 
             {% if ajax_logout %}
@@ -29,6 +43,7 @@
                     <button type="submit">Выйти</button>
                 </form>
             {% endif %}
+            </div>
+        {% endif %}
         </div>
-    {% endif %}
 </header>

@@ -12,9 +12,11 @@
 
     <title>{{ room.name }} — Самогон</title>
 
+    <link rel="icon" href="{% static 'chat/images/favicon.svg' %}" type="image/svg+xml">
+
     <link
         rel="stylesheet"
-        href="{% static 'chat/css/chat.css' %}?v=7"
+        href="{% static 'chat/css/chat.css' %}?v=8"
     >
 
     <script
@@ -39,7 +41,7 @@
 
 <div
     class="chat-container chat-page"
-    x-data="{ sidebarOpen: false }"
+    x-data="{ roomsOpen: false, peopleOpen: false }"
 >
 
     {% include "chat/partials/site_header.html" with header_tagline="Здесь баги разбирают по душам." show_sidebar_toggle=True ajax_logout=True %}
@@ -63,6 +65,8 @@
 
         </main>
 
+        {% include "chat/partials/presence_panel.html" %}
+
     </div>
 
 </div>
@@ -82,7 +86,7 @@
     };
 </script>
 
-<script src="{% static 'chat/js/chat.js' %}?v=5"></script>
+<script src="{% static 'chat/js/chat.js' %}?v=6"></script>
 <script src="{% static 'chat/js/auth.js' %}?v=3"></script>
 
 </body>

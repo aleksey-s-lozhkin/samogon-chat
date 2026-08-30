@@ -11,6 +11,11 @@ class MessageService:
         return "Семён" if username == settings.BARTENDER_USERNAME else username
 
     @staticmethod
+    def get_avatar_url(user) -> str | None:
+        """Возвращает URL аватара, если гость успел его поставить."""
+        return user.avatar.url if user.avatar else None
+
+    @staticmethod
     def create_message(
         *,
         user_id: int,
@@ -55,6 +60,7 @@ class MessageService:
         return [
             {
                 "username": MessageService.display_username(message.user.username),
+                "avatar_url": MessageService.get_avatar_url(message.user),
                 "message": message.text,
                 "created_at": message.created_at.isoformat(),
                 "recipient": (
@@ -73,6 +79,7 @@ class MessageService:
         return {
             "id": message.id,
             "username": MessageService.display_username(message.user.username),
+            "avatar_url": MessageService.get_avatar_url(message.user),
             "message": message.text,
             "created_at": message.created_at.isoformat(),
             "recipient": (

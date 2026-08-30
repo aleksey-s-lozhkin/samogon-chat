@@ -216,6 +216,24 @@ BARTENDER_RESPONSE_MAX_LENGTH = int(
 )
 BARTENDER_USERNAME = os.getenv("BARTENDER_USERNAME", "semen")
 
+# Метрики Семёна не содержат текст сообщений и нужны для диагностики Ollama.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "chat.services.bartender": {
+            "handlers": ["console"],
+            "level": os.getenv("BARTENDER_LOG_LEVEL", "INFO"),
+            "propagate": False,
+        },
+    },
+}
+
 # Turnstile включается только при наличии обеих ключей.
 TURNSTILE_SITE_KEY = os.getenv("TURNSTILE_SITE_KEY", "")
 TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY", "")

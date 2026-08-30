@@ -112,14 +112,16 @@ function increaseUnreadCount(data) {
 function updateUserPresence(users, online) {
     presenceUsers = users;
     presenceOnlineUsers = online;
-    const onlineUsers = new Set(online.map(normalizeUsername));
+    const onlineUsers = new Set(
+        online.map((user) => normalizeUsername(user.username || user)),
+    );
     const contacts = users.filter(
-        (username) => normalizeUsername(username) !== normalizeUsername(currentUsername),
+        (user) => normalizeUsername(user.username || user) !== normalizeUsername(currentUsername),
     );
 
     renderUserList(
         "online-users-list",
-        contacts.filter((username) => onlineUsers.has(normalizeUsername(username))),
+        contacts.filter((user) => onlineUsers.has(normalizeUsername(user.username || user))),
         "online-user",
         "Сейчас вы один у стойки",
         "online-users-count",
@@ -127,7 +129,7 @@ function updateUserPresence(users, online) {
     );
     renderUserList(
         "offline-users-list",
-        contacts.filter((username) => !onlineUsers.has(normalizeUsername(username))),
+        contacts.filter((user) => !onlineUsers.has(normalizeUsername(user.username || user))),
         "offline-user",
         "Все сейчас в баре",
         "offline-users-count",
@@ -137,6 +139,42 @@ function updateUserPresence(users, online) {
 
 function normalizeUsername(username) {
     return String(username || "").trim().toLocaleLowerCase();
+}
+
+function userDetails(user) {
+    if (typeof user === "string") {
+        return { username: user, avatarUrl: null };
+    }
+
+    return {
+        username: String(user?.username || ""),
+        avatarUrl: user?.avatar_url || null,
+    };
+}
+
+function userInitials(username) {
+    return Array.from(String(username || "?").trim())
+        .slice(0, 2)
+        .join("")
+        .toUpperCase();
+}
+
+function createUserAvatar(user, className = "user-avatar") {
+    const details = userDetails(user);
+    const avatar = document.createElement("span");
+    avatar.className = className;
+
+    if (details.avatarUrl) {
+        const image = document.createElement("img");
+        image.src = details.avatarUrl;
+        image.alt = "";
+        image.loading = "lazy";
+        avatar.append(image);
+        return avatar;
+    }
+
+    avatar.textContent = userInitials(details.username);
+    return avatar;
 }
 
 function renderUserList(
@@ -172,17 +210,15 @@ function renderUserList(
         ? usernames
         : usernames.slice(0, PRESENCE_PREVIEW_LIMIT);
     container.replaceChildren(
-        ...visibleUsers.map((username) => {
+        ...visibleUsers.map((user) => {
+            const details = userDetails(user);
             const button = document.createElement("button");
             button.type = "button";
             button.className = `online-user user-contact ${className}`;
-            const avatar = document.createElement("span");
-            avatar.className = "user-avatar";
-            avatar.textContent = username.slice(0, 1).toUpperCase();
             const name = document.createElement("span");
-            name.textContent = `@${username}`;
-            button.append(avatar, name);
-            button.addEventListener("click", () => setDirectRecipient(username));
+            name.textContent = details.username;
+            button.append(createUserAvatar(details), name);
+            button.addEventListener("click", () => setDirectRecipient(details.username));
             return button;
         }),
     );
@@ -310,11 +346,15 @@ function addMessage(data) {
 
     const author = document.createElement("div");
     author.className = "message-username";
-    author.textContent = data.username === BARTENDER_USERNAME
-        ? BARTENDER_USERNAME
-        : data.private && data.username === currentUsername
-        ? `Вы → @${data.recipient}`
-        : `@${data.username}`;
+    author.append(createUserAvatar({
+        username: data.username,
+        avatar_url: data.avatar_url,
+    }, "message-author-avatar"));
+    const authorName = document.createElement("span");
+    authorName.textContent = data.private && data.username === currentUsername
+        ? `Вы → ${data.recipient}`
+        : data.username;
+    author.append(authorName);
 
     const text = document.createElement("div");
     text.className = "message-text";
@@ -490,7 +530,7 @@ function setComposerPlaceholder(input) {
 
 document.getElementById("chat-message-submit")?.addEventListener("click", sendMessage);
 document.getElementById("cancel-direct-message")?.addEventListener("click", clearDirectRecipient);
-document.getElementById("bartender-card")?.addEventListener("click", activateBartender);
+document.getElementById("bartender-trigger")?.addEventListener("click", activateBartender);
 document.getElementById("bartender-public")?.addEventListener("click", () => setBartenderVisibility(false));
 document.getElementById("bartender-private")?.addEventListener("click", () => setBartenderVisibility(true));
 document.getElementById("cancel-bartender-message")?.addEventListener("click", clearBartenderMode);
