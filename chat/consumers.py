@@ -5,6 +5,8 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db.models import Q
+from django.utils import timezone
 
 from config.rate_limit import is_allowed
 
@@ -29,6 +31,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         user = self.scope.get("user")
         if not user or user.is_anonymous:
             await self.close(code=4401)
+            return
+        if await self.is_chat_restricted(user.id):
+            await self.close(code=4403)
             return
 
         self.room_slug = self.scope["url_route"]["kwargs"]["room_slug"].lower()
@@ -93,6 +98,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         Личное обращение к Семёну не попадает в общий канал комнаты.
         """
+        if await self.is_chat_restricted(self.user.id):
+            await self.close(code=4403)
+            return
+
         if not await self.is_rate_allowed(
             bucket="message",
             limit=settings.MESSAGE_RATE_LIMIT,
@@ -326,7 +335,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_user(self, username):
         try:
-            return User.objects.get(username=username, is_active=True)
+            return (
+                User.objects.filter(username=username, is_active=True)
+                .filter(
+                    Q(banned_at__isnull=True)
+                    | Q(banned_until__lte=timezone.now())
+                )
+                .exclude(is_superuser=True)
+                .get()
+            )
         except User.DoesNotExist:
             return None
 
@@ -334,11 +351,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def get_all_usernames(self):
         """Возвращает активных пользователей без технического аккаунта."""
         return list(
-            User.objects.filter(is_active=True)
+            User.objects.filter(is_active=True, is_superuser=False)
+            .filter(
+                Q(banned_at__isnull=True)
+                | Q(banned_until__lte=timezone.now())
+            )
             .exclude(username=settings.BARTENDER_USERNAME)
             .order_by("username")
             .values_list("username", flat=True)
         )
+
+    @database_sync_to_async
+    def is_chat_restricted(self, user_id):
+        """Не пускает в ленту технических и заблокированных аккаунтов."""
+        user = User.objects.filter(pk=user_id).first()
+        return user is None or user.is_superuser or not user.is_active or user.is_banned
 
     @database_sync_to_async
     def get_bartender_reply(self, message_text):

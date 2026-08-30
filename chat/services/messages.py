@@ -36,6 +36,7 @@ class MessageService:
         messages = (
             Message.objects
             .filter(room=room)
+            .filter(hidden_at__isnull=True)
             .filter(
                 Q(recipient__isnull=True)
                 if viewer_id is None

@@ -115,6 +115,24 @@ class MessageServiceTests(TestCase):
         self.assertEqual([message["message"] for message in recipient_messages], ["Для всех", "Только для Марии"])
         self.assertEqual([message["message"] for message in outsider_messages], ["Для всех"])
 
+    def test_hidden_message_is_not_returned_to_chat(self):
+        visible = MessageService.create_message(
+            user_id=self.user.id,
+            room=self.room,
+            text="Видимое сообщение",
+        )
+        hidden = MessageService.create_message(
+            user_id=self.user.id,
+            room=self.room,
+            text="Скрытое сообщение",
+        )
+        hidden.hidden_at = timezone.now()
+        hidden.save(update_fields=("hidden_at",))
+
+        messages = MessageService.get_room_messages(self.room)
+
+        self.assertEqual([message["message"] for message in messages], [visible.text])
+
     def test_unread_count_uses_only_messages_addressed_to_user_in_public_room(self):
         sender = User.objects.create_user(username="maria")
         RoomReadState.objects.create(
@@ -353,6 +371,12 @@ class ChatConsumerTests(TransactionTestCase):
     def test_anonymous_user_is_rejected_before_accepting_connection(self):
         async_to_sync(self._assert_anonymous_user_is_rejected)()
 
+    def test_banned_user_is_rejected_before_accepting_connection(self):
+        self.user.banned_at = timezone.now()
+        self.user.save(update_fields=("banned_at",))
+
+        async_to_sync(self._assert_banned_user_is_rejected)()
+
     def test_uninvited_user_cannot_connect_to_private_room(self):
         outsider = User.objects.create_user(username="maria")
         private_room = Room.objects.create(
@@ -385,6 +409,15 @@ class ChatConsumerTests(TransactionTestCase):
 
         self.assertFalse(connected)
         self.assertEqual(close_code, 4401)
+
+    async def _assert_banned_user_is_rejected(self):
+        communicator = WebsocketCommunicator(self.application, "/ws/chat/general/")
+        communicator.scope["user"] = self.user
+
+        connected, close_code = await communicator.connect()
+
+        self.assertFalse(connected)
+        self.assertEqual(close_code, 4403)
 
     def test_authenticated_user_receives_history_and_invalid_message_error(self):
         history_message = Message.objects.create(
