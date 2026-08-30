@@ -179,8 +179,16 @@ def profile(request):
         )
 
         if form.is_valid():
-            form.save()
-            return redirect("profile")
+            try:
+                form.save()
+            except OSError:
+                # Хранилище может быть недоступно из контейнера или без прав.
+                form.add_error(
+                    "avatar",
+                    "Не удалось сохранить изображение. Попробуйте ещё раз.",
+                )
+            else:
+                return redirect("profile")
 
     else:
         form = ProfileForm(
