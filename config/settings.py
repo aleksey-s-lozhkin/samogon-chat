@@ -50,6 +50,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'config.middleware.BannedUserMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
@@ -68,6 +69,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'users.context_processors.turnstile',
             ],
         },
     },
@@ -212,6 +214,11 @@ BARTENDER_RESPONSE_MAX_LENGTH = int(
     os.getenv("BARTENDER_RESPONSE_MAX_LENGTH", "200")
 )
 BARTENDER_USERNAME = os.getenv("BARTENDER_USERNAME", "semen")
+
+# Turnstile включается только при наличии обеих ключей.
+TURNSTILE_SITE_KEY = os.getenv("TURNSTILE_SITE_KEY", "")
+TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY", "")
+TURNSTILE_ENABLED = bool(TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY)
 
 if REDIS_URL:
     CHANNEL_LAYERS = {

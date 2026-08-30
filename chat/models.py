@@ -119,10 +119,62 @@ class Message(models.Model):
         null=True,
     )
     text = models.TextField()
+    hidden_at = models.DateTimeField(blank=True, null=True)
+    hidden_reason = models.CharField(blank=True, max_length=240)
+    hidden_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="hidden_chat_messages",
+        blank=True,
+        null=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["created_at"]
+        permissions = [
+            ("moderate_message", "Can moderate chat messages"),
+        ]
 
     def __str__(self):
         return f"{self.user.username}: {self.text}"
+
+
+class ModerationEvent(models.Model):
+    """Хранит решения модераторов, не смешивая их с содержимым чата."""
+
+    class Action(models.TextChoices):
+        BAN = "ban", "Блокировка"
+        UNBAN = "unban", "Разблокировка"
+        HIDE_MESSAGE = "hide_message", "Скрытие сообщения"
+        RESTORE_MESSAGE = "restore_message", "Восстановление сообщения"
+
+    action = models.CharField(max_length=20, choices=Action.choices)
+    moderator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="moderation_actions",
+        blank=True,
+        null=True,
+    )
+    target_user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="moderation_events",
+    )
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.SET_NULL,
+        related_name="moderation_events",
+        blank=True,
+        null=True,
+    )
+    reason = models.CharField(blank=True, max_length=240)
+    expires_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.get_action_display()}: {self.target_user.username}"
