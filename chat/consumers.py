@@ -174,6 +174,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         event = {
             "type": "direct_message" if recipient else "chat_message",
             "username": self.user.username,
+            "avatar_url": MessageService.get_avatar_url(self.user),
             "message": message.text,
             "timestamp": message.created_at.isoformat(),
             "recipient": (
@@ -215,6 +216,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 {
                     "type": "message",
                     "username": event["username"],
+                    "avatar_url": event.get("avatar_url"),
                     "message": event["message"],
                     "timestamp": event["timestamp"],
                     "recipient": event["recipient"],
@@ -249,7 +251,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             PRESENCE_GROUP_NAME,
             {
                 "type": "presence_update",
-                "users": await self.get_all_usernames(),
+                "users": await self.get_all_users(),
                 "online": await online_users.get_all_users(),
             },
         )
@@ -286,6 +288,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         event = {
             "type": "direct_message" if recipient else "chat_message",
             "username": "Семён",
+            "avatar_url": MessageService.get_avatar_url(bartender_user),
             "message": message.text,
             "timestamp": message.created_at.isoformat(),
             "recipient": recipient.username if recipient else None,
@@ -348,9 +351,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return None
 
     @database_sync_to_async
-    def get_all_usernames(self):
-        """Возвращает активных пользователей без технического аккаунта."""
-        return list(
+    def get_all_users(self):
+        """Возвращает гостей для списка присутствующих без техаккаунта."""
+        users = (
             User.objects.filter(is_active=True, is_superuser=False)
             .filter(
                 Q(banned_at__isnull=True)
@@ -358,8 +361,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
             .exclude(username=settings.BARTENDER_USERNAME)
             .order_by("username")
-            .values_list("username", flat=True)
         )
+        return [
+            {
+                "username": user.username,
+                "avatar_url": MessageService.get_avatar_url(user),
+            }
+            for user in users
+        ]
 
     @database_sync_to_async
     def is_chat_restricted(self, user_id):

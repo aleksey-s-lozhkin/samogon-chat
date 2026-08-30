@@ -129,7 +129,8 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+# Русская локаль применяется и к встроенной административной панели Django.
+LANGUAGE_CODE = 'ru'
 
 TIME_ZONE = 'UTC'
 
@@ -214,6 +215,24 @@ BARTENDER_RESPONSE_MAX_LENGTH = int(
     os.getenv("BARTENDER_RESPONSE_MAX_LENGTH", "200")
 )
 BARTENDER_USERNAME = os.getenv("BARTENDER_USERNAME", "semen")
+
+# Метрики Семёна не содержат текст сообщений и нужны для диагностики Ollama.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+        },
+    },
+    "loggers": {
+        "chat.services.bartender": {
+            "handlers": ["console"],
+            "level": os.getenv("BARTENDER_LOG_LEVEL", "INFO"),
+            "propagate": False,
+        },
+    },
+}
 
 # Turnstile включается только при наличии обеих ключей.
 TURNSTILE_SITE_KEY = os.getenv("TURNSTILE_SITE_KEY", "")

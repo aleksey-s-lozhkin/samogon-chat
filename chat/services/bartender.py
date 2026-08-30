@@ -1,5 +1,7 @@
 import json
+import logging
 import re
+from time import monotonic
 from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -28,6 +30,7 @@ BARTENDER_SYSTEM_PROMPT = (
 BARTENDER_LANGUAGE_FALLBACK = (
     "Поймал сбой в разговорнике. Спросите ещё раз — я уже сверяю словарь."
 )
+logger = logging.getLogger(__name__)
 
 
 class BartenderUnavailable(Exception):
@@ -46,6 +49,8 @@ class BartenderService:
         return bool(BARTENDER_MENTION.match(text))
 
     def reply(self, *, room_name: str, username: str, text: str) -> BartenderReply:
+        started_at = monotonic()
+        retried_for_language = False
         prompt = (
             BARTENDER_MENTION.sub("", text).strip()
             or "Поздоровайся с гостями."
@@ -59,27 +64,46 @@ class BartenderService:
                 ),
             },
         ]
-        content = self._request_reply(messages)
+        try:
+            content = self._request_reply(messages)
 
-        if self._needs_language_retry(content):
-            # Повторная попытка исправляет смешение языков у локальной модели.
-            content = self._request_reply(
-                [
-                    {"role": "system", "content": BARTENDER_SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": (
-                            "Перепиши свой ответ ниже только грамотным русским языком, "
-                            "без иероглифов, английского текста и markdown. Сохрани "
-                            "смысл и ответь коротко.\n\n"
-                            f"Ответ: {content}"
-                        ),
-                    },
-                ]
+            if self._needs_language_retry(content):
+                # Повторная попытка исправляет смешение языков у локальной модели.
+                retried_for_language = True
+                content = self._request_reply(
+                    [
+                        {"role": "system", "content": BARTENDER_SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": (
+                                "Перепиши свой ответ ниже только грамотным русским языком, "
+                                "без иероглифов, английского текста и markdown. Сохрани "
+                                "смысл и ответь коротко.\n\n"
+                                f"Ответ: {content}"
+                            ),
+                        },
+                    ]
+                )
+
+            if self._needs_language_retry(content):
+                content = BARTENDER_LANGUAGE_FALLBACK
+        except BartenderUnavailable:
+            elapsed_ms = int((monotonic() - started_at) * 1000)
+            logger.warning(
+                "bartender_reply_failed model=%s elapsed_ms=%d",
+                settings.OLLAMA_MODEL,
+                elapsed_ms,
             )
+            raise
 
-        if self._needs_language_retry(content):
-            content = BARTENDER_LANGUAGE_FALLBACK
+        # Логируем только технический результат, не текст и не данные гостя.
+        elapsed_ms = int((monotonic() - started_at) * 1000)
+        logger.info(
+            "bartender_reply_sent model=%s elapsed_ms=%d language_retry=%s",
+            settings.OLLAMA_MODEL,
+            elapsed_ms,
+            retried_for_language,
+        )
 
         return BartenderReply(
             text=content[:settings.BARTENDER_RESPONSE_MAX_LENGTH]

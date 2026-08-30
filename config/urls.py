@@ -3,12 +3,13 @@ from django.contrib import admin
 from django.urls import include, path
 
 from config import settings
-from config.views import home
+from config.views import home, robots
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("chat/", include("chat.urls")),
     path("users/", include("users.urls")),
+    path("robots.txt", robots, name="robots"),
     path("", home, name="home"),
 ]
 
