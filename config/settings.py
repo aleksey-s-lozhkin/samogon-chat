@@ -129,7 +129,8 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.1/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+# Русская локаль применяется и к встроенной административной панели Django.
+LANGUAGE_CODE = 'ru'
 
 TIME_ZONE = 'UTC'
 
