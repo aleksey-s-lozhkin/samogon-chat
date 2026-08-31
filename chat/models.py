@@ -1,3 +1,6 @@
+import uuid
+from pathlib import Path
+
 from config import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -138,6 +141,39 @@ class Message(models.Model):
 
     def __str__(self):
         return f"{self.user.username}: {self.text}"
+
+
+def attachment_upload_to(instance, filename):
+    """Скрывает исходное имя файла за случайным именем в закрытом каталоге."""
+    suffix = Path(filename).suffix.lower()
+    return f"chat/attachments/{instance.id.hex}{suffix}"
+
+
+class Attachment(models.Model):
+    """Метаданные безопасного вложения, привязанного к одному сообщению."""
+
+    class Kind(models.TextChoices):
+        IMAGE = "image", "Изображение"
+        FILE = "file", "Файл"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+    )
+    file = models.FileField(upload_to=attachment_upload_to)
+    original_name = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=100)
+    size = models.PositiveIntegerField()
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return self.original_name
 
 
 class ModerationEvent(models.Model):

@@ -1,24 +1,294 @@
 import json
+import tempfile
+from io import BytesIO
+from unittest.mock import patch
 
 from asgiref.sync import async_to_sync
 from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
+from PIL import Image
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.conf import settings
-from django.test import TestCase, TransactionTestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
-from unittest.mock import patch
 
-from .models import Message, Room, RoomMembership, RoomReadState
+from .models import Attachment, Message, Room, RoomMembership, RoomReadState
 from .routing import websocket_urlpatterns
+from .services.attachments import (
+    AttachmentValidationError,
+    create_attachment,
+    create_attachments,
+    validate_attachment,
+)
 from .services.messages import MessageService
 from .services.bartender import BARTENDER_LANGUAGE_FALLBACK, bartender
 from .validators import validate_message
 
 
 User = get_user_model()
+
+
+class AttachmentServiceTests(TestCase):
+    def setUp(self):
+        self.media_directory = tempfile.TemporaryDirectory()
+        self.settings_override = override_settings(
+            MEDIA_ROOT=self.media_directory.name,
+        )
+        self.settings_override.enable()
+        self.user = User.objects.create_user(username="alex")
+        self.room = Room.objects.create(name="General", slug="general")
+        self.message = Message.objects.create(
+            user=self.user,
+            room=self.room,
+            text="Файл для проверки",
+        )
+
+    def tearDown(self):
+        self.settings_override.disable()
+        self.media_directory.cleanup()
+
+    @staticmethod
+    def make_png_file(name="picture.png"):
+        image_data = BytesIO()
+        Image.new("RGB", (2, 2), color="#c6753a").save(image_data, format="PNG")
+        return SimpleUploadedFile(
+            name,
+            image_data.getvalue(),
+            content_type="image/png",
+        )
+
+    def test_create_attachment_saves_verified_image_under_random_name(self):
+        attachment = create_attachment(
+            message=self.message,
+            uploaded_file=self.make_png_file(),
+        )
+
+        self.assertEqual(attachment.kind, Attachment.Kind.IMAGE)
+        self.assertEqual(attachment.content_type, "image/png")
+        self.assertEqual(attachment.original_name, "picture.png")
+        self.assertTrue(attachment.file.name.startswith("chat/attachments/"))
+        self.assertNotIn("picture", attachment.file.name)
+
+    def test_rejects_fake_image_even_with_image_extension(self):
+        uploaded_file = SimpleUploadedFile(
+            "not-an-image.png",
+            b"not an image",
+            content_type="image/png",
+        )
+
+        with self.assertRaisesMessage(
+            AttachmentValidationError,
+            "Файл не является корректным изображением.",
+        ):
+            validate_attachment(uploaded_file)
+
+    def test_accepts_utf8_text_and_rejects_binary_content(self):
+        text_file = SimpleUploadedFile("notes.txt", "Привет".encode())
+        binary_file = SimpleUploadedFile("notes.txt", b"\x00\x01")
+
+        self.assertEqual(
+            validate_attachment(text_file).kind,
+            Attachment.Kind.FILE,
+        )
+        with self.assertRaises(AttachmentValidationError):
+            validate_attachment(binary_file)
+
+    def test_rejects_unsupported_extension(self):
+        uploaded_file = SimpleUploadedFile("archive.zip", b"PK\x03\x04")
+
+        with self.assertRaisesMessage(
+            AttachmentValidationError,
+            "Этот тип файла пока не поддерживается.",
+        ):
+            validate_attachment(uploaded_file)
+
+    def test_rejects_more_than_three_attachments_per_message(self):
+        for number in range(3):
+            create_attachment(
+                message=self.message,
+                uploaded_file=SimpleUploadedFile(
+                    f"note-{number}.txt",
+                    b"content",
+                ),
+            )
+
+        with self.assertRaisesMessage(
+            AttachmentValidationError,
+            "К сообщению можно добавить не больше трёх файлов.",
+        ):
+            create_attachment(
+                message=self.message,
+                uploaded_file=SimpleUploadedFile("fourth.txt", b"content"),
+            )
+
+    def test_rejects_whole_batch_before_writing_any_file(self):
+        with self.assertRaises(AttachmentValidationError):
+            create_attachments(
+                message=self.message,
+                uploaded_files=[
+                    SimpleUploadedFile("valid.txt", b"content"),
+                    SimpleUploadedFile("blocked.zip", b"PK\x03\x04"),
+                ],
+            )
+
+        self.assertFalse(self.message.attachments.exists())
+
+
+class AttachmentDownloadTests(TestCase):
+    def setUp(self):
+        self.media_directory = tempfile.TemporaryDirectory()
+        self.settings_override = override_settings(
+            MEDIA_ROOT=self.media_directory.name,
+        )
+        self.settings_override.enable()
+        self.author = User.objects.create_user(username="author")
+        self.recipient = User.objects.create_user(username="recipient")
+        self.outsider = User.objects.create_user(username="outsider")
+        self.room = Room.objects.create(name="General", slug="general")
+        self.message = Message.objects.create(
+            user=self.author,
+            room=self.room,
+            recipient=self.recipient,
+            text="Личный файл",
+        )
+        self.attachment = create_attachment(
+            message=self.message,
+            uploaded_file=SimpleUploadedFile("note.txt", b"secret"),
+        )
+        self.url = reverse(
+            "chat:download_attachment",
+            args=[self.attachment.id],
+        )
+
+    def tearDown(self):
+        self.settings_override.disable()
+        self.media_directory.cleanup()
+
+    @override_settings(DEBUG=True)
+    def test_recipient_can_download_personal_attachment(self):
+        self.client.force_login(self.recipient)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b"".join(response.streaming_content), b"secret")
+        self.assertIn("attachment", response["Content-Disposition"])
+
+    @override_settings(DEBUG=False)
+    def test_production_response_uses_internal_nginx_redirect(self):
+        self.client.force_login(self.recipient)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            response["X-Accel-Redirect"].startswith("/media/chat/attachments/")
+        )
+
+    def test_outsider_cannot_download_personal_attachment(self):
+        self.client.force_login(self.outsider)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_hidden_message_makes_attachment_unavailable(self):
+        self.message.hidden_at = timezone.now()
+        self.message.save(update_fields=("hidden_at",))
+        self.client.force_login(self.author)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_private_room_attachment_requires_membership(self):
+        private_room = Room.objects.create(
+            name="Тайный столик",
+            slug="taynyy-stolik",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.author,
+        )
+        RoomMembership.objects.create(room=private_room, user=self.author)
+        private_message = Message.objects.create(
+            user=self.author,
+            room=private_room,
+            text="Только для своих",
+        )
+        private_attachment = create_attachment(
+            message=private_message,
+            uploaded_file=SimpleUploadedFile("private.txt", b"private"),
+        )
+        self.client.force_login(self.outsider)
+
+        response = self.client.get(
+            reverse("chat:download_attachment", args=[private_attachment.id])
+        )
+
+        self.assertEqual(response.status_code, 404)
+
+
+class AttachmentUploadViewTests(TestCase):
+    def setUp(self):
+        self.media_directory = tempfile.TemporaryDirectory()
+        self.settings_override = override_settings(
+            MEDIA_ROOT=self.media_directory.name,
+        )
+        self.settings_override.enable()
+        self.author = User.objects.create_user(username="author")
+        self.outsider = User.objects.create_user(username="outsider")
+        self.room = Room.objects.create(name="General", slug="general")
+        self.message = Message.objects.create(
+            user=self.author,
+            room=self.room,
+            text="Сообщение с файлами",
+        )
+        self.url = reverse("chat:message_attachments", args=[self.message.id])
+
+    def tearDown(self):
+        self.settings_override.disable()
+        self.media_directory.cleanup()
+
+    def test_chat_page_sets_csrf_cookie_for_attachment_upload(self):
+        self.client.force_login(self.author)
+
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+
+        self.assertIn(settings.CSRF_COOKIE_NAME, response.cookies)
+
+    @patch("chat.views.broadcast_attachment_update")
+    def test_author_can_upload_files_and_receives_safe_urls(self, broadcast):
+        self.client.force_login(self.author)
+
+        response = self.client.post(
+            self.url,
+            {
+                "files": [
+                    SimpleUploadedFile("notes.txt", b"content"),
+                    SimpleUploadedFile("guide.pdf", b"%PDF-1.7\ncontent"),
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(self.message.attachments.count(), 2)
+        attachment_data = response.json()["attachments"]
+        self.assertEqual(attachment_data[0]["name"], "notes.txt")
+        self.assertIn("/chat/attachments/", attachment_data[0]["preview_url"])
+        self.assertNotIn("chat/attachments/", attachment_data[0]["name"])
+        broadcast.assert_called_once()
+
+    def test_non_author_cannot_add_files_to_someone_elses_message(self):
+        self.client.force_login(self.outsider)
+
+        response = self.client.post(
+            self.url,
+            {"files": [SimpleUploadedFile("notes.txt", b"content")]},
+        )
+
+        self.assertEqual(response.status_code, 404)
 
 
 class MessageServiceTests(TestCase):
@@ -453,13 +723,14 @@ class ChatConsumerTests(TransactionTestCase):
         )
 
         async_to_sync(self._assert_history_validation_and_delivery)(
+            history_message.id,
             history_message.created_at.isoformat(),
         )
         self.assertTrue(
             Message.objects.filter(room=self.room, user=self.user, text="New message").exists(),
         )
 
-    async def _assert_history_validation_and_delivery(self, created_at):
+    async def _assert_history_validation_and_delivery(self, message_id, created_at):
         communicator = WebsocketCommunicator(self.application, "/ws/chat/general/")
         communicator.scope["user"] = self.user
 
@@ -471,6 +742,7 @@ class ChatConsumerTests(TransactionTestCase):
                 "type": "history",
                 "messages": [
                     {
+                        "id": message_id,
                         "username": "alex",
                         "avatar_url": None,
                         "message": "Earlier",
@@ -478,6 +750,7 @@ class ChatConsumerTests(TransactionTestCase):
                         "recipient": None,
                         "private": False,
                         "color": "amber",
+                        "attachments": [],
                     }
                 ],
             },
@@ -508,6 +781,8 @@ class ChatConsumerTests(TransactionTestCase):
         self.assertEqual(delivered_message["message"], "New message")
         self.assertFalse(delivered_message["private"])
         self.assertEqual(delivered_message["color"], "amber")
+        self.assertEqual(delivered_message["attachments"], [])
+        self.assertIn("id", delivered_message)
         self.assertIn("timestamp", delivered_message)
 
         await communicator.disconnect()

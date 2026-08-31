@@ -46,6 +46,23 @@
     </div>
 
     <div class="chat-input">
+        <input
+            id="chat-attachment-input"
+            type="file"
+            multiple
+            hidden
+            accept="image/jpeg,image/png,image/webp,.pdf,.txt,.md,.json,.log,.csv,.yaml,.yml,.py,.js"
+        >
+        <button
+            id="chat-attachment-trigger"
+            class="attachment-trigger"
+            type="button"
+            aria-label="Прикрепить файлы"
+            title="Прикрепить файлы"
+        >
+            <span aria-hidden="true">⌁</span>
+            <span class="attachment-trigger-label">Файл</span>
+        </button>
         <button
             id="bartender-trigger"
             class="bartender-trigger"
@@ -65,6 +82,8 @@
 
         <button id="chat-message-submit" type="button">Отправить</button>
     </div>
+
+    <div id="attachment-preview" class="attachment-preview hidden" aria-live="polite"></div>
 
     <div class="chat-hint">
         <span>Enter — отправить · Shift+Enter — новая строка</span>

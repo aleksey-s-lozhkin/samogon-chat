@@ -147,6 +147,16 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Лимиты вложений держим рядом с настройками хранилища, чтобы их было видно при деплое.
+ATTACHMENT_MAX_COUNT = int(os.getenv("ATTACHMENT_MAX_COUNT", "3"))
+ATTACHMENT_IMAGE_MAX_SIZE = int(
+    os.getenv("ATTACHMENT_IMAGE_MAX_SIZE", str(5 * 1024 * 1024))
+)
+ATTACHMENT_FILE_MAX_SIZE = int(
+    os.getenv("ATTACHMENT_FILE_MAX_SIZE", str(2 * 1024 * 1024))
+)
+ATTACHMENT_RATE_LIMIT = int(os.getenv("ATTACHMENT_RATE_LIMIT", "10"))
+
 STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]

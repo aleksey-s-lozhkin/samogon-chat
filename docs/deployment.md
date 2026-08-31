@@ -137,6 +137,10 @@ MESSAGE_RATE_LIMIT=20
 BARTENDER_RATE_LIMIT=5
 SAMOGON_DATA_DIR=/srv/data/samogon
 SAMOGON_IMAGE=docker.io/alserloz/samogon_chat:latest
+ATTACHMENT_MAX_COUNT=3
+ATTACHMENT_IMAGE_MAX_SIZE=5242880
+ATTACHMENT_FILE_MAX_SIZE=2097152
+ATTACHMENT_RATE_LIMIT=10
 ```
 
 Рядом с `compose.yaml` создайте `.env` только с путями и образом (в нём нет
@@ -199,6 +203,23 @@ docker compose logs -f samogon-web
 Контейнер применит миграции и соберёт статику перед запуском Daphne. Он не
 открывает ни одного порта на хосте: Nginx найдёт его по имени `samogon-web` в
 сети `infra`.
+
+### Защищённые вложения
+
+Вложения чата хранятся в уже смонтированном каталоге
+`/srv/data/samogon/media/chat/attachments`. Не публикуйте этот путь напрямую:
+в конфиге Nginx из репозитория есть `internal`-location для него. Django
+проверяет права пользователя, а затем передаёт файл Nginx внутренним заголовком
+`X-Accel-Redirect`. После обновления конфига проверьте и перезагрузите Nginx:
+
+```bash
+docker exec nginx nginx -t
+docker exec nginx nginx -s reload
+```
+
+В конфиге задан `client_max_body_size 20m`: этого достаточно для трёх
+разрешённых изображений до 5 МБ с запасом на multipart-запрос. Не уменьшайте
+его ниже суммарного лимита, иначе Nginx вернёт 413 до проверки Django.
 
 ### Модераторы и баны
 
