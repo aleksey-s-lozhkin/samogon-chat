@@ -16,7 +16,7 @@
 
     <link
         rel="stylesheet"
-        href="{% static 'chat/css/chat.css' %}?v=8"
+        href="{% static 'chat/css/chat.css' %}?v=9"
     >
 
     <script
@@ -78,6 +78,7 @@
         roomName: "{{ room.name|escapejs }}",
         username: "{{ request.user.username|escapejs }}",
         isAuthenticated: {{ user.is_authenticated|yesno:"true,false" }},
+        attachmentUploadTemplate: "{% url 'chat:message_attachments' 0 %}",
 
     };
 
@@ -86,7 +87,7 @@
     };
 </script>
 
-<script src="{% static 'chat/js/chat.js' %}?v=6"></script>
+<script src="{% static 'chat/js/chat.js' %}?v=7"></script>
 <script src="{% static 'chat/js/auth.js' %}?v=3"></script>
 
 </body>

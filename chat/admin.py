@@ -1,7 +1,14 @@
 from django.contrib import admin
 from django.utils import timezone
 
-from .models import Message, ModerationEvent, Room, RoomMembership, RoomReadState
+from .models import (
+    Attachment,
+    Message,
+    ModerationEvent,
+    Room,
+    RoomMembership,
+    RoomReadState,
+)
 
 
 @admin.register(Room)
@@ -82,6 +89,30 @@ class RoomMembershipAdmin(admin.ModelAdmin):
 @admin.register(RoomReadState)
 class RoomReadStateAdmin(admin.ModelAdmin):
     list_display = ("room", "user", "last_read_at")
+
+
+@admin.register(Attachment)
+class AttachmentAdmin(admin.ModelAdmin):
+    """Файлы можно проверить, но нельзя подменить содержимое через админку."""
+
+    list_display = ("original_name", "message", "kind", "size", "created_at")
+    list_filter = ("kind",)
+    search_fields = ("original_name", "message__user__username")
+    readonly_fields = (
+        "message",
+        "file",
+        "original_name",
+        "content_type",
+        "size",
+        "kind",
+        "created_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(ModerationEvent)

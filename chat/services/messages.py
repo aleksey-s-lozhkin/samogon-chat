@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db.models import Q
+from django.urls import reverse
 from django.utils import timezone
 
 from chat.models import Message, Room, RoomReadState
@@ -31,6 +32,40 @@ class MessageService:
         )
 
     @staticmethod
+    def serialize_attachment(attachment) -> dict:
+        """Не раскрывает путь в хранилище: клиент получает только защищённые URL."""
+        preview_url = reverse("chat:attachment", args=[attachment.id])
+        return {
+            "id": str(attachment.id),
+            "name": attachment.original_name,
+            "size": attachment.size,
+            "kind": attachment.kind,
+            "preview_url": preview_url,
+            "download_url": reverse("chat:download_attachment", args=[attachment.id]),
+        }
+
+    @staticmethod
+    def serialize_attachments(message: Message) -> list[dict]:
+        return [
+            MessageService.serialize_attachment(attachment)
+            for attachment in message.attachments.all()
+        ]
+
+    @staticmethod
+    def can_view_message(*, message: Message, user) -> bool:
+        """Не раскрывает личные реплики, тайные комнаты и скрытые сообщения."""
+        if not user.is_authenticated or message.hidden_at is not None:
+            return False
+        if message.recipient_id and user.id not in {
+            message.user_id,
+            message.recipient_id,
+        }:
+            return False
+        return not message.room.is_private or message.room.memberships.filter(
+            user=user,
+        ).exists()
+
+    @staticmethod
     def get_room_messages(
         room: Room,
         *,
@@ -50,6 +85,7 @@ class MessageService:
                 | Q(recipient_id=viewer_id),
             )
             .select_related("user", "recipient")
+            .prefetch_related("attachments")
             .order_by("created_at")
         )
 
@@ -59,6 +95,7 @@ class MessageService:
 
         return [
             {
+                "id": message.id,
                 "username": MessageService.display_username(message.user.username),
                 "avatar_url": MessageService.get_avatar_url(message.user),
                 "message": message.text,
@@ -70,6 +107,7 @@ class MessageService:
                 ),
                 "private": message.recipient_id is not None,
                 "color": message.user.message_color,
+                "attachments": MessageService.serialize_attachments(message),
             }
             for message in messages
         ]
@@ -89,6 +127,7 @@ class MessageService:
             ),
             "private": message.recipient_id is not None,
             "color": message.user.message_color,
+            "attachments": MessageService.serialize_attachments(message),
         }
 
     @staticmethod
