@@ -173,6 +173,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
         event = {
             "type": "direct_message" if recipient else "chat_message",
+            "id": message.id,
             "username": self.user.username,
             "avatar_url": MessageService.get_avatar_url(self.user),
             "message": message.text,
@@ -184,6 +185,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             ),
             "private": recipient is not None,
             "color": self.user.message_color,
+            "attachments": [],
             "room_slug": self.room.slug,
             "room_private": self.room.is_private,
         }
@@ -215,6 +217,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             text_data=json.dumps(
                 {
                     "type": "message",
+                    "id": event["id"],
                     "username": event["username"],
                     "avatar_url": event.get("avatar_url"),
                     "message": event["message"],
@@ -222,8 +225,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "recipient": event["recipient"],
                     "private": event["private"],
                     "color": event["color"],
+                    "attachments": event.get("attachments", []),
                     "room_slug": event["room_slug"],
                     "room_private": event["room_private"],
+                }
+            )
+        )
+
+    async def attachment_update(self, event):
+        """Передаёт клиентам добавленные к уже существующей реплике файлы."""
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "attachments",
+                    "message_id": event["message_id"],
+                    "attachments": event["attachments"],
+                    "room_slug": event["room_slug"],
                 }
             )
         )
@@ -287,6 +304,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
         event = {
             "type": "direct_message" if recipient else "chat_message",
+            "id": message.id,
             "username": "Семён",
             "avatar_url": MessageService.get_avatar_url(bartender_user),
             "message": message.text,
@@ -294,6 +312,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "recipient": recipient.username if recipient else None,
             "private": recipient is not None,
             "color": "amber",
+            "attachments": [],
             "room_slug": self.room.slug,
             "room_private": self.room.is_private,
         }

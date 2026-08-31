@@ -1,4 +1,9 @@
-const { isAuthenticated, roomSlug, username: currentUsername } = chatConfig;
+const {
+    isAuthenticated,
+    roomSlug,
+    username: currentUsername,
+    attachmentUploadTemplate,
+} = chatConfig;
 const MESSAGE_MAX_LENGTH = 1000;
 const BARTENDER_USERNAME = "Семён";
 
@@ -10,6 +15,8 @@ let loadingHistory = false;
 let lastMessageDay = null;
 let presenceUsers = [];
 let presenceOnlineUsers = [];
+let selectedAttachments = [];
+let pendingAttachmentUpload = null;
 const expandedPresenceLists = new Set();
 const PRESENCE_PREVIEW_LIMIT = 6;
 
@@ -58,6 +65,10 @@ function handleServerEvent(data) {
         } else {
             increaseUnreadCount(data);
         }
+    }
+
+    if (data.type === "attachments" && data.room_slug === roomSlug) {
+        updateMessageAttachments(data.message_id, data.attachments);
     }
 
     if (data.type === "user_presence") {
@@ -331,6 +342,9 @@ function addMessage(data) {
 
     const message = document.createElement("div");
     message.className = "message";
+    if (data.id) {
+        message.dataset.messageId = String(data.id);
+    }
     if (data.private) {
         message.classList.add("private");
     }
@@ -369,9 +383,21 @@ function addMessage(data) {
         });
     }
 
-    content.append(author, text, time);
+    content.append(author, text);
+    renderMessageAttachments(content, data.attachments || []);
+    content.append(time);
     message.append(content);
     chatLog.append(message);
+
+    if (
+        pendingAttachmentUpload
+        && message.classList.contains("own")
+        && data.id
+    ) {
+        const files = pendingAttachmentUpload;
+        pendingAttachmentUpload = null;
+        uploadMessageAttachments(data.id, files);
+    }
 
     if (data.username === BARTENDER_USERNAME) {
         setBartenderTyping(false);
@@ -382,6 +408,63 @@ function addMessage(data) {
     } else if (!message.classList.contains("own")) {
         document.getElementById("scroll-to-latest")?.classList.remove("hidden");
     }
+}
+
+function updateMessageAttachments(messageId, attachments) {
+    const message = document.querySelector(
+        `.message[data-message-id="${CSS.escape(String(messageId))}"]`,
+    );
+    const content = message?.querySelector(".message-content");
+    if (content) {
+        renderMessageAttachments(content, attachments);
+    }
+}
+
+function renderMessageAttachments(content, attachments) {
+    content.querySelector(".message-attachments")?.remove();
+    if (!attachments.length) {
+        return;
+    }
+
+    const container = document.createElement("div");
+    container.className = "message-attachments";
+    attachments.forEach((attachment) => {
+        const link = document.createElement("a");
+        link.className = `message-attachment message-attachment-${attachment.kind}`;
+        link.href = attachment.preview_url;
+        link.target = "_blank";
+        link.rel = "noopener";
+
+        if (attachment.kind === "image") {
+            const image = document.createElement("img");
+            image.src = attachment.preview_url;
+            image.alt = attachment.name;
+            image.loading = "lazy";
+            link.append(image);
+        } else {
+            const name = document.createElement("span");
+            name.className = "message-attachment-name";
+            name.textContent = attachment.name;
+            const size = document.createElement("span");
+            size.className = "message-attachment-size";
+            size.textContent = formatFileSize(attachment.size);
+            link.href = attachment.download_url;
+            link.download = attachment.name;
+            link.append(name, size);
+        }
+        container.append(link);
+    });
+    content.querySelector(".message-time")?.before(container);
+}
+
+function formatFileSize(size) {
+    if (size < 1024) {
+        return `${size} Б`;
+    }
+    if (size < 1024 * 1024) {
+        return `${Math.ceil(size / 1024)} КБ`;
+    }
+    return `${(size / (1024 * 1024)).toFixed(1)} МБ`;
 }
 
 function appendDayDivider(chatLog, timestamp) {
@@ -434,6 +517,14 @@ function sendMessage() {
     const input = document.getElementById("chat-message-input");
     const message = input?.value.trim();
     if (!message) {
+        if (selectedAttachments.length) {
+            showError("Добавьте короткую подпись к файлам перед отправкой.");
+        }
+        return;
+    }
+
+    if (pendingAttachmentUpload) {
+        showError("Подождите, пока предыдущие файлы попадут в сообщение.");
         return;
     }
 
@@ -448,6 +539,9 @@ function sendMessage() {
         return;
     }
 
+    if (selectedAttachments.length) {
+        pendingAttachmentUpload = [...selectedAttachments];
+    }
     chatSocket.send(JSON.stringify({
         message,
         recipient: directRecipient,
@@ -459,6 +553,96 @@ function sendMessage() {
     input.value = bartenderMode ? `@${BARTENDER_USERNAME} ` : "";
     updateInputSize();
     input.focus();
+}
+
+function selectAttachments() {
+    document.getElementById("chat-attachment-input")?.click();
+}
+
+function handleAttachmentSelection(event) {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) {
+        return;
+    }
+    if (selectedAttachments.length + files.length > 3) {
+        showError("К одному сообщению можно прикрепить не больше трёх файлов.");
+        event.target.value = "";
+        return;
+    }
+
+    selectedAttachments = [...selectedAttachments, ...files];
+    event.target.value = "";
+    renderSelectedAttachments();
+}
+
+function removeSelectedAttachment(index) {
+    selectedAttachments = selectedAttachments.filter((_, itemIndex) => itemIndex !== index);
+    renderSelectedAttachments();
+}
+
+function renderSelectedAttachments() {
+    const container = document.getElementById("attachment-preview");
+    if (!container) {
+        return;
+    }
+    container.replaceChildren();
+    container.classList.toggle("hidden", !selectedAttachments.length);
+
+    selectedAttachments.forEach((file, index) => {
+        const item = document.createElement("div");
+        item.className = "attachment-preview-item";
+        if (file.type.startsWith("image/")) {
+            const image = document.createElement("img");
+            image.src = URL.createObjectURL(file);
+            image.alt = "Предпросмотр изображения";
+            item.append(image);
+        }
+        const details = document.createElement("span");
+        details.className = "attachment-preview-details";
+        details.textContent = `${file.name} · ${formatFileSize(file.size)}`;
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "attachment-remove";
+        remove.textContent = "×";
+        remove.ariaLabel = `Убрать ${file.name}`;
+        remove.addEventListener("click", () => removeSelectedAttachment(index));
+        item.append(details, remove);
+        container.append(item);
+    });
+}
+
+async function uploadMessageAttachments(messageId, files) {
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files", file));
+
+    try {
+        const response = await fetch(
+            attachmentUploadTemplate.replace("/0/", `/${messageId}/`),
+            {
+                method: "POST",
+                body: formData,
+                headers: { "X-CSRFToken": getCsrfToken() },
+                credentials: "same-origin",
+            },
+        );
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || "Не удалось загрузить файлы.");
+        }
+        selectedAttachments = [];
+        renderSelectedAttachments();
+    } catch (error) {
+        selectedAttachments = files;
+        renderSelectedAttachments();
+        showError(error.message || "Не удалось загрузить файлы.");
+    }
+}
+
+function getCsrfToken() {
+    const cookie = document.cookie
+        .split("; ")
+        .find((item) => item.startsWith("csrftoken="));
+    return cookie ? decodeURIComponent(cookie.split("=")[1]) : "";
 }
 
 function isBartenderRequest(message) {
@@ -529,6 +713,8 @@ function setComposerPlaceholder(input) {
 }
 
 document.getElementById("chat-message-submit")?.addEventListener("click", sendMessage);
+document.getElementById("chat-attachment-trigger")?.addEventListener("click", selectAttachments);
+document.getElementById("chat-attachment-input")?.addEventListener("change", handleAttachmentSelection);
 document.getElementById("cancel-direct-message")?.addEventListener("click", clearDirectRecipient);
 document.getElementById("bartender-trigger")?.addEventListener("click", activateBartender);
 document.getElementById("bartender-public")?.addEventListener("click", () => setBartenderVisibility(false));

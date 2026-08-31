@@ -18,6 +18,8 @@ Channels.
 - public or private questions to Semyon.
 - moderation through Django Admin: message hiding, timed bans and audit trail;
 - optional Cloudflare Turnstile protection for registration.
+- attachments: select up to three validated images/documents, see a local
+  preview, and open or download them through protected URLs.
 
 ### Local development
 
@@ -97,6 +99,8 @@ HTMX и Alpine.js, а сообщения в реальном времени до
 - вопрос Семёну можно отправить в общий чат или лично.
 - модерация через Django Admin: скрытие сообщений, временные баны и журнал;
 - защита регистрации Cloudflare Turnstile при включённых ключах.
+- вложения: до трёх проверенных изображений или документов, локальный
+  предпросмотр перед отправкой и защищённое открытие либо скачивание.
 
 ### Локальный запуск
 

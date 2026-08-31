@@ -1,13 +1,21 @@
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Case, IntegerField, Q, Value, When
-from django.http import Http404
+from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.http import content_disposition_header
 from django.utils.text import slugify
+from django.views.decorators.csrf import ensure_csrf_cookie
+
+from config.rate_limit import is_allowed
 
 from .forms import PrivateRoomForm
-from .models import Room, RoomMembership
+from .models import Attachment, Message, Room, RoomMembership
+from .services.attachments import AttachmentValidationError, create_attachments
 from .services.messages import MessageService
 
 
@@ -88,6 +96,7 @@ def rooms_page(request):
     )
 
 
+@ensure_csrf_cookie
 def chat_page(request, room_slug):
     room = get_object_or_404(
         Room,
@@ -115,6 +124,107 @@ def chat_page(request, room_slug):
             "private_rooms": [item for item in rooms if item.is_private],
         },
     )
+
+
+@login_required
+def serve_attachment(request, attachment_id):
+    """Выдаёт файл только участнику чата; в production тело отдаёт Nginx."""
+    attachment = get_object_or_404(
+        Attachment.objects.select_related(
+            "message__room",
+            "message__recipient",
+        ),
+        id=attachment_id,
+    )
+    if not MessageService.can_view_message(
+        message=attachment.message,
+        user=request.user,
+    ):
+        raise Http404("Вложение не найдено")
+
+    as_attachment = request.path.endswith("/download/")
+    if settings.DEBUG:
+        return FileResponse(
+            attachment.file.open("rb"),
+            as_attachment=as_attachment,
+            filename=attachment.original_name,
+            content_type=attachment.content_type,
+        )
+
+    response = HttpResponse(content_type=attachment.content_type)
+    response["Content-Disposition"] = content_disposition_header(
+        as_attachment=as_attachment,
+        filename=attachment.original_name,
+    )
+    response["X-Accel-Redirect"] = f"/media/{attachment.file.name}"
+    return response
+
+
+@login_required
+def add_message_attachments(request, message_id):
+    """Добавляет проверенные файлы к собственному сообщению и рассылает обновление."""
+    if request.method != "POST":
+        raise Http404("Маршрут загрузки не найден")
+    if not is_allowed(
+        identifier=f"user:{request.user.id}",
+        bucket="attachment",
+        limit=settings.ATTACHMENT_RATE_LIMIT,
+        window_seconds=settings.RATE_LIMIT_WINDOW_SECONDS,
+    ):
+        return JsonResponse(
+            {"error": "Слишком много загрузок. Подождите минуту."},
+            status=429,
+        )
+
+    message = get_object_or_404(
+        Message.objects.select_related("room", "recipient"),
+        id=message_id,
+        user=request.user,
+        hidden_at__isnull=True,
+    )
+    if not MessageService.can_view_message(message=message, user=request.user):
+        raise Http404("Сообщение не найдено")
+
+    try:
+        attachments = create_attachments(
+            message=message,
+            uploaded_files=request.FILES.getlist("files"),
+        )
+    except AttachmentValidationError as error:
+        return JsonResponse({"error": str(error)}, status=400)
+
+    serialized_attachments = [
+        MessageService.serialize_attachment(attachment)
+        for attachment in attachments
+    ]
+    broadcast_attachment_update(message, serialized_attachments)
+    return JsonResponse({"attachments": serialized_attachments}, status=201)
+
+
+def broadcast_attachment_update(message, attachments):
+    """Отправляет новые вложения только тем же людям, что видят сообщение."""
+    event = {
+        "type": "attachment_update",
+        "message_id": message.id,
+        "attachments": attachments,
+        "room_slug": message.room.slug,
+    }
+    channel_layer = get_channel_layer()
+    if message.recipient_id:
+        group_names = [
+            f"chat_user_{message.user_id}",
+            f"chat_user_{message.recipient_id}",
+        ]
+    elif message.room.is_private:
+        group_names = [
+            f"chat_user_{user_id}"
+            for user_id in message.room.memberships.values_list("user_id", flat=True)
+        ]
+    else:
+        group_names = [f"chat_{message.room.slug}"]
+
+    for group_name in group_names:
+        async_to_sync(channel_layer.group_send)(group_name, event)
 
 
 @login_required

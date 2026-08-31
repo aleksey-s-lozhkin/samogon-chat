@@ -7,6 +7,21 @@ app_name = "chat"
 
 urlpatterns = [
     path(
+        "attachments/<uuid:attachment_id>/",
+        views.serve_attachment,
+        name="attachment",
+    ),
+    path(
+        "attachments/<uuid:attachment_id>/download/",
+        views.serve_attachment,
+        name="download_attachment",
+    ),
+    path(
+        "messages/<int:message_id>/attachments/",
+        views.add_message_attachments,
+        name="message_attachments",
+    ),
+    path(
         "private-rooms/create/",
         views.create_private_room,
         name="create_private_room",
