@@ -20,6 +20,10 @@ Channels.
 - optional Cloudflare Turnstile protection for registration.
 - attachments: select up to three validated images/documents, see a local
   preview, and open or download them through protected URLs.
+- message deletion: authors remove their own messages, while moderators can
+  hide any message with an audit record;
+- personal notes: save any visible message or switch the composer to private
+  note mode. Notes are visible only to their owner.
 
 ### Local development
 
@@ -101,6 +105,15 @@ HTMX и Alpine.js, а сообщения в реальном времени до
 - защита регистрации Cloudflare Turnstile при включённых ключах.
 - вложения: до трёх проверенных изображений или документов, локальный
   предпросмотр перед отправкой и защищённое открытие либо скачивание.
+- удаление сообщений: автор скрывает только свои реплики, модератор — любые с
+  записью в журнале;
+- личные заметки: можно сохранить доступную реплику вместе с её вложениями или
+  переключить поле ввода в режим заметки. Их видит только владелец; копии
+  вложений переживают скрытие исходной реплики.
+
+После обновления, добавившего копии вложений к заметкам, один раз запустите
+`python manage.py backfill_note_attachments`: он дополнит только старые заметки
+без вложений и не создаст дубликатов у уже обновлённых.
 
 ### Локальный запуск
 

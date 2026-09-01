@@ -6,6 +6,7 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 
 from config.rate_limit import request_is_allowed
+from chat.services.navigation import get_last_room_url
 
 from .forms import ProfileForm, RegistrationForm
 from .turnstile import verify_turnstile
@@ -200,5 +201,7 @@ def profile(request):
         "users/profile.html",
         {
             "form": form,
+            "last_room_url": get_last_room_url(request),
+            "has_last_room": bool(request.session.get("last_chat_room_slug")),
         },
     )

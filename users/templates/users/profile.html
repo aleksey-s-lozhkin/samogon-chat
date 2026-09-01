@@ -29,8 +29,8 @@
 
         <div class="profile-actions">
 
-            <a href="{% url 'chat:rooms' %}">
-                Вернуться к комнатам
+            <a href="{{ last_room_url }}">
+                {% if has_last_room %}Вернуться к беседе{% else %}Вернуться к комнатам{% endif %}
             </a>
 
             <form method="post" action="{% url 'logout' %}">

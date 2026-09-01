@@ -1,0 +1,96 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Заметки — Самогон</title>
+    <link rel="icon" href="{% static 'chat/images/favicon.svg' %}" type="image/svg+xml">
+    {% include "pwa/head.html" %}
+    <link rel="stylesheet" href="{% static 'chat/css/chat.css' %}?v=10">
+</head>
+<body>
+    <main class="notes-page">
+        <header class="chat-header">
+            <div class="brand">
+                <div>
+                    <h1>🍺 Самогон</h1>
+                    <p>Память бара: без лишних глаз и без лишнего шума.</p>
+                </div>
+            </div>
+            <div class="user-actions">
+                <a href="{{ last_room_url }}" class="profile-link">К беседе</a>
+                <a href="{% url 'profile' %}" class="profile-link">Профиль</a>
+            </div>
+        </header>
+
+        <section class="notes-panel">
+            <div class="notes-panel-heading">
+                <div>
+                    <span class="notes-eyebrow">ЛИЧНОЕ</span>
+                    <h2>Заметки</h2>
+                </div>
+                <span class="notes-count">{{ notes|length }}</span>
+            </div>
+
+            {% if notes %}
+                <div class="notes-list">
+                    {% for note in notes %}
+                        <article class="note-card">
+                            {% if note.source_message_id %}
+                                <span class="note-source">Из реплики {{ note.source_author }}</span>
+                            {% else %}
+                                <span class="note-source">Ваша заметка</span>
+                            {% endif %}
+                            <p>{{ note.text }}</p>
+                            {% if note.attachments.all %}
+                                <div class="note-attachments">
+                                    {% for attachment in note.attachments.all %}
+                                        {% if attachment.kind == "image" %}
+                                            <a
+                                                href="{% url 'chat:note_attachment' attachment.id %}"
+                                                target="_blank"
+                                                rel="noopener"
+                                                class="note-attachment note-attachment-image"
+                                            >
+                                                <img
+                                                    src="{% url 'chat:note_attachment' attachment.id %}"
+                                                    alt="{{ attachment.original_name }}"
+                                                    loading="lazy"
+                                                >
+                                            </a>
+                                        {% else %}
+                                            <a
+                                                href="{% url 'chat:download_note_attachment' attachment.id %}"
+                                                class="note-attachment note-attachment-file"
+                                                download="{{ attachment.original_name }}"
+                                            >
+                                                <span>⌁ {{ attachment.original_name }}</span>
+                                            </a>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                            <footer>
+                                <time datetime="{{ note.created_at|date:'c' }}">
+                                    {{ note.created_at|date:"d.m.Y H:i" }}
+                                </time>
+                                <form method="post" action="{% url 'chat:delete_note' note.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit">Удалить</button>
+                                </form>
+                            </footer>
+                        </article>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="notes-empty-state">
+                    <strong>Здесь пока тихо.</strong>
+                    <span>Выберите реплику и нажмите булавку — или напишите заметку прямо в поле чата.</span>
+                </div>
+            {% endif %}
+        </section>
+    </main>
+</body>
+</html>
