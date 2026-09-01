@@ -13,6 +13,7 @@
     <title>{{ room.name }} — Самогон</title>
 
     <link rel="icon" href="{% static 'chat/images/favicon.svg' %}" type="image/svg+xml">
+    {% include "pwa/head.html" %}
 
     <link
         rel="stylesheet"
@@ -87,7 +88,7 @@
     };
 </script>
 
-<script src="{% static 'chat/js/chat.js' %}?v=7"></script>
+<script src="{% static 'chat/js/chat.js' %}?v=9"></script>
 <script src="{% static 'chat/js/auth.js' %}?v=3"></script>
 
 </body>

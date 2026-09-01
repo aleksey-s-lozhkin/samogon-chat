@@ -72,6 +72,21 @@ class AttachmentServiceTests(TestCase):
         self.assertTrue(attachment.file.name.startswith("chat/attachments/"))
         self.assertNotIn("picture", attachment.file.name)
 
+    def test_history_serializes_existing_attachments_after_reload(self):
+        attachment = create_attachment(
+            message=self.message,
+            uploaded_file=SimpleUploadedFile("notes.txt", b"content"),
+        )
+
+        history = MessageService.get_room_messages(
+            self.room,
+            viewer_id=self.user.id,
+        )
+
+        self.assertEqual(history[0]["attachments"][0]["id"], str(attachment.id))
+        self.assertEqual(history[0]["attachments"][0]["name"], "notes.txt")
+        self.assertIn("/chat/attachments/", history[0]["attachments"][0]["preview_url"])
+
     def test_rejects_fake_image_even_with_image_extension(self):
         uploaded_file = SimpleUploadedFile(
             "not-an-image.png",
@@ -566,6 +581,34 @@ class ChatLayoutViewsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Disallow: /")
+
+    def test_pwa_endpoints_are_available(self):
+        home = self.client.get(reverse("home"))
+        manifest = self.client.get(reverse("pwa_manifest"))
+        service_worker = self.client.get(reverse("service_worker"))
+        offline = self.client.get(reverse("offline"))
+
+        self.assertContains(home, 'rel="manifest"')
+        self.assertEqual(manifest.status_code, 200)
+        self.assertEqual(manifest["Content-Type"], "application/manifest+json")
+        self.assertEqual(manifest.json()["display"], "standalone")
+        self.assertEqual(service_worker.status_code, 200)
+        self.assertIn("application/javascript", service_worker["Content-Type"])
+        self.assertEqual(service_worker["Service-Worker-Allowed"], "/")
+        self.assertContains(service_worker, 'url.pathname.startsWith("/static/")')
+        self.assertContains(service_worker, 'fetch(request).then((response)')
+        self.assertNotContains(service_worker, 'url.pathname.startsWith("/chat/")')
+        self.assertEqual(offline.status_code, 200)
+
+    def test_chat_script_renders_time_before_attachments(self):
+        with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
+            source = script.read()
+
+        self.assertIn("content.append(author, text, time);", source)
+        self.assertLess(
+            source.index("content.append(author, text, time);"),
+            source.index("renderMessageAttachments(content, data.attachments || []);"),
+        )
 
 
 class MessageValidationTests(TestCase):

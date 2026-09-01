@@ -383,9 +383,9 @@ function addMessage(data) {
         });
     }
 
-    content.append(author, text);
+    content.append(author, text, time);
+    // Время должно быть в DOM до вложений: они встают непосредственно перед ним.
     renderMessageAttachments(content, data.attachments || []);
-    content.append(time);
     message.append(content);
     chatLog.append(message);
 
