@@ -245,6 +245,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         )
 
+    async def message_deleted(self, event):
+        """Сообщает клиенту, что реплику скрыли вне WebSocket-соединения."""
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "message_deleted",
+                    "message_id": event["message_id"],
+                    "room_slug": event["room_slug"],
+                }
+            )
+        )
+
     async def online_users(self, event):
         await self.send(
             text_data=json.dumps(

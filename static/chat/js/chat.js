@@ -2,7 +2,10 @@ const {
     isAuthenticated,
     roomSlug,
     username: currentUsername,
+    canModerateMessages,
     attachmentUploadTemplate,
+    messageDeleteTemplate,
+    noteCreateUrl,
 } = chatConfig;
 const MESSAGE_MAX_LENGTH = 1000;
 const BARTENDER_USERNAME = "Семён";
@@ -11,12 +14,15 @@ let chatSocket = null;
 let directRecipient = null;
 let bartenderMode = false;
 let bartenderPrivate = false;
+let noteMode = false;
 let loadingHistory = false;
 let lastMessageDay = null;
 let presenceUsers = [];
 let presenceOnlineUsers = [];
 let selectedAttachments = [];
 let pendingAttachmentUpload = null;
+let selectedMessageElement = null;
+let pendingDeletionMessageId = null;
 const expandedPresenceLists = new Set();
 const PRESENCE_PREVIEW_LIMIT = 6;
 
@@ -69,6 +75,10 @@ function handleServerEvent(data) {
 
     if (data.type === "attachments" && data.room_slug === roomSlug) {
         updateMessageAttachments(data.message_id, data.attachments);
+    }
+
+    if (data.type === "message_deleted" && data.room_slug === roomSlug) {
+        removeMessage(data.message_id);
     }
 
     if (data.type === "user_presence") {
@@ -283,6 +293,32 @@ function clearDirectRecipient(focus = true) {
     }
 }
 
+function activateNoteMode() {
+    clearDirectRecipient(false);
+    clearBartenderMode(false);
+    noteMode = true;
+    document.getElementById("note-recipient")?.classList.remove("hidden");
+
+    const input = document.getElementById("chat-message-input");
+    if (input) {
+        input.placeholder = "Запишите мысль для себя…";
+        input.focus();
+    }
+}
+
+function clearNoteMode(focus = true) {
+    noteMode = false;
+    document.getElementById("note-recipient")?.classList.add("hidden");
+
+    const input = document.getElementById("chat-message-input");
+    if (input && !directRecipient && !bartenderMode) {
+        setComposerPlaceholder(input);
+    }
+    if (focus) {
+        input?.focus();
+    }
+}
+
 function activateBartender() {
     clearDirectRecipient(false);
     bartenderMode = true;
@@ -364,11 +400,42 @@ function addMessage(data) {
         username: data.username,
         avatar_url: data.avatar_url,
     }, "message-author-avatar"));
-    const authorName = document.createElement("span");
+    const authorName = document.createElement(
+        normalizeUsername(data.username) === normalizeUsername(currentUsername)
+            ? "button"
+            : "span",
+    );
+    if (authorName.tagName === "BUTTON") {
+        authorName.type = "button";
+        authorName.className = "message-own-name";
+        authorName.title = "Написать личную заметку";
+        authorName.addEventListener("click", activateNoteMode);
+    }
     authorName.textContent = data.private && data.username === currentUsername
         ? `Вы → ${data.recipient}`
         : data.username;
     author.append(authorName);
+
+    const canDelete = normalizeUsername(data.username) === normalizeUsername(currentUsername)
+        || canModerateMessages;
+    if (data.id && canDelete) {
+        const removeTitle = canModerateMessages
+            && normalizeUsername(data.username) !== normalizeUsername(currentUsername)
+            ? "Убрать сообщение как модератор"
+            : "Удалить сообщение";
+        const remove = createMessageAction("message-delete", removeTitle, "trash");
+        remove.addEventListener("click", () => openDeleteMessageDialog(data.id));
+        author.append(remove);
+    }
+    if (data.id) {
+        const save = createMessageAction(
+            "message-save-note",
+            "Приколоть к личным заметкам",
+            "pin",
+        );
+        save.addEventListener("click", () => saveNote(data.id));
+        author.append(save);
+    }
 
     const text = document.createElement("div");
     text.className = "message-text";
@@ -387,6 +454,12 @@ function addMessage(data) {
     // Время должно быть в DOM до вложений: они встают непосредственно перед ним.
     renderMessageAttachments(content, data.attachments || []);
     message.append(content);
+    message.addEventListener("click", (event) => {
+        if (event.target.closest("button, a")) {
+            return;
+        }
+        toggleMessageSelection(message);
+    });
     chatLog.append(message);
 
     if (
@@ -417,6 +490,114 @@ function updateMessageAttachments(messageId, attachments) {
     const content = message?.querySelector(".message-content");
     if (content) {
         renderMessageAttachments(content, attachments);
+    }
+}
+
+function removeMessage(messageId) {
+    const message = document.querySelector(
+        `.message[data-message-id="${CSS.escape(String(messageId))}"]`,
+    );
+    if (!message) {
+        return;
+    }
+    if (selectedMessageElement === message) {
+        selectedMessageElement = null;
+    }
+    message.remove();
+
+    const chatLog = document.getElementById("chat-log");
+    if (chatLog && !chatLog.querySelector(".message")) {
+        renderEmptyState(chatLog);
+    }
+}
+
+function toggleMessageSelection(message) {
+    if (selectedMessageElement === message) {
+        message.classList.remove("is-selected");
+        selectedMessageElement = null;
+        return;
+    }
+
+    selectedMessageElement?.classList.remove("is-selected");
+    selectedMessageElement = message;
+    message.classList.add("is-selected");
+}
+
+function openDeleteMessageDialog(messageId) {
+    const dialog = document.getElementById("delete-message-modal");
+    if (!dialog) {
+        return;
+    }
+    pendingDeletionMessageId = messageId;
+    dialog.classList.remove("hidden");
+    document.getElementById("cancel-message-delete")?.focus();
+}
+
+function closeDeleteMessageDialog() {
+    pendingDeletionMessageId = null;
+    document.getElementById("delete-message-modal")?.classList.add("hidden");
+}
+
+async function deleteMessage(messageId) {
+    try {
+        const response = await fetch(
+            messageDeleteTemplate.replace("/0/", `/${messageId}/`),
+            {
+                method: "POST",
+                headers: { "X-CSRFToken": getCsrfToken() },
+                credentials: "same-origin",
+            },
+        );
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || "Не удалось удалить сообщение.");
+        }
+        removeMessage(messageId);
+        closeDeleteMessageDialog();
+        showSuccess("Реплика убрана: рабочее дерево снова чистое.");
+    } catch (error) {
+        showError(error.message || "Не удалось удалить сообщение.");
+    }
+}
+
+async function saveNote(sourceMessageId = null) {
+    const input = document.getElementById("chat-message-input");
+    const text = input?.value.trim() || "";
+    if (!sourceMessageId && !text) {
+        showError("Заметка не может быть пустой.");
+        return false;
+    }
+
+    try {
+        const response = await fetch(noteCreateUrl, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "X-CSRFToken": getCsrfToken(),
+            },
+            credentials: "same-origin",
+            body: JSON.stringify(sourceMessageId
+                ? { source_message_id: sourceMessageId }
+                : { text }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || "Не удалось сохранить заметку.");
+        }
+        if (!sourceMessageId && input) {
+            input.value = "";
+            updateInputSize();
+            clearNoteMode();
+        }
+        showSuccess(
+            payload.created
+                ? "Заметка сохранена."
+                : "Эта реплика уже есть в заметках.",
+        );
+        return true;
+    } catch (error) {
+        showError(error.message || "Не удалось сохранить заметку.");
+        return false;
     }
 }
 
@@ -507,9 +688,24 @@ function showError(message) {
         return;
     }
 
+    errorElement.classList.remove("is-success");
     errorElement.textContent = message;
     window.setTimeout(() => {
         errorElement.textContent = "";
+    }, 3000);
+}
+
+function showSuccess(message) {
+    const errorElement = document.getElementById("error-message");
+    if (!errorElement) {
+        return;
+    }
+
+    errorElement.classList.add("is-success");
+    errorElement.textContent = message;
+    window.setTimeout(() => {
+        errorElement.textContent = "";
+        errorElement.classList.remove("is-success");
     }, 3000);
 }
 
@@ -525,6 +721,15 @@ function sendMessage() {
 
     if (pendingAttachmentUpload) {
         showError("Подождите, пока предыдущие файлы попадут в сообщение.");
+        return;
+    }
+
+    if (noteMode) {
+        if (selectedAttachments.length) {
+            showError("К личной заметке нельзя прикрепить файлы.");
+            return;
+        }
+        saveNote();
         return;
     }
 
@@ -712,11 +917,36 @@ function setComposerPlaceholder(input) {
     }
 }
 
+function createMessageAction(className, title, icon) {
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = `message-action ${className}`;
+    action.title = title;
+    action.ariaLabel = title;
+    action.innerHTML = icon === "trash"
+        ? '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6m4-6v6M9 7l1-3h4l1 3m-9 0 1 13h10l1-13" /></svg>'
+        : '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14 4 6 6-4 2-3 6-2-2-4 4-1-1 4-4-2-2 6-3 2-4Z" /></svg>';
+    return action;
+}
+
 document.getElementById("chat-message-submit")?.addEventListener("click", sendMessage);
 document.getElementById("chat-attachment-trigger")?.addEventListener("click", selectAttachments);
 document.getElementById("chat-attachment-input")?.addEventListener("change", handleAttachmentSelection);
 document.getElementById("cancel-direct-message")?.addEventListener("click", clearDirectRecipient);
 document.getElementById("bartender-trigger")?.addEventListener("click", activateBartender);
+document.getElementById("note-trigger")?.addEventListener("click", activateNoteMode);
+document.getElementById("cancel-note-message")?.addEventListener("click", clearNoteMode);
+document.getElementById("cancel-message-delete")?.addEventListener("click", closeDeleteMessageDialog);
+document.getElementById("confirm-message-delete")?.addEventListener("click", () => {
+    if (pendingDeletionMessageId) {
+        deleteMessage(pendingDeletionMessageId);
+    }
+});
+document.getElementById("delete-message-modal")?.addEventListener("click", (event) => {
+    if (event.target.id === "delete-message-modal") {
+        closeDeleteMessageDialog();
+    }
+});
 document.getElementById("bartender-public")?.addEventListener("click", () => setBartenderVisibility(false));
 document.getElementById("bartender-private")?.addEventListener("click", () => setBartenderVisibility(true));
 document.getElementById("cancel-bartender-message")?.addEventListener("click", clearBartenderMode);
@@ -728,8 +958,10 @@ chatInput?.addEventListener("keydown", (event) => {
         sendMessage();
     }
     if (event.key === "Escape") {
+        closeDeleteMessageDialog();
         clearDirectRecipient(false);
         clearBartenderMode(false);
+        clearNoteMode(false);
         chatInput.focus();
     }
 });

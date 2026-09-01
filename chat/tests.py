@@ -1,6 +1,7 @@
 import json
 import tempfile
 from io import BytesIO
+from io import StringIO
 from unittest.mock import patch
 
 from asgiref.sync import async_to_sync
@@ -8,14 +9,15 @@ from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
 from PIL import Image
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth.models import AnonymousUser, Permission
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
 from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Attachment, Message, Room, RoomMembership, RoomReadState
+from .models import Attachment, Message, Note, NoteAttachment, Room, RoomMembership, RoomReadState
 from .routing import websocket_urlpatterns
 from .services.attachments import (
     AttachmentValidationError,
@@ -304,6 +306,207 @@ class AttachmentUploadViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+
+class MessageDeleteViewTests(TestCase):
+    def setUp(self):
+        self.author = User.objects.create_user(username="author")
+        self.outsider = User.objects.create_user(username="outsider")
+        self.moderator = User.objects.create_user(username="moderator")
+        self.moderator.user_permissions.add(
+            Permission.objects.get(
+                content_type__app_label="chat",
+                codename="moderate_message",
+            )
+        )
+        self.room = Room.objects.create(name="General", slug="general")
+        self.message = Message.objects.create(
+            user=self.author,
+            room=self.room,
+            text="Реплика для удаления",
+        )
+        self.url = reverse("chat:delete_message", args=[self.message.id])
+
+    @patch("chat.views.broadcast_message_deleted")
+    def test_author_can_hide_own_message(self, broadcast):
+        self.client.force_login(self.author)
+
+        response = self.client.post(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.message.refresh_from_db()
+        self.assertIsNotNone(self.message.hidden_at)
+        self.assertEqual(self.message.hidden_by, self.author)
+        self.assertEqual(self.message.hidden_reason, "Удалено автором.")
+        broadcast.assert_called_once_with(self.message)
+
+    def test_guest_cannot_hide_someone_elses_message(self):
+        self.client.force_login(self.outsider)
+
+        response = self.client.post(self.url)
+
+        self.assertEqual(response.status_code, 403)
+        self.message.refresh_from_db()
+        self.assertIsNone(self.message.hidden_at)
+
+    @patch("chat.views.broadcast_message_deleted")
+    def test_moderator_can_hide_any_message_and_gets_audit_event(self, broadcast):
+        self.client.force_login(self.moderator)
+
+        response = self.client.post(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.message.refresh_from_db()
+        self.assertEqual(self.message.hidden_by, self.moderator)
+        self.assertTrue(
+            self.message.moderation_events.filter(
+                moderator=self.moderator,
+                action="hide_message",
+            ).exists()
+        )
+        broadcast.assert_called_once_with(self.message)
+
+
+class NotesViewTests(TestCase):
+    def setUp(self):
+        self.media_directory = tempfile.TemporaryDirectory()
+        self.settings_override = override_settings(
+            MEDIA_ROOT=self.media_directory.name,
+        )
+        self.settings_override.enable()
+        self.author = User.objects.create_user(username="author")
+        self.reader = User.objects.create_user(username="reader")
+        self.outsider = User.objects.create_user(username="outsider")
+        self.room = Room.objects.create(name="General", slug="general")
+        self.message = Message.objects.create(
+            user=self.author,
+            room=self.room,
+            text="Сохранённая реплика",
+        )
+        self.create_url = reverse("chat:create_note")
+
+    def tearDown(self):
+        self.settings_override.disable()
+        self.media_directory.cleanup()
+
+    def test_user_can_save_visible_message_once(self):
+        self.client.force_login(self.reader)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({"source_message_id": self.message.id}),
+            content_type="application/json",
+        )
+        repeated_response = self.client.post(
+            self.create_url,
+            data=json.dumps({"source_message_id": self.message.id}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(repeated_response.status_code, 200)
+        self.assertEqual(self.reader.chat_notes.count(), 1)
+        note = self.reader.chat_notes.get()
+        self.assertEqual(note.text, self.message.text)
+        self.assertEqual(note.source_author, self.author.username)
+
+    def test_user_can_create_and_delete_private_note(self):
+        self.client.force_login(self.reader)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({"text": "Не забыть проверить логи."}),
+            content_type="application/json",
+        )
+        note = self.reader.chat_notes.get()
+        delete_response = self.client.post(
+            reverse("chat:delete_note", args=[note.id])
+        )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertRedirects(delete_response, reverse("chat:notes"))
+        self.assertFalse(self.reader.chat_notes.exists())
+
+    def test_uninvited_guest_cannot_save_private_room_message(self):
+        private_room = Room.objects.create(
+            name="Тайный столик",
+            slug="taynyy-stolik",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.author,
+        )
+        RoomMembership.objects.create(room=private_room, user=self.author)
+        private_message = Message.objects.create(
+            user=self.author,
+            room=private_room,
+            text="Только для своих",
+        )
+        self.client.force_login(self.outsider)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({"source_message_id": private_message.id}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(self.outsider.chat_notes.exists())
+
+    def test_saved_note_keeps_its_own_attachment_after_source_is_hidden(self):
+        attachment = create_attachment(
+            message=self.message,
+            uploaded_file=SimpleUploadedFile("plan.txt", b"ship it"),
+        )
+        self.client.force_login(self.reader)
+
+        response = self.client.post(
+            self.create_url,
+            data=json.dumps({"source_message_id": self.message.id}),
+            content_type="application/json",
+        )
+        note_attachment = NoteAttachment.objects.get(note__user=self.reader)
+        MessageService.hide_message(message=self.message, actor=self.author)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertNotEqual(note_attachment.file.name, attachment.file.name)
+        download = self.client.get(
+            reverse("chat:download_note_attachment", args=[note_attachment.id])
+        )
+        self.assertEqual(download.status_code, 200)
+        self.assertEqual(
+            download["X-Accel-Redirect"],
+            f"/media/{note_attachment.file.name}",
+        )
+        with note_attachment.file.open("rb") as copied_file:
+            self.assertEqual(copied_file.read(), b"ship it")
+
+    def test_notes_and_profile_return_to_last_open_room(self):
+        self.client.force_login(self.reader)
+        self.client.get(reverse("chat:chat", args=[self.room.slug]))
+
+        notes_response = self.client.get(reverse("chat:notes"))
+        profile_response = self.client.get(reverse("profile"))
+
+        room_url = reverse("chat:chat", args=[self.room.slug])
+        self.assertContains(notes_response, f'href="{room_url}"')
+        self.assertContains(profile_response, f'href="{room_url}"')
+
+    def test_backfill_command_copies_attachments_to_old_note(self):
+        create_attachment(
+            message=self.message,
+            uploaded_file=SimpleUploadedFile("old-plan.txt", b"old file"),
+        )
+        note = Note.objects.create(
+            user=self.reader,
+            source_message=self.message,
+            source_author=self.author.username,
+            text=self.message.text,
+        )
+
+        output = StringIO()
+        call_command("backfill_note_attachments", stdout=output)
+
+        self.assertEqual(note.attachments.count(), 1)
+        self.assertIn("дополнено заметок — 1", output.getvalue())
 
 
 class MessageServiceTests(TestCase):
@@ -609,6 +812,13 @@ class ChatLayoutViewsTests(TestCase):
             source.index("content.append(author, text, time);"),
             source.index("renderMessageAttachments(content, data.attachments || []);"),
         )
+
+    def test_chat_uses_a_custom_delete_dialog(self):
+        with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
+            source = script.read()
+
+        self.assertIn("delete-message-modal", source)
+        self.assertNotIn("window.confirm", source)
 
 
 class MessageValidationTests(TestCase):

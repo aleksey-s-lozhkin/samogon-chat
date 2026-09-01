@@ -1,3 +1,5 @@
+import json
+
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
@@ -7,6 +9,7 @@ from django.db import transaction
 from django.db.models import Case, IntegerField, Q, Value, When
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils.http import content_disposition_header
 from django.utils.text import slugify
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -14,9 +17,17 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from config.rate_limit import is_allowed
 
 from .forms import PrivateRoomForm
-from .models import Attachment, Message, Room, RoomMembership
+from .models import (
+    Attachment,
+    Message,
+    Note,
+    NoteAttachment,
+    Room,
+    RoomMembership,
+)
 from .services.attachments import AttachmentValidationError, create_attachments
 from .services.messages import MessageService
+from .services.navigation import get_last_room_url
 
 
 # Порядок повторяет маршрут гостя по бару, а не алфавитный список.
@@ -111,6 +122,7 @@ def chat_page(request, room_slug):
 
     if request.user.is_authenticated:
         MessageService.mark_room_as_read(room=room, user_id=request.user.id)
+        request.session["last_chat_room_slug"] = room.slug
     rooms = list(get_visible_rooms(request.user))
     add_unread_counts(rooms, request.user)
 
@@ -142,6 +154,32 @@ def serve_attachment(request, attachment_id):
     ):
         raise Http404("Вложение не найдено")
 
+    as_attachment = request.path.endswith("/download/")
+    if settings.DEBUG:
+        return FileResponse(
+            attachment.file.open("rb"),
+            as_attachment=as_attachment,
+            filename=attachment.original_name,
+            content_type=attachment.content_type,
+        )
+
+    response = HttpResponse(content_type=attachment.content_type)
+    response["Content-Disposition"] = content_disposition_header(
+        as_attachment=as_attachment,
+        filename=attachment.original_name,
+    )
+    response["X-Accel-Redirect"] = f"/media/{attachment.file.name}"
+    return response
+
+
+@login_required
+def serve_note_attachment(request, attachment_id):
+    """Выдаёт копию вложения только владельцу заметки."""
+    attachment = get_object_or_404(
+        NoteAttachment.objects.select_related("note"),
+        id=attachment_id,
+        note__user=request.user,
+    )
     as_attachment = request.path.endswith("/download/")
     if settings.DEBUG:
         return FileResponse(
@@ -201,12 +239,142 @@ def add_message_attachments(request, message_id):
     return JsonResponse({"attachments": serialized_attachments}, status=201)
 
 
+@login_required
+def delete_message(request, message_id):
+    """Позволяет автору удалить свою реплику, а модератору — любую."""
+    if request.method != "POST":
+        raise Http404("Маршрут удаления не найден")
+
+    message = get_object_or_404(
+        Message.objects.select_related("room", "recipient", "user"),
+        id=message_id,
+        hidden_at__isnull=True,
+    )
+    if not MessageService.can_view_message(message=message, user=request.user):
+        raise Http404("Сообщение не найдено")
+    if not MessageService.hide_message(message=message, actor=request.user):
+        return JsonResponse(
+            {"error": "Нельзя удалить чужое сообщение."},
+            status=403,
+        )
+
+    broadcast_message_deleted(message)
+    return JsonResponse({"message_id": message.id})
+
+
+@login_required
+def notes_page(request):
+    """Показывает заметки только их владельцу."""
+    return render(
+        request,
+        "chat/notes.html",
+        {
+            "notes": request.user.chat_notes.prefetch_related("attachments"),
+            "last_room_url": get_last_room_url(request),
+        },
+    )
+
+
+@login_required
+def create_note(request):
+    """Сохраняет текст из поля ввода или доступную пользователю реплику."""
+    if request.method != "POST":
+        raise Http404("Маршрут заметок не найден")
+
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {"error": "Некорректные данные заметки."},
+            status=400,
+        )
+
+    source_message_id = payload.get("source_message_id")
+    text = payload.get("text", "")
+    if source_message_id is not None:
+        if not isinstance(source_message_id, int):
+            return JsonResponse(
+                {"error": "Некорректная реплика."},
+                status=400,
+            )
+        source_message = get_object_or_404(
+            Message.objects.select_related("room", "recipient", "user"),
+            id=source_message_id,
+            hidden_at__isnull=True,
+        )
+        if not MessageService.can_view_message(
+            message=source_message,
+            user=request.user,
+        ):
+            raise Http404("Реплика не найдена")
+        note, created = MessageService.save_note(
+            user=request.user,
+            text="",
+            source_message=source_message,
+        )
+    else:
+        if not isinstance(text, str) or not text.strip():
+            return JsonResponse(
+                {"error": "Заметка не может быть пустой."},
+                status=400,
+            )
+        if len(text.strip()) > 1000:
+            return JsonResponse(
+                {"error": "Заметка не может быть длиннее 1000 символов."},
+                status=400,
+            )
+        note, created = MessageService.save_note(
+            user=request.user,
+            text=text.strip(),
+        )
+
+    return JsonResponse(
+        {"id": note.id, "created": created, "notes_url": reverse("chat:notes")},
+        status=201 if created else 200,
+    )
+
+
+@login_required
+def delete_note(request, note_id):
+    """Удаляет заметку без влияния на исходное сообщение в чате."""
+    if request.method != "POST":
+        raise Http404("Маршрут удаления не найден")
+    note = get_object_or_404(Note, id=note_id, user=request.user)
+    note.delete()
+    return redirect("chat:notes")
+
+
 def broadcast_attachment_update(message, attachments):
     """Отправляет новые вложения только тем же людям, что видят сообщение."""
     event = {
         "type": "attachment_update",
         "message_id": message.id,
         "attachments": attachments,
+        "room_slug": message.room.slug,
+    }
+    channel_layer = get_channel_layer()
+    if message.recipient_id:
+        group_names = [
+            f"chat_user_{message.user_id}",
+            f"chat_user_{message.recipient_id}",
+        ]
+    elif message.room.is_private:
+        group_names = [
+            f"chat_user_{user_id}"
+            for user_id in message.room.memberships.values_list("user_id", flat=True)
+        ]
+    else:
+        group_names = [f"chat_{message.room.slug}"]
+
+    for group_name in group_names:
+        async_to_sync(channel_layer.group_send)(group_name, event)
+
+
+def broadcast_message_deleted(message):
+    """Убирает скрытую реплику у тех же гостей, которые её видели."""
+    event = {
+        "type": "message_deleted",
+        "message_id": message.id,
         "room_slug": message.room.slug,
     }
     channel_layer = get_channel_layer()
