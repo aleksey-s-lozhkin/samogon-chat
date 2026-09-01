@@ -10,6 +10,7 @@ class Command(BaseCommand):
     permission_codes = (
         ("chat", "view_message"),
         ("chat", "change_message"),
+        ("chat", "moderate_message"),
         ("chat", "view_moderationevent"),
         ("users", "view_user"),
         ("users", "change_user"),

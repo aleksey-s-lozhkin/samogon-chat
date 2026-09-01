@@ -27,6 +27,17 @@
         </button>
     </div>
 
+    <div id="note-recipient" class="direct-recipient hidden">
+        <span>Личная заметка — в чат не отправится</span>
+        <button
+            id="cancel-note-message"
+            type="button"
+            aria-label="Отменить создание заметки"
+        >
+            ×
+        </button>
+    </div>
+
     <div id="bartender-recipient" class="bartender-recipient hidden">
         <span>Вопрос Семёну</span>
         <div class="bartender-visibility" role="group" aria-label="Видимость вопроса Семёну">
@@ -55,22 +66,35 @@
         >
         <button
             id="chat-attachment-trigger"
-            class="attachment-trigger"
+            class="composer-tool attachment-trigger"
             type="button"
             aria-label="Прикрепить файлы"
             title="Прикрепить файлы"
         >
-            <span aria-hidden="true">⌁</span>
-            <span class="attachment-trigger-label">Файл</span>
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="m8.5 12.8 6.1-6.1a3 3 0 1 1 4.2 4.2l-8.4 8.4a5 5 0 1 1-7.1-7.1l8-8" />
+            </svg>
         </button>
         <button
             id="bartender-trigger"
-            class="bartender-trigger"
+            class="composer-tool bartender-trigger"
             type="button"
             aria-label="Задать вопрос Семёну"
+            title="Позвать Семёна"
         >
             <span aria-hidden="true">С</span>
-            <span>Семён</span>
+        </button>
+        <button
+            id="note-trigger"
+            class="composer-tool note-trigger"
+            type="button"
+            aria-label="Написать личную заметку"
+            title="Личная заметка"
+        >
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M16 3.5 20.5 8 11 17.5 6.5 13 16 3.5Z" />
+                <path d="m5.5 14 4.5 4.5-5.5 1 1-5.5Z" />
+            </svg>
         </button>
         <textarea
             id="chat-message-input"
@@ -80,7 +104,16 @@
             maxlength="1000"
         ></textarea>
 
-        <button id="chat-message-submit" type="button">Отправить</button>
+        <button
+            id="chat-message-submit"
+            type="button"
+            aria-label="Отправить сообщение"
+            title="Отправить"
+        >
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="m5 3 15 9L5 21V3Z" />
+            </svg>
+        </button>
     </div>
 
     <div id="attachment-preview" class="attachment-preview hidden" aria-live="polite"></div>
@@ -90,3 +123,21 @@
         <span id="message-char-count">0 / 1000</span>
     </div>
 </section>
+
+<div
+    id="delete-message-modal"
+    class="message-dialog hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="delete-message-title"
+>
+    <div class="message-dialog-card">
+        <span class="message-dialog-eyebrow">git status: dirty</span>
+        <h2 id="delete-message-title">Убрать реплику?</h2>
+        <p>Она исчезнет из чата. Откатить можно только через модератора.</p>
+        <div class="message-dialog-actions">
+            <button id="cancel-message-delete" type="button">Оставить</button>
+            <button id="confirm-message-delete" type="button">Убрать</button>
+        </div>
+    </div>
+</div>

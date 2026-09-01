@@ -17,7 +17,7 @@
 
     <link
         rel="stylesheet"
-        href="{% static 'chat/css/chat.css' %}?v=9"
+        href="{% static 'chat/css/chat.css' %}?v=10"
     >
 
     <script
@@ -79,7 +79,10 @@
         roomName: "{{ room.name|escapejs }}",
         username: "{{ request.user.username|escapejs }}",
         isAuthenticated: {{ user.is_authenticated|yesno:"true,false" }},
+        canModerateMessages: {{ perms.chat.moderate_message|yesno:"true,false" }},
         attachmentUploadTemplate: "{% url 'chat:message_attachments' 0 %}",
+        messageDeleteTemplate: "{% url 'chat:delete_message' 0 %}",
+        noteCreateUrl: "{% url 'chat:create_note' %}",
 
     };
 
@@ -88,7 +91,7 @@
     };
 </script>
 
-<script src="{% static 'chat/js/chat.js' %}?v=9"></script>
+<script src="{% static 'chat/js/chat.js' %}?v=10"></script>
 <script src="{% static 'chat/js/auth.js' %}?v=3"></script>
 
 </body>

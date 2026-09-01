@@ -143,6 +143,71 @@ class Message(models.Model):
         return f"{self.user.username}: {self.text}"
 
 
+class Note(models.Model):
+    """Личная заметка гостя, при необходимости сохранённая из реплики."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="chat_notes",
+    )
+    text = models.TextField(max_length=1000)
+    source_message = models.ForeignKey(
+        Message,
+        on_delete=models.SET_NULL,
+        related_name="saved_notes",
+        blank=True,
+        null=True,
+    )
+    source_author = models.CharField(blank=True, max_length=150)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("user", "source_message"),
+                condition=models.Q(source_message__isnull=False),
+                name="unique_saved_message_note",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Заметка {self.user.username}: {self.text[:40]}"
+
+
+def note_attachment_upload_to(instance, filename):
+    """Отделяет копии вложений в заметках от исходной реплики."""
+    suffix = Path(filename).suffix.lower()
+    return f"chat/note-attachments/{instance.id.hex}{suffix}"
+
+
+class NoteAttachment(models.Model):
+    """Личная копия вложения из сохранённой реплики."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    note = models.ForeignKey(
+        Note,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+    )
+    file = models.FileField(upload_to=note_attachment_upload_to)
+    original_name = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=100)
+    size = models.PositiveIntegerField()
+    kind = models.CharField(
+        max_length=10,
+        choices=(("image", "Изображение"), ("file", "Файл")),
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return self.original_name
+
+
 def attachment_upload_to(instance, filename):
     """Скрывает исходное имя файла за случайным именем в закрытом каталоге."""
     suffix = Path(filename).suffix.lower()
