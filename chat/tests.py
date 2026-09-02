@@ -1066,6 +1066,71 @@ class ChatConsumerTests(TransactionTestCase):
         async_to_sync(self._assert_reaction_toggle)(message.id)
         self.assertFalse(MessageReaction.objects.filter(message=message).exists())
 
+    def test_typing_event_is_broadcast_in_room_without_persistence(self):
+        async_to_sync(self._assert_room_typing_delivery)()
+
+        self.assertFalse(Message.objects.filter(room=self.room).exists())
+
+    def test_direct_typing_event_is_hidden_from_other_users(self):
+        recipient = User.objects.create_user(username="maria")
+        outsider = User.objects.create_user(username="ivan")
+
+        async_to_sync(self._assert_direct_typing_privacy)(recipient, outsider)
+
+    async def _connect_communicator(self, user):
+        communicator = WebsocketCommunicator(
+            self.application,
+            "/ws/chat/general/",
+        )
+        communicator.scope["user"] = user
+        connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+        return communicator
+
+    async def _drain_communicator(self, communicator):
+        while not await communicator.receive_nothing(timeout=0.01):
+            await communicator.receive_json_from()
+
+    async def _assert_room_typing_delivery(self):
+        communicator = await self._connect_communicator(self.user)
+        await self._drain_communicator(communicator)
+
+        await communicator.send_json_to({"type": "typing", "active": True})
+        event = await communicator.receive_json_from()
+
+        self.assertEqual(
+            event,
+            {
+                "type": "typing_update",
+                "username": "alex",
+                "active": True,
+                "recipient": None,
+                "room_slug": "general",
+            },
+        )
+        await communicator.disconnect()
+
+    async def _assert_direct_typing_privacy(self, recipient, outsider):
+        sender_socket = await self._connect_communicator(self.user)
+        recipient_socket = await self._connect_communicator(recipient)
+        outsider_socket = await self._connect_communicator(outsider)
+        for communicator in (sender_socket, recipient_socket, outsider_socket):
+            await self._drain_communicator(communicator)
+
+        await sender_socket.send_json_to(
+            {"type": "typing", "active": True, "recipient": "maria"}
+        )
+        sender_event = await sender_socket.receive_json_from()
+        recipient_event = await recipient_socket.receive_json_from()
+
+        self.assertEqual(sender_event["type"], "typing_update")
+        self.assertEqual(recipient_event, sender_event)
+        self.assertEqual(recipient_event["recipient"], "maria")
+        self.assertTrue(await outsider_socket.receive_nothing(timeout=0.05))
+
+        for communicator in (sender_socket, recipient_socket, outsider_socket):
+            await communicator.disconnect()
+
     async def _assert_reaction_toggle(self, message_id):
         communicator = WebsocketCommunicator(self.application, "/ws/chat/general/")
         communicator.scope["user"] = self.user

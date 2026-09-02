@@ -10,6 +10,9 @@ const {
 const MESSAGE_MAX_LENGTH = 1000;
 const BARTENDER_USERNAME = "Семён";
 const REACTION_EMOJI = ["👍", "❤️", "😂", "🔥", "🤝"];
+const TYPING_DEBOUNCE_MS = 250;
+const TYPING_IDLE_MS = 1600;
+const TYPING_TTL_MS = 3500;
 
 let chatSocket = null;
 let directRecipient = null;
@@ -24,6 +27,12 @@ let selectedAttachments = [];
 let pendingAttachmentUpload = null;
 let selectedMessageElement = null;
 let pendingDeletionMessageId = null;
+let bartenderTyping = false;
+let typingDebounceTimer = null;
+let typingIdleTimer = null;
+let typingActive = false;
+let typingRecipient = null;
+const typingUsers = new Map();
 const expandedPresenceLists = new Set();
 const PRESENCE_PREVIEW_LIMIT = 6;
 
@@ -84,6 +93,10 @@ function handleServerEvent(data) {
 
     if (data.type === "reaction_update" && data.room_slug === roomSlug) {
         updateMessageReaction(data);
+    }
+
+    if (data.type === "typing_update" && data.room_slug === roomSlug) {
+        updateTypingUser(data);
     }
 
     if (data.type === "user_presence") {
@@ -268,6 +281,7 @@ function togglePresenceList(containerId) {
 }
 
 function setDirectRecipient(username) {
+    stopTyping();
     clearBartenderMode(false);
     directRecipient = username;
 
@@ -285,6 +299,7 @@ function setDirectRecipient(username) {
 }
 
 function clearDirectRecipient(focus = true) {
+    stopTyping();
     directRecipient = null;
 
     const banner = document.getElementById("direct-recipient");
@@ -299,6 +314,7 @@ function clearDirectRecipient(focus = true) {
 }
 
 function activateNoteMode() {
+    stopTyping();
     clearDirectRecipient(false);
     clearBartenderMode(false);
     noteMode = true;
@@ -325,6 +341,7 @@ function clearNoteMode(focus = true) {
 }
 
 function activateBartender() {
+    stopTyping();
     clearDirectRecipient(false);
     bartenderMode = true;
     bartenderPrivate = false;
@@ -341,6 +358,7 @@ function activateBartender() {
 }
 
 function setBartenderVisibility(isPrivate) {
+    stopTyping();
     bartenderPrivate = isPrivate;
     updateBartenderMode();
 }
@@ -482,8 +500,10 @@ function addMessage(data) {
         setBartenderTyping(false);
     }
 
-    if (loadingHistory || wasNearBottom) {
-        chatLog.scrollTop = chatLog.scrollHeight;
+    if (loadingHistory) {
+        scrollToLatest(chatLog, false);
+    } else if (wasNearBottom) {
+        scrollToLatest(chatLog, true);
     } else if (!message.classList.contains("own")) {
         document.getElementById("scroll-to-latest")?.classList.remove("hidden");
     }
@@ -824,6 +844,15 @@ function isNearBottom(chatLog) {
     return chatLog.scrollHeight - chatLog.scrollTop - chatLog.clientHeight < 48;
 }
 
+function scrollToLatest(chatLog, smooth = true) {
+    chatLog.scrollTo({
+        top: chatLog.scrollHeight,
+        behavior: smooth && !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? "smooth"
+            : "auto",
+    });
+}
+
 function showError(message) {
     const errorElement = document.getElementById("error-message");
     if (!errorElement) {
@@ -894,6 +923,7 @@ function sendMessage() {
     if (selectedAttachments.length) {
         pendingAttachmentUpload = [...selectedAttachments];
     }
+    stopTyping();
     chatSocket.send(JSON.stringify({
         message,
         recipient: directRecipient,
@@ -1003,7 +1033,89 @@ function isBartenderRequest(message) {
 }
 
 function setBartenderTyping(isTyping) {
-    document.getElementById("typing-indicator")?.classList.toggle("hidden", !isTyping);
+    bartenderTyping = isTyping;
+    renderTypingIndicator();
+}
+
+function renderTypingIndicator() {
+    const indicator = document.getElementById("typing-indicator");
+    if (!indicator) {
+        return;
+    }
+    if (bartenderTyping) {
+        indicator.textContent = "Семён протирает стакан и подбирает слова…";
+        indicator.classList.remove("hidden");
+        return;
+    }
+
+    const usernames = [...typingUsers.keys()];
+    if (!usernames.length) {
+        indicator.classList.add("hidden");
+        return;
+    }
+    indicator.textContent = usernames.length === 1
+        ? `${usernames[0]} печатает…`
+        : `${usernames.slice(0, 2).join(" и ")} печатают…`;
+    indicator.classList.remove("hidden");
+}
+
+function updateTypingUser(data) {
+    if (normalizeUsername(data.username) === normalizeUsername(currentUsername)) {
+        return;
+    }
+    window.clearTimeout(typingUsers.get(data.username));
+    if (!data.active) {
+        typingUsers.delete(data.username);
+        renderTypingIndicator();
+        return;
+    }
+    typingUsers.set(data.username, window.setTimeout(() => {
+        typingUsers.delete(data.username);
+        renderTypingIndicator();
+    }, TYPING_TTL_MS));
+    renderTypingIndicator();
+}
+
+function sendTypingState(active, recipient = typingRecipient) {
+    if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
+        return;
+    }
+    chatSocket.send(JSON.stringify({type: "typing", active, recipient}));
+}
+
+function stopTyping() {
+    window.clearTimeout(typingDebounceTimer);
+    window.clearTimeout(typingIdleTimer);
+    typingDebounceTimer = null;
+    typingIdleTimer = null;
+    if (typingActive) {
+        sendTypingState(false);
+    }
+    typingActive = false;
+    typingRecipient = null;
+}
+
+function scheduleTyping() {
+    const input = document.getElementById("chat-message-input");
+    if (!input?.value.trim() || noteMode || (bartenderMode && bartenderPrivate)) {
+        stopTyping();
+        return;
+    }
+
+    const recipient = directRecipient;
+    if (typingActive && recipient !== typingRecipient) {
+        stopTyping();
+    }
+    window.clearTimeout(typingDebounceTimer);
+    if (!typingActive) {
+        typingDebounceTimer = window.setTimeout(() => {
+            typingRecipient = recipient;
+            typingActive = true;
+            sendTypingState(true, recipient);
+        }, TYPING_DEBOUNCE_MS);
+    }
+    window.clearTimeout(typingIdleTimer);
+    typingIdleTimer = window.setTimeout(stopTyping, TYPING_IDLE_MS);
 }
 
 function updateInputSize() {
@@ -1148,7 +1260,11 @@ document.getElementById("bartender-public")?.addEventListener("click", () => set
 document.getElementById("bartender-private")?.addEventListener("click", () => setBartenderVisibility(true));
 document.getElementById("cancel-bartender-message")?.addEventListener("click", clearBartenderMode);
 const chatInput = document.getElementById("chat-message-input");
-chatInput?.addEventListener("input", updateInputSize);
+chatInput?.addEventListener("input", () => {
+    updateInputSize();
+    scheduleTyping();
+});
+chatInput?.addEventListener("blur", stopTyping);
 chatInput?.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
@@ -1165,9 +1281,14 @@ chatInput?.addEventListener("keydown", (event) => {
 document.getElementById("scroll-to-latest")?.addEventListener("click", () => {
     const chatLog = document.getElementById("chat-log");
     if (chatLog) {
-        chatLog.scrollTop = chatLog.scrollHeight;
+        scrollToLatest(chatLog, true);
     }
     document.getElementById("scroll-to-latest")?.classList.add("hidden");
+});
+document.getElementById("chat-log")?.addEventListener("scroll", (event) => {
+    if (isNearBottom(event.currentTarget)) {
+        document.getElementById("scroll-to-latest")?.classList.add("hidden");
+    }
 });
 document.getElementById("toggle-online-users")?.addEventListener("click", () => {
     togglePresenceList("online-users-list");
