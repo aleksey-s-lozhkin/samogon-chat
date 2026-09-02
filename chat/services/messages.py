@@ -1,10 +1,12 @@
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Q
 from django.urls import reverse
 from django.utils import timezone
 
 from chat.models import (
     Message,
+    MessageReaction,
     ModerationEvent,
     Note,
     NoteAttachment,
@@ -64,6 +66,32 @@ class MessageService:
                 reason=reason,
             )
         return True
+
+    @staticmethod
+    def toggle_reaction(*, message: Message, user, emoji: str) -> tuple[int, bool, list[str]]:
+        """Ставит или снимает реакцию, сохраняя одну запись на emoji."""
+        if emoji not in MessageReaction.Emoji.values:
+            raise ValueError("Такой реакции у стойки пока нет.")
+        if not MessageService.can_view_message(message=message, user=user):
+            raise PermissionError("Эта реплика вам недоступна.")
+
+        with transaction.atomic():
+            reaction, created = MessageReaction.objects.get_or_create(
+                message=message,
+                user=user,
+                emoji=emoji,
+            )
+            if not created:
+                reaction.delete()
+            reactions = list(MessageReaction.objects.filter(
+                message=message,
+                emoji=emoji,
+            ).select_related("user"))
+        return (
+            len(reactions),
+            created,
+            [MessageService.display_username(item.user.username) for item in reactions],
+        )
 
     @staticmethod
     def save_note(*, user, text: str, source_message: Message | None = None):
@@ -166,7 +194,7 @@ class MessageService:
                 | Q(recipient_id=viewer_id),
             )
             .select_related("user", "recipient")
-            .prefetch_related("attachments")
+            .prefetch_related("attachments", "reactions")
             .order_by("created_at")
         )
 
@@ -189,12 +217,16 @@ class MessageService:
                 "private": message.recipient_id is not None,
                 "color": message.user.message_color,
                 "attachments": MessageService.serialize_attachments(message),
+                "reactions": MessageService.serialize_reactions(
+                    message,
+                    viewer_id=viewer_id,
+                ),
             }
             for message in messages
         ]
 
     @staticmethod
-    def serialize_message(message: Message) -> dict:
+    def serialize_message(message: Message, viewer_id: int | None = None) -> dict:
         return {
             "id": message.id,
             "username": MessageService.display_username(message.user.username),
@@ -209,7 +241,33 @@ class MessageService:
             "private": message.recipient_id is not None,
             "color": message.user.message_color,
             "attachments": MessageService.serialize_attachments(message),
+            "reactions": MessageService.serialize_reactions(
+                message,
+                viewer_id=viewer_id,
+            ),
         }
+
+    @staticmethod
+    def serialize_reactions(message: Message, viewer_id: int | None = None) -> list[dict]:
+        """Собирает счётчики без раскрытия списка участников реакции."""
+        reactions = list(message.reactions.all())
+        result = []
+        for emoji in MessageReaction.Emoji.values:
+            emoji_reactions = [item for item in reactions if item.emoji == emoji]
+            if not emoji_reactions:
+                continue
+            result.append(
+                {
+                    "emoji": emoji,
+                    "count": len(emoji_reactions),
+                    "reacted": any(item.user_id == viewer_id for item in emoji_reactions),
+                    "users": [
+                        MessageService.display_username(item.user.username)
+                        for item in emoji_reactions
+                    ],
+                }
+            )
+        return result
 
     @staticmethod
     def mark_room_as_read(*, room: Room, user_id: int) -> None:

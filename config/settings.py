@@ -205,6 +205,7 @@ LOGIN_RATE_LIMIT = int(os.getenv("LOGIN_RATE_LIMIT", "10"))
 REGISTRATION_RATE_LIMIT = int(os.getenv("REGISTRATION_RATE_LIMIT", "5"))
 MESSAGE_RATE_LIMIT = int(os.getenv("MESSAGE_RATE_LIMIT", "20"))
 BARTENDER_RATE_LIMIT = int(os.getenv("BARTENDER_RATE_LIMIT", "5"))
+REACTION_RATE_LIMIT = int(os.getenv("REACTION_RATE_LIMIT", "30"))
 
 # Ollama runs on a separate machine in the local network.  Keeping this in an
 # environment variable lets local development and production use different

@@ -17,7 +17,7 @@
 
     <link
         rel="stylesheet"
-        href="{% static 'chat/css/chat.css' %}?v=10"
+        href="{% static 'chat/css/chat.css' %}?v=13"
     >
 
     <script
@@ -45,7 +45,7 @@
     x-data="{ roomsOpen: false, peopleOpen: false }"
 >
 
-    {% include "chat/partials/site_header.html" with header_tagline="Здесь баги разбирают по душам." show_sidebar_toggle=True ajax_logout=True %}
+    {% include "chat/partials/site_header.html" with header_tagline="Здесь баги разбирают по душам." show_sidebar_toggle=True ajax_logout=True hide_account_links=True %}
 
 
     <!-- CHAT LAYOUT -->
@@ -91,7 +91,7 @@
     };
 </script>
 
-<script src="{% static 'chat/js/chat.js' %}?v=10"></script>
+<script src="{% static 'chat/js/chat.js' %}?v=13"></script>
 <script src="{% static 'chat/js/auth.js' %}?v=3"></script>
 
 </body>

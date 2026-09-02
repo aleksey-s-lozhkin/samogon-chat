@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from config.rate_limit import is_allowed
 
-from .models import Room
+from .models import Message, Room
 from .services.bartender import BartenderUnavailable, bartender
 from .services.messages import MessageService
 from .services.presence import online_users
@@ -102,6 +102,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close(code=4403)
             return
 
+        try:
+            data = json.loads(text_data)
+        except json.JSONDecodeError:
+            data = None
+
+        if isinstance(data, dict) and data.get("type") == "reaction":
+            await self.handle_reaction(data)
+            return
+
         if not await self.is_rate_allowed(
             bucket="message",
             limit=settings.MESSAGE_RATE_LIMIT,
@@ -186,6 +195,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "private": recipient is not None,
             "color": self.user.message_color,
             "attachments": [],
+            "reactions": [],
             "room_slug": self.room.slug,
             "room_private": self.room.is_private,
         }
@@ -226,6 +236,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "private": event["private"],
                     "color": event["color"],
                     "attachments": event.get("attachments", []),
+                    "reactions": event.get("reactions", []),
                     "room_slug": event["room_slug"],
                     "room_private": event["room_private"],
                 }
@@ -252,6 +263,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 {
                     "type": "message_deleted",
                     "message_id": event["message_id"],
+                    "room_slug": event["room_slug"],
+                }
+            )
+        )
+
+    async def reaction_update(self, event):
+        """Рассылает новый счётчик только тем, кто видит исходную реплику."""
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "reaction_update",
+                    "message_id": event["message_id"],
+                    "emoji": event["emoji"],
+                    "count": event["count"],
+                    "users": event["users"],
+                    "active": event["active"],
+                    "actor_username": event["actor_username"],
                     "room_slug": event["room_slug"],
                 }
             )
@@ -290,6 +318,51 @@ class ChatConsumer(AsyncWebsocketConsumer):
             text_data=json.dumps({"type": "error", "message": message})
         )
 
+    async def handle_reaction(self, data):
+        """Обрабатывает реакцию отдельно от отправки текстовой реплики."""
+        message_id = data.get("message_id")
+        emoji = data.get("emoji")
+        if not isinstance(message_id, int) or not isinstance(emoji, str):
+            await self.send_error("Реакция указана некорректно.")
+            return
+        if not await self.is_rate_allowed(
+            bucket="reaction",
+            limit=settings.REACTION_RATE_LIMIT,
+        ):
+            await self.send_error("Слишком много реакций. Сделайте глоток паузы.")
+            return
+
+        result = await self.toggle_reaction(message_id, emoji)
+        if result is None:
+            await self.send_error("Эта реплика вам недоступна.")
+            return
+
+        event = {
+            "type": "reaction_update",
+            "message_id": message_id,
+            "emoji": emoji,
+            "count": result["count"],
+            "users": result["users"],
+            "active": result["active"],
+            "actor_username": self.user.username,
+            "room_slug": self.room.slug,
+        }
+        if result["recipient_id"]:
+            group_names = [
+                f"chat_user_{result['author_id']}",
+                f"chat_user_{result['recipient_id']}",
+            ]
+        elif self.room.is_private:
+            group_names = [
+                f"chat_user_{user_id}"
+                for user_id in await self.get_room_member_ids()
+            ]
+        else:
+            group_names = [self.room_group_name]
+
+        for group_name in set(group_names):
+            await self.channel_layer.group_send(group_name, event)
+
     async def is_rate_allowed(self, *, bucket, limit):
         """Не даёт одному гостю засорять чат или очередь Семёна."""
         return await sync_to_async(is_allowed)(
@@ -325,6 +398,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "private": recipient is not None,
             "color": "amber",
             "attachments": [],
+            "reactions": [],
             "room_slug": self.room.slug,
             "room_private": self.room.is_private,
         }
@@ -426,6 +500,32 @@ class ChatConsumer(AsyncWebsocketConsumer):
             viewer_id=self.user.id,
             limit=HISTORY_LIMIT,
         )
+
+    @database_sync_to_async
+    def toggle_reaction(self, message_id, emoji):
+        try:
+            message = Message.objects.select_related("room", "recipient").get(
+                id=message_id,
+                room=self.room,
+                hidden_at__isnull=True,
+            )
+        except Message.DoesNotExist:
+            return None
+        try:
+            count, active, users = MessageService.toggle_reaction(
+                message=message,
+                user=self.user,
+                emoji=emoji,
+            )
+        except (PermissionError, ValueError):
+            return None
+        return {
+            "count": count,
+            "active": active,
+            "users": users,
+            "author_id": message.user_id,
+            "recipient_id": message.recipient_id,
+        }
 
     @database_sync_to_async
     def create_message(self, user, text, recipient):
