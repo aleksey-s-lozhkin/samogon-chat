@@ -1013,8 +1013,10 @@ function updateInputSize() {
         return;
     }
 
-    input.style.height = "auto";
-    input.style.height = `${Math.min(input.scrollHeight, 120)}px`;
+    input.style.height = "46px";
+    if (input.value) {
+        input.style.height = `${Math.min(Math.max(input.scrollHeight, 46), 96)}px`;
+    }
     counter.textContent = `${input.value.length} / ${MESSAGE_MAX_LENGTH}`;
 }
 
@@ -1122,7 +1124,6 @@ document.getElementById("chat-message-submit")?.addEventListener("click", sendMe
 document.getElementById("chat-attachment-trigger")?.addEventListener("click", selectAttachments);
 document.getElementById("chat-attachment-input")?.addEventListener("change", handleAttachmentSelection);
 document.getElementById("cancel-direct-message")?.addEventListener("click", clearDirectRecipient);
-document.getElementById("bartender-trigger")?.addEventListener("click", activateBartender);
 document.getElementById("note-trigger")?.addEventListener("click", activateNoteMode);
 document.querySelectorAll('[data-chat-action="bartender"]').forEach((button) => {
     button.addEventListener("click", activateBartender);
