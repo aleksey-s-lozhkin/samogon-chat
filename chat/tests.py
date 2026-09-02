@@ -842,14 +842,15 @@ class ChatLayoutViewsTests(TestCase):
             slug="layout-test-room",
         )
 
-    def test_chat_has_separate_people_panel_and_bartender_trigger(self):
+    def test_chat_has_separate_people_panel_and_sidebar_bartender_action(self):
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
 
         self.assertContains(response, 'class="rooms-sidebar"')
         self.assertContains(response, 'class="presence-sidebar"')
-        self.assertContains(response, 'id="bartender-trigger"')
+        self.assertContains(response, 'data-chat-action="bartender"')
+        self.assertNotContains(response, 'id="bartender-trigger"')
 
     def test_robots_disallows_indexing_closed_beta(self):
         response = self.client.get(reverse("robots"))

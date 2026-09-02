@@ -1451,10 +1451,10 @@ a {
 
 .chat-input {
     display: flex;
-    gap: 10px;
+    gap: 8px;
     align-items: flex-end;
 
-    padding: 16px 16px 8px;
+    padding: 12px 14px 6px;
 }
 
 .attachment-trigger {
@@ -1590,7 +1590,7 @@ a {
     min-width: 0;
     width: 0;
     min-height: 46px;
-    max-height: 120px;
+    max-height: 96px;
 
     box-sizing: border-box;
 
@@ -1755,7 +1755,7 @@ a {
     justify-content: space-between;
     gap: 12px;
 
-    padding: 0 16px 15px;
+    padding: 0 14px 10px;
 
     color: var(--text-muted);
 
