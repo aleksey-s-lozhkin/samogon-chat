@@ -110,6 +110,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if isinstance(data, dict) and data.get("type") == "reaction":
             await self.handle_reaction(data)
             return
+        if isinstance(data, dict) and data.get("type") == "typing":
+            await self.handle_typing(data)
+            return
 
         if not await self.is_rate_allowed(
             bucket="message",
@@ -285,6 +288,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
         )
 
+    async def typing_update(self, event):
+        """Передаёт краткоживущий индикатор набора без сохранения в БД."""
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "typing_update",
+                    "username": event["username"],
+                    "active": event["active"],
+                    "recipient": event.get("recipient"),
+                    "room_slug": event["room_slug"],
+                }
+            )
+        )
+
     async def online_users(self, event):
         await self.send(
             text_data=json.dumps(
@@ -352,6 +369,50 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 f"chat_user_{result['author_id']}",
                 f"chat_user_{result['recipient_id']}",
             ]
+        elif self.room.is_private:
+            group_names = [
+                f"chat_user_{user_id}"
+                for user_id in await self.get_room_member_ids()
+            ]
+        else:
+            group_names = [self.room_group_name]
+
+        for group_name in set(group_names):
+            await self.channel_layer.group_send(group_name, event)
+
+    async def handle_typing(self, data):
+        """Рассылает набор текста только тем, кто увидел бы будущую реплику."""
+        active = data.get("active")
+        recipient_username = data.get("recipient")
+        if not isinstance(active, bool):
+            return
+        if recipient_username is not None and (
+            not isinstance(recipient_username, str) or not recipient_username.strip()
+        ):
+            return
+        if not await self.is_rate_allowed(
+            bucket="typing",
+            limit=settings.TYPING_RATE_LIMIT,
+        ):
+            return
+
+        recipient = None
+        if recipient_username is not None:
+            recipient = await self.get_user(recipient_username.strip())
+            if recipient is None or recipient.id == self.user.id:
+                return
+            if self.room.is_private and not await self.is_room_member(recipient.id):
+                return
+
+        event = {
+            "type": "typing_update",
+            "username": self.user.username,
+            "active": active,
+            "recipient": recipient.username if recipient else None,
+            "room_slug": self.room.slug,
+        }
+        if recipient:
+            group_names = [self.user_group_name, f"chat_user_{recipient.id}"]
         elif self.room.is_private:
             group_names = [
                 f"chat_user_{user_id}"
