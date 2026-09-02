@@ -8,7 +8,7 @@
     <title>Заметки — Самогон</title>
     <link rel="icon" href="{% static 'chat/images/favicon.svg' %}" type="image/svg+xml">
     {% include "pwa/head.html" %}
-    <link rel="stylesheet" href="{% static 'chat/css/chat.css' %}?v=10">
+    <link rel="stylesheet" href="{% static 'chat/css/chat.css' %}?v=13">
 </head>
 <body>
     <main class="notes-page">
@@ -20,7 +20,7 @@
                 </div>
             </div>
             <div class="user-actions">
-                <a href="{{ last_room_url }}" class="profile-link">К беседе</a>
+                <a href="{{ last_room_url }}" class="profile-link notes-back-link">К беседе</a>
                 <a href="{% url 'profile' %}" class="profile-link">Профиль</a>
             </div>
         </header>

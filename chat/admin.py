@@ -4,6 +4,7 @@ from django.utils import timezone
 from .models import (
     Attachment,
     Message,
+    MessageReaction,
     ModerationEvent,
     Room,
     RoomMembership,
@@ -107,6 +108,22 @@ class AttachmentAdmin(admin.ModelAdmin):
         "kind",
         "created_at",
     )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(MessageReaction)
+class MessageReactionAdmin(admin.ModelAdmin):
+    """Реакции видны для разбора жалоб, но не редактируются вручную."""
+
+    list_display = ("emoji", "user", "message", "created_at")
+    list_filter = ("emoji",)
+    search_fields = ("user__username", "message__text")
+    readonly_fields = ("emoji", "user", "message", "created_at")
 
     def has_add_permission(self, request):
         return False

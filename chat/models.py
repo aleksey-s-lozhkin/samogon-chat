@@ -143,6 +143,42 @@ class Message(models.Model):
         return f"{self.user.username}: {self.text}"
 
 
+class MessageReaction(models.Model):
+    """Одна реакция одного гостя на конкретную реплику."""
+
+    class Emoji(models.TextChoices):
+        LIKE = "👍", "Нравится"
+        HEART = "❤️", "Любовь"
+        LAUGH = "😂", "Смешно"
+        FIRE = "🔥", "Огонь"
+        HANDSHAKE = "🤝", "Согласен"
+
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name="reactions",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="chat_reactions",
+    )
+    emoji = models.CharField(max_length=8, choices=Emoji.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("message", "user", "emoji"),
+                name="unique_message_reaction",
+            ),
+        ]
+        indexes = [models.Index(fields=("message", "emoji"))]
+
+    def __str__(self):
+        return f"{self.user.username}: {self.emoji}"
+
+
 class Note(models.Model):
     """Личная заметка гостя, при необходимости сохранённая из реплики."""
 

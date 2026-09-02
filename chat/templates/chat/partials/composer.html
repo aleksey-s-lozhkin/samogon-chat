@@ -96,11 +96,22 @@
                 <path d="m5.5 14 4.5 4.5-5.5 1 1-5.5Z" />
             </svg>
         </button>
+        <button
+            id="emoji-trigger"
+            class="composer-tool emoji-trigger"
+            type="button"
+            aria-label="Добавить emoji"
+            aria-expanded="false"
+            title="Добавить emoji"
+        >
+            <span aria-hidden="true">☺</span>
+        </button>
         <textarea
             id="chat-message-input"
             rows="1"
             placeholder="Скажите что-нибудь у стойки…"
             autocomplete="off"
+            enterkeyhint="send"
             maxlength="1000"
         ></textarea>
 
@@ -114,6 +125,17 @@
                 <path d="m5 3 15 9L5 21V3Z" />
             </svg>
         </button>
+    </div>
+
+    <div id="emoji-picker" class="emoji-picker hidden" role="group" aria-label="Популярные emoji">
+        <button type="button" data-emoji="👍" aria-label="Нравится">👍</button>
+        <button type="button" data-emoji="❤️" aria-label="Сердце">❤️</button>
+        <button type="button" data-emoji="😂" aria-label="Смешно">😂</button>
+        <button type="button" data-emoji="🔥" aria-label="Огонь">🔥</button>
+        <button type="button" data-emoji="🤝" aria-label="Согласен">🤝</button>
+        <button type="button" data-emoji="🍶" aria-label="Тост">🍶</button>
+        <button type="button" data-emoji="💻" aria-label="Код">💻</button>
+        <button type="button" data-emoji="🐛" aria-label="Баг">🐛</button>
     </div>
 
     <div id="attachment-preview" class="attachment-preview hidden" aria-live="polite"></div>

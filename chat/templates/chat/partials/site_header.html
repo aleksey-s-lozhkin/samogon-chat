@@ -33,8 +33,10 @@
 
         {% if user.is_authenticated %}
             <div class="user-actions">
-            <a href="{% url 'chat:notes' %}" class="profile-link">Заметки</a>
-            <a href="{% url 'profile' %}" class="profile-link">Профиль</a>
+            {% if not hide_account_links %}
+                <a href="{% url 'chat:notes' %}" class="profile-link">Заметки</a>
+                <a href="{% url 'profile' %}" class="profile-link">Профиль</a>
+            {% endif %}
 
             {% if ajax_logout %}
                 <button id="logout-button" type="button">Выйти</button>
