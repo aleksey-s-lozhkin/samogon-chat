@@ -53,6 +53,33 @@
         </section>
     {% endif %}
 
+    <section class="sidebar-utilities" aria-label="Инструменты бара">
+        <div class="sidebar-section-title">У стойки</div>
+        <div class="rooms-navigation">
+            <button
+                class="room-navigation-item sidebar-utility"
+                type="button"
+                data-chat-action="bartender"
+                @click="roomsOpen = false"
+            >
+                <span class="room-navigation-icon bartender-nav-icon" aria-hidden="true">С</span>
+                <span>Позвать Семёна</span>
+            </button>
+        </div>
+
+        <div class="sidebar-section-title">Личное</div>
+        <nav class="rooms-navigation" aria-label="Личные разделы">
+            <a href="{% url 'chat:notes' %}" class="room-navigation-item sidebar-utility">
+                <span class="room-navigation-icon" aria-hidden="true">✦</span>
+                <span>Заметки</span>
+            </a>
+            <a href="{% url 'profile' %}" class="room-navigation-item sidebar-utility">
+                <span class="room-navigation-icon" aria-hidden="true">◉</span>
+                <span>Профиль</span>
+            </a>
+        </nav>
+    </section>
+
 </aside>
 
 <div

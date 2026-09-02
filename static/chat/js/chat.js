@@ -9,6 +9,7 @@ const {
 } = chatConfig;
 const MESSAGE_MAX_LENGTH = 1000;
 const BARTENDER_USERNAME = "Семён";
+const REACTION_EMOJI = ["👍", "❤️", "😂", "🔥", "🤝"];
 
 let chatSocket = null;
 let directRecipient = null;
@@ -79,6 +80,10 @@ function handleServerEvent(data) {
 
     if (data.type === "message_deleted" && data.room_slug === roomSlug) {
         removeMessage(data.message_id);
+    }
+
+    if (data.type === "reaction_update" && data.room_slug === roomSlug) {
+        updateMessageReaction(data);
     }
 
     if (data.type === "user_presence") {
@@ -453,6 +458,7 @@ function addMessage(data) {
     content.append(author, text, time);
     // Время должно быть в DOM до вложений: они встают непосредственно перед ним.
     renderMessageAttachments(content, data.attachments || []);
+    renderMessageReactions(content, data.reactions || [], data.id);
     message.append(content);
     message.addEventListener("click", (event) => {
         if (event.target.closest("button, a")) {
@@ -638,6 +644,142 @@ function renderMessageAttachments(content, attachments) {
     content.querySelector(".message-time")?.before(container);
 }
 
+function renderMessageReactions(content, reactions, messageId) {
+    content.querySelector(".message-reactions")?.remove();
+    if (!messageId) {
+        return;
+    }
+
+    const container = document.createElement("div");
+    container.className = "message-reactions";
+    reactions.forEach((reaction) => {
+        container.append(createReactionButton(messageId, reaction));
+    });
+    container.append(createReactionPicker(messageId));
+    refreshReactionContainer(container);
+    content.querySelector(".message-time")?.before(container);
+}
+
+function refreshReactionContainer(container) {
+    if (!container) {
+        return;
+    }
+    container.classList.toggle(
+        "is-empty",
+        !container.querySelector(".message-reaction"),
+    );
+}
+
+function createReactionButton(messageId, reaction) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "message-reaction";
+    button.dataset.emoji = reaction.emoji;
+    button.classList.toggle("is-active", Boolean(reaction.reacted));
+    button.textContent = `${reaction.emoji} ${reaction.count}`;
+    const users = reaction.users || [];
+    button.title = users.length ? users.join(", ") : "Реакция";
+    button.ariaLabel = users.length
+        ? `${reaction.emoji}: ${users.join(", ")}`
+        : `${reaction.emoji}: ${reaction.count}`;
+    button.addEventListener("click", () => toggleReaction(messageId, reaction.emoji));
+    return button;
+}
+
+function createReactionPicker(messageId) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "reaction-picker-wrap";
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "message-reaction-add";
+    trigger.textContent = "+";
+    trigger.title = "Добавить реакцию";
+    trigger.ariaLabel = trigger.title;
+    trigger.ariaExpanded = "false";
+
+    const picker = document.createElement("div");
+    picker.className = "message-reaction-picker hidden";
+    picker.setAttribute("role", "group");
+    picker.setAttribute("aria-label", "Выберите реакцию");
+    REACTION_EMOJI.forEach((emoji) => {
+        const emojiButton = document.createElement("button");
+        emojiButton.type = "button";
+        emojiButton.textContent = emoji;
+        emojiButton.ariaLabel = emoji;
+        emojiButton.addEventListener("click", () => {
+            toggleReaction(messageId, emoji);
+            picker.classList.add("hidden");
+            trigger.ariaExpanded = "false";
+        });
+        picker.append(emojiButton);
+    });
+    trigger.addEventListener("click", () => {
+        const isOpen = !picker.classList.contains("hidden");
+        document.querySelectorAll(".message-reaction-picker").forEach((item) => {
+            item.classList.add("hidden");
+        });
+        picker.classList.toggle("hidden", isOpen);
+        trigger.ariaExpanded = String(!isOpen);
+    });
+    wrapper.append(trigger, picker);
+    return wrapper;
+}
+
+function updateMessageReaction(data) {
+    const message = document.querySelector(
+        `.message[data-message-id="${CSS.escape(String(data.message_id))}"]`,
+    );
+    const content = message?.querySelector(".message-content");
+    if (!content) {
+        return;
+    }
+
+    const isCurrentUser = normalizeUsername(data.actor_username)
+        === normalizeUsername(currentUsername);
+    const existing = content.querySelector(
+        `.message-reaction[data-emoji="${CSS.escape(data.emoji)}"]`,
+    );
+    if (data.count === 0) {
+        existing?.remove();
+        refreshReactionContainer(content.querySelector(".message-reactions"));
+        return;
+    }
+    if (existing) {
+        const users = data.users || [];
+        existing.textContent = `${data.emoji} ${data.count}`;
+        existing.title = users.length ? users.join(", ") : "Реакция";
+        existing.ariaLabel = users.length
+            ? `${data.emoji}: ${users.join(", ")}`
+            : `${data.emoji}: ${data.count}`;
+        if (isCurrentUser) {
+            existing.classList.toggle("is-active", data.active);
+        }
+        return;
+    }
+
+    const picker = content.querySelector(".reaction-picker-wrap");
+    const button = createReactionButton(data.message_id, {
+        emoji: data.emoji,
+        count: data.count,
+        reacted: isCurrentUser && data.active,
+        users: data.users || [],
+    });
+    picker?.before(button);
+    refreshReactionContainer(content.querySelector(".message-reactions"));
+}
+
+function toggleReaction(messageId, emoji) {
+    if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
+        showError("Связь со стойкой прервалась. Попробуйте ещё раз.");
+        return;
+    }
+    chatSocket.send(JSON.stringify({
+        type: "reaction",
+        message_id: messageId,
+        emoji,
+    }));
+}
+
 function formatFileSize(size) {
     if (size < 1024) {
         return `${size} Б`;
@@ -711,12 +853,17 @@ function showSuccess(message) {
 
 function sendMessage() {
     const input = document.getElementById("chat-message-input");
-    const message = input?.value.trim();
+    const message = replaceTextEmoticons(input?.value.trim() || "");
     if (!message) {
         if (selectedAttachments.length) {
             showError("Добавьте короткую подпись к файлам перед отправкой.");
         }
         return;
+    }
+
+    if (input && input.value !== message) {
+        input.value = message;
+        updateInputSize();
     }
 
     if (pendingAttachmentUpload) {
@@ -871,6 +1018,48 @@ function updateInputSize() {
     counter.textContent = `${input.value.length} / ${MESSAGE_MAX_LENGTH}`;
 }
 
+function replaceTextEmoticons(text) {
+    const protectedParts = /(https?:\/\/\S+|```[\s\S]*?```|`[^`\n]*`)/g;
+    return text.split(protectedParts).map((part) => {
+        if (/^(https?:\/\/|```|`)/.test(part)) {
+            return part;
+        }
+        return part
+            .replace(/(^|[\s(])(:\))(?=$|[\s),.!?])/g, "$1😊")
+            .replace(/(^|[\s(])(;\))(?=$|[\s),.!?])/g, "$1😉")
+            .replace(/(^|[\s(])(:D)(?=$|[\s),.!?])/g, "$1😄")
+            .replace(/(^|[\s(])(:\()(?=$|[\s),.!?])/g, "$1😔")
+            .replace(/(^|[\s(])(<3)(?=$|[\s),.!?])/g, "$1❤️");
+    }).join("");
+}
+
+function toggleEmojiPicker() {
+    const picker = document.getElementById("emoji-picker");
+    const trigger = document.getElementById("emoji-trigger");
+    if (!picker || !trigger) {
+        return;
+    }
+    const isOpen = !picker.classList.contains("hidden");
+    picker.classList.toggle("hidden", isOpen);
+    trigger.ariaExpanded = String(!isOpen);
+}
+
+function insertEmoji(emoji) {
+    const input = document.getElementById("chat-message-input");
+    if (!input) {
+        return;
+    }
+    const start = input.selectionStart ?? input.value.length;
+    const end = input.selectionEnd ?? input.value.length;
+    input.value = `${input.value.slice(0, start)}${emoji}${input.value.slice(end)}`;
+    const caretPosition = start + emoji.length;
+    input.setSelectionRange(caretPosition, caretPosition);
+    updateInputSize();
+    input.focus();
+    document.getElementById("emoji-picker")?.classList.add("hidden");
+    document.getElementById("emoji-trigger")?.setAttribute("aria-expanded", "false");
+}
+
 function initialiseAtmosphere() {
     const tagline = document.getElementById("brand-tagline");
     if (tagline) {
@@ -935,6 +1124,13 @@ document.getElementById("chat-attachment-input")?.addEventListener("change", han
 document.getElementById("cancel-direct-message")?.addEventListener("click", clearDirectRecipient);
 document.getElementById("bartender-trigger")?.addEventListener("click", activateBartender);
 document.getElementById("note-trigger")?.addEventListener("click", activateNoteMode);
+document.querySelectorAll('[data-chat-action="bartender"]').forEach((button) => {
+    button.addEventListener("click", activateBartender);
+});
+document.getElementById("emoji-trigger")?.addEventListener("click", toggleEmojiPicker);
+document.querySelectorAll("#emoji-picker [data-emoji]").forEach((button) => {
+    button.addEventListener("click", () => insertEmoji(button.dataset.emoji));
+});
 document.getElementById("cancel-note-message")?.addEventListener("click", clearNoteMode);
 document.getElementById("cancel-message-delete")?.addEventListener("click", closeDeleteMessageDialog);
 document.getElementById("confirm-message-delete")?.addEventListener("click", () => {
@@ -977,6 +1173,12 @@ document.getElementById("toggle-online-users")?.addEventListener("click", () => 
 });
 document.getElementById("toggle-offline-users")?.addEventListener("click", () => {
     togglePresenceList("offline-users-list");
+});
+document.addEventListener("click", (event) => {
+    if (!event.target.closest("#emoji-picker, #emoji-trigger")) {
+        document.getElementById("emoji-picker")?.classList.add("hidden");
+        document.getElementById("emoji-trigger")?.setAttribute("aria-expanded", "false");
+    }
 });
 
 initialiseAtmosphere();

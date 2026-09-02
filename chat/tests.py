@@ -17,7 +17,16 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from .models import Attachment, Message, Note, NoteAttachment, Room, RoomMembership, RoomReadState
+from .models import (
+    Attachment,
+    Message,
+    MessageReaction,
+    Note,
+    NoteAttachment,
+    Room,
+    RoomMembership,
+    RoomReadState,
+)
 from .routing import websocket_urlpatterns
 from .services.attachments import (
     AttachmentValidationError,
@@ -532,6 +541,69 @@ class MessageServiceTests(TestCase):
         self.assertEqual(message.room, self.room)
         self.assertEqual(message.text, "Hello, Samogon!")
 
+    def test_reaction_summary_keeps_count_and_current_user_state(self):
+        second_user = User.objects.create_user(username="maria")
+        message = MessageService.create_message(
+            user_id=self.user.id,
+            room=self.room,
+            text="Новый деплой",
+        )
+        MessageReaction.objects.create(
+            message=message,
+            user=self.user,
+            emoji=MessageReaction.Emoji.FIRE,
+        )
+        MessageReaction.objects.create(
+            message=message,
+            user=second_user,
+            emoji=MessageReaction.Emoji.FIRE,
+        )
+
+        history = MessageService.get_room_messages(
+            self.room,
+            viewer_id=self.user.id,
+        )
+
+        self.assertEqual(
+            history[0]["reactions"],
+            [{
+                "emoji": "🔥",
+                "count": 2,
+                "reacted": True,
+                "users": ["alex", "maria"],
+            }],
+        )
+
+    def test_reaction_can_be_toggled_only_by_message_viewer(self):
+        outsider = User.objects.create_user(username="outsider")
+        message = MessageService.create_message(
+            user_id=self.user.id,
+            room=self.room,
+            text="Личная реплика",
+            recipient_id=User.objects.create_user(username="reader").id,
+        )
+
+        with self.assertRaises(PermissionError):
+            MessageService.toggle_reaction(
+                message=message,
+                user=outsider,
+                emoji=MessageReaction.Emoji.LIKE,
+            )
+
+        count, active, users = MessageService.toggle_reaction(
+            message=message,
+            user=self.user,
+            emoji=MessageReaction.Emoji.LIKE,
+        )
+        self.assertEqual((count, active, users), (1, True, ["alex"]))
+
+        count, active, users = MessageService.toggle_reaction(
+            message=message,
+            user=self.user,
+            emoji=MessageReaction.Emoji.LIKE,
+        )
+        self.assertEqual((count, active, users), (0, False, []))
+
     def test_get_room_messages(self):
         MessageService.create_message(
             user_id=self.user.id,
@@ -983,6 +1055,44 @@ class ChatConsumerTests(TransactionTestCase):
             Message.objects.filter(room=self.room, user=self.user, text="New message").exists(),
         )
 
+    def test_user_can_toggle_reaction_over_websocket(self):
+        message = Message.objects.create(
+            room=self.room,
+            user=self.user,
+            text="Реакция на месте",
+        )
+
+        async_to_sync(self._assert_reaction_toggle)(message.id)
+        self.assertFalse(MessageReaction.objects.filter(message=message).exists())
+
+    async def _assert_reaction_toggle(self, message_id):
+        communicator = WebsocketCommunicator(self.application, "/ws/chat/general/")
+        communicator.scope["user"] = self.user
+
+        connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+        await communicator.receive_json_from()
+        await communicator.receive_json_from()
+        await communicator.receive_json_from()
+
+        await communicator.send_json_to(
+            {"type": "reaction", "message_id": message_id, "emoji": "🔥"}
+        )
+        added = await communicator.receive_json_from()
+        self.assertEqual(added["type"], "reaction_update")
+        self.assertEqual(added["count"], 1)
+        self.assertTrue(added["active"])
+        self.assertEqual(added["users"], ["alex"])
+
+        await communicator.send_json_to(
+            {"type": "reaction", "message_id": message_id, "emoji": "🔥"}
+        )
+        removed = await communicator.receive_json_from()
+        self.assertEqual(removed["count"], 0)
+        self.assertFalse(removed["active"])
+
+        await communicator.disconnect()
+
     async def _assert_history_validation_and_delivery(self, message_id, created_at):
         communicator = WebsocketCommunicator(self.application, "/ws/chat/general/")
         communicator.scope["user"] = self.user
@@ -1004,6 +1114,7 @@ class ChatConsumerTests(TransactionTestCase):
                         "private": False,
                         "color": "amber",
                         "attachments": [],
+                        "reactions": [],
                     }
                 ],
             },
@@ -1035,6 +1146,7 @@ class ChatConsumerTests(TransactionTestCase):
         self.assertFalse(delivered_message["private"])
         self.assertEqual(delivered_message["color"], "amber")
         self.assertEqual(delivered_message["attachments"], [])
+        self.assertEqual(delivered_message["reactions"], [])
         self.assertIn("id", delivered_message)
         self.assertIn("timestamp", delivered_message)
 
