@@ -3,6 +3,7 @@ from django.urls import path, reverse_lazy
 
 from .views import (
     ComfortablePasswordResetView,
+    disconnect_social_account,
     login_view,
     logout_view,
     profile,
@@ -42,4 +43,9 @@ urlpatterns = [
         name="password_reset_complete",
     ),
     path("profile/", profile, name="profile"),
+    path(
+        "profile/connections/<str:provider>/disconnect/",
+        disconnect_social_account,
+        name="disconnect_social_account",
+    ),
 ]

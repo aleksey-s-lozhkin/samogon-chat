@@ -1,0 +1,9 @@
+{% extends "users/auth_page.html" %}
+
+{% block title %}Вход отменён{% endblock %}
+
+{% block content %}
+    <header class="modal-header"><h2>Вход отменён</h2></header>
+    <p class="auth-page-message">Аккаунт не изменён. Можно повторить попытку или войти обычным способом.</p>
+    <a class="primary-button" href="{% url 'chat:rooms' %}?auth=login">Вернуться ко входу</a>
+{% endblock %}

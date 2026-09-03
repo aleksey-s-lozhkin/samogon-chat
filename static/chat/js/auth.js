@@ -5,6 +5,20 @@ if (new URLSearchParams(window.location.search).get("auth") === "login") {
     document.getElementById("login-username")?.focus();
 }
 
+const oauthError = new URLSearchParams(window.location.search).get("oauth_error");
+if (oauthError === "email_exists") {
+    const loginError = document.getElementById("login-error");
+    if (loginError) {
+        loginError.textContent = "Этот email уже связан с аккаунтом. Войдите обычным способом, а затем подключите сервис в профиле.";
+    }
+}
+if (oauthError === "email_required") {
+    const loginError = document.getElementById("login-error");
+    if (loginError) {
+        loginError.textContent = "Сервис не передал подтверждённый email. Разрешите доступ к email у провайдера или войдите обычным способом.";
+    }
+}
+
 function csrfToken() {
     return document.querySelector("[name=csrfmiddlewaretoken]")?.value;
 }

@@ -4,14 +4,20 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import RequestFactory, TestCase, override_settings
 from django.utils import timezone
 from PIL import Image
 
 from config.rate_limit import is_allowed
+from allauth.account.models import EmailAddress
+from allauth.core.exceptions import ImmediateHttpResponse
+from allauth.socialaccount.models import SocialAccount, SocialLogin
+
+from users.adapters import SamogonSocialAccountAdapter
 
 
 User = get_user_model()
@@ -368,6 +374,139 @@ class PasswordResetTests(TestCase):
         )
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("new-comfortable-password-42"))
+
+
+class OAuthAuthenticationTests(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    @override_settings(
+        GITHUB_OAUTH_CLIENT_ID="github-client",
+        GITHUB_OAUTH_CLIENT_SECRET="github-secret",
+        GOOGLE_OAUTH_CLIENT_ID="google-client",
+        GOOGLE_OAUTH_CLIENT_SECRET="google-secret",
+    )
+    def test_auth_modal_shows_configured_oauth_providers(self):
+        response = self.client.get("/chat/")
+
+        self.assertContains(response, "Продолжить с GitHub")
+        self.assertContains(response, "Продолжить с Google")
+        self.assertContains(response, 'action="/accounts/github/login/"')
+        self.assertContains(response, 'action="/accounts/google/login/"')
+
+    def test_auth_modal_hides_unconfigured_oauth_providers(self):
+        response = self.client.get("/chat/")
+
+        self.assertNotContains(response, "Продолжить с GitHub")
+        self.assertNotContains(response, "Продолжить с Google")
+
+    def test_existing_email_is_not_silently_connected(self):
+        User.objects.create_user(
+            username="local-user",
+            email="owner@example.com",
+            password="local-password-42",
+        )
+        request = self.factory.get("/accounts/github/login/callback/")
+        request.user = AnonymousUser()
+        social_login = SocialLogin(
+            account=SocialAccount(provider="github", uid="github-42"),
+            email_addresses=[
+                EmailAddress(
+                    email="OWNER@example.com",
+                    verified=True,
+                    primary=True,
+                )
+            ],
+        )
+
+        with self.assertRaises(ImmediateHttpResponse) as error:
+            SamogonSocialAccountAdapter(request).pre_social_login(
+                request,
+                social_login,
+            )
+
+        self.assertEqual(
+            error.exception.response.url,
+            "/chat/?auth=login&oauth_error=email_exists",
+        )
+
+    def test_oauth_requires_a_verified_email(self):
+        request = self.factory.get("/accounts/github/login/callback/")
+        request.user = AnonymousUser()
+        social_login = SocialLogin(
+            account=SocialAccount(provider="github", uid="github-42"),
+            email_addresses=[],
+        )
+
+        with self.assertRaises(ImmediateHttpResponse) as error:
+            SamogonSocialAccountAdapter(request).pre_social_login(
+                request,
+                social_login,
+            )
+
+        self.assertEqual(
+            error.exception.response.url,
+            "/chat/?auth=login&oauth_error=email_required",
+        )
+
+    @override_settings(
+        GITHUB_OAUTH_CLIENT_ID="github-client",
+        GITHUB_OAUTH_CLIENT_SECRET="github-secret",
+    )
+    def test_profile_offers_provider_connection(self):
+        user = User.objects.create_user(
+            username="profile-user",
+            password="local-password-42",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get("/users/profile/")
+
+        self.assertContains(response, "Способы входа")
+        self.assertContains(response, "Подключить")
+        self.assertContains(response, "/accounts/github/login/?process=connect")
+
+    def test_user_with_password_can_disconnect_provider(self):
+        user = User.objects.create_user(
+            username="local-user",
+            password="local-password-42",
+        )
+        account = SocialAccount.objects.create(
+            user=user,
+            provider="github",
+            uid="github-42",
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            "/users/profile/connections/github/disconnect/",
+        )
+
+        self.assertRedirects(
+            response,
+            "/users/profile/",
+            fetch_redirect_response=False,
+        )
+        self.assertFalse(SocialAccount.objects.filter(pk=account.pk).exists())
+
+    def test_oauth_only_user_cannot_disconnect_last_provider(self):
+        user = User.objects.create_user(username="oauth-user")
+        user.set_unusable_password()
+        user.save(update_fields=("password",))
+        account = SocialAccount.objects.create(
+            user=user,
+            provider="github",
+            uid="github-42",
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            "/users/profile/connections/github/disconnect/",
+            follow=True,
+        )
+
+        self.assertContains(response, "Сначала задайте пароль")
+        self.assertTrue(SocialAccount.objects.filter(pk=account.pk).exists())
 
 
 class RateLimitTests(TestCase):

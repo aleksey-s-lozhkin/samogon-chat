@@ -1,0 +1,9 @@
+{% extends "users/auth_page.html" %}
+
+{% block title %}Не удалось войти{% endblock %}
+
+{% block content %}
+    <header class="modal-header"><h2>Не удалось войти</h2></header>
+    <p class="auth-page-message">Сервис входа отменил запрос или временно недоступен. Попробуйте ещё раз либо войдите по логину и паролю.</p>
+    <a class="primary-button" href="{% url 'chat:rooms' %}?auth=login">Вернуться ко входу</a>
+{% endblock %}

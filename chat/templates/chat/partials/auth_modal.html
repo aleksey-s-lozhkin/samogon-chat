@@ -9,6 +9,26 @@
                 <p>Войдите, чтобы продолжить</p>
             </header>
 
+            {% if github_oauth_enabled or google_oauth_enabled %}
+                <div class="oauth-actions" aria-label="Вход через внешний сервис">
+                    {% if github_oauth_enabled %}
+                        <form method="post" action="{% url 'github_login' %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <button class="oauth-button" type="submit"><span aria-hidden="true">GH</span>Продолжить с GitHub</button>
+                        </form>
+                    {% endif %}
+                    {% if google_oauth_enabled %}
+                        <form method="post" action="{% url 'google_login' %}">
+                            {% csrf_token %}
+                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <button class="oauth-button" type="submit"><span aria-hidden="true">G</span>Продолжить с Google</button>
+                        </form>
+                    {% endif %}
+                </div>
+                <div class="auth-divider"><span>или</span></div>
+            {% endif %}
+
             <form
                 id="login-form"
                 hx-post="{% url 'login' %}"

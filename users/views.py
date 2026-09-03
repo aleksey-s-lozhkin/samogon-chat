@@ -1,12 +1,14 @@
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import PasswordResetView
+from django.contrib import messages
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
+from allauth.socialaccount.models import SocialAccount
 
 from config.rate_limit import request_is_allowed
 from chat.services.navigation import get_last_room_url
@@ -178,7 +180,11 @@ def login_view(request):
             status=403,
         )
 
-    login(request, user)
+    login(
+        request,
+        user,
+        backend="django.contrib.auth.backends.ModelBackend",
+    )
     return authentication_success(request, user)
 
 
@@ -234,7 +240,11 @@ def register_view(request):
 
     user = form.save()
 
-    login(request, user)
+    login(
+        request,
+        user,
+        backend="django.contrib.auth.backends.ModelBackend",
+    )
     return authentication_success(request, user)
 
 
@@ -273,5 +283,40 @@ def profile(request):
             "form": form,
             "last_room_url": get_last_room_url(request),
             "has_last_room": bool(request.session.get("last_chat_room_slug")),
+            "connected_provider_ids": set(
+                SocialAccount.objects.filter(user=request.user).values_list(
+                    "provider",
+                    flat=True,
+                )
+            ),
         },
     )
+
+
+@login_required
+@require_POST
+def disconnect_social_account(request, provider):
+    """Отключает провайдера, сохраняя хотя бы один рабочий способ входа."""
+    if provider not in {"github", "google"}:
+        messages.error(request, "Неизвестный способ входа.")
+        return redirect("profile")
+
+    account = SocialAccount.objects.filter(
+        user=request.user,
+        provider=provider,
+    ).first()
+    if account is None:
+        messages.error(request, "Этот способ входа уже отключён.")
+        return redirect("profile")
+
+    connected_count = SocialAccount.objects.filter(user=request.user).count()
+    if not request.user.has_usable_password() and connected_count <= 1:
+        messages.error(
+            request,
+            "Сначала задайте пароль или подключите другой сервис.",
+        )
+        return redirect("profile")
+
+    account.delete()
+    messages.success(request, "Способ входа отключён.")
+    return redirect("profile")

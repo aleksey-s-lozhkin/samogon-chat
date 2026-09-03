@@ -2565,6 +2565,67 @@ a {
     line-height: 1.55;
 }
 
+.oauth-actions {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+.oauth-actions form {
+    margin: 0;
+}
+
+.oauth-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 46px;
+    padding: 0 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: 9px;
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.045);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.oauth-button:hover {
+    border-color: rgba(198, 117, 58, 0.55);
+    background: rgba(198, 117, 58, 0.1);
+}
+
+.oauth-button span {
+    display: grid;
+    place-items: center;
+    width: 25px;
+    height: 25px;
+    border-radius: 50%;
+    color: var(--surface-strong);
+    background: var(--text);
+    font-size: 10px;
+    font-weight: 800;
+}
+
+.auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 18px;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+}
+
 
 /* =========================================================
    PRIMARY BUTTON
