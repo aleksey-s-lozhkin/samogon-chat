@@ -19,3 +19,87 @@ h1 { max-width:630px; margin:0; font-family:Georgia,"Times New Roman",serif; fon
 .footer { display:flex; align-items:center; justify-content:space-between; min-height:72px; border-top:1px solid var(--line); color:#697486; font-size:12px; }.footer span:first-child { color:#b68744; }
 @media (max-width:760px) { .header,.footer,.main { width:min(100% - 32px,560px); }.header { min-height:76px; }.brand-mark { width:36px; height:36px; font-size:18px; }.brand strong { font-size:21px; }.brand small,.account-name { display:none; }.header-link { margin-left:0; padding:8px 10px; }.main { padding-top:56px; }.welcome { grid-template-columns:1fr; gap:52px; }h1 { font-size:clamp(45px,14vw,63px); }.lead { font-size:16px; }.bar-card { min-height:342px; }.features { grid-template-columns:1fr; margin-top:70px; gap:12px; }.feature { min-height:0; }.feature h2 { margin-top:17px; }.footer { min-height:62px; }.footer span:last-child { display:none; } }
 @media (max-width:390px) { .actions,.button { width:100%; }.button { min-height:50px; }.eyebrow { font-size:10px; }.bar-card { padding:20px; } }
+
+/* Главная следует теме, выбранной в профиле. */
+:root {
+    color-scheme: dark;
+    --home-overlay: rgba(12,9,7,.48);
+    --home-surface: rgba(35,30,27,.84);
+    --home-surface-strong: rgba(29,25,22,.94);
+    --home-text: #e8e8e8;
+    --home-soft: #aab1be;
+    --home-muted: #7f8a9c;
+    --home-border: rgba(232,232,232,.14);
+}
+
+:root[data-theme="light"] {
+    color-scheme: light;
+    --ink: #eee4d5;
+    --paper: #2e241d;
+    --line: rgba(92,65,43,.22);
+    --amber: #a95520;
+    --amber-light: #783510;
+    --home-overlay: rgba(241,229,212,.66);
+    --home-surface: rgba(255,250,244,.8);
+    --home-surface-strong: rgba(255,250,244,.94);
+    --home-text: #2e241d;
+    --home-soft: #514238;
+    --home-muted: #7d6858;
+    --home-border: rgba(92,65,43,.22);
+}
+
+body {
+    color: var(--home-text);
+    background-color: var(--ink);
+    background-image:
+        linear-gradient(var(--home-overlay), var(--home-overlay)),
+        url("../../chat/images/bar-atmosphere.webp");
+    background-position: center;
+    background-size: cover;
+    background-attachment: fixed;
+}
+
+.header,
+.footer {
+    border-color: var(--home-border);
+}
+
+.brand small,
+.lead,
+.hint,
+.footer {
+    color: var(--home-muted);
+}
+
+.account,
+.button-secondary,
+.open-status,
+.counter-message {
+    color: var(--home-text);
+}
+
+.bar-card,
+.feature {
+    border-color: var(--home-border);
+    background: var(--home-surface);
+    box-shadow: 0 24px 64px rgba(48,31,18,.18);
+    backdrop-filter: blur(14px) saturate(112%);
+    -webkit-backdrop-filter: blur(14px) saturate(112%);
+}
+
+.bartender-note,
+.feature p,
+.card-topline {
+    color: var(--home-soft);
+}
+
+.counter-message,
+.button-secondary {
+    background: var(--home-surface-strong);
+}
+
+@media (max-width:760px) {
+    body {
+        background-attachment: scroll;
+    }
+}
