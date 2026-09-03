@@ -35,6 +35,8 @@
     --surface: rgba(34, 29, 26, 0.78);
     --surface-strong: rgba(30, 26, 23, 0.9);
     --message-surface: rgba(41, 36, 32, 0.9);
+    --floating-surface: rgba(42, 36, 32, 0.96);
+    --floating-text: #f0bd74;
 
     font-family:
         Inter,
@@ -65,6 +67,8 @@
     --surface: rgba(255, 248, 239, 0.78);
     --surface-strong: rgba(255, 250, 244, 0.92);
     --message-surface: rgba(255, 250, 244, 0.94);
+    --floating-surface: rgba(255, 250, 244, 0.96);
+    --floating-text: #71310f;
     --shadow: 0 18px 50px rgba(72, 45, 24, 0.16);
 }
 
@@ -1796,8 +1800,8 @@ a {
     border: 1px solid rgba(198, 117, 58, 0.42);
     border-radius: 999px;
 
-    background: rgba(42, 42, 42, 0.96);
-    color: var(--amber-light);
+    background: var(--floating-surface);
+    color: var(--floating-text);
 
     font-size: 12px;
 }
@@ -2798,7 +2802,7 @@ a {
     }
 }
 
-/* Последний слой каскада: единый вид после исторических адаптивных уточнений. */
+/* Визуальные правила темы. */
 body {
     background-color: var(--bg);
     background-image:
@@ -3987,6 +3991,23 @@ html[data-theme="light"] .notes-empty-state {
 
 html[data-theme="light"] .notes-panel {
     box-shadow: none;
+}
+
+html[data-theme="light"] .typing-indicator,
+html[data-theme="light"] .scroll-to-latest {
+    border-color: rgba(169, 85, 32, 0.38);
+    box-shadow: 0 8px 22px rgba(72, 45, 24, 0.12);
+}
+
+html[data-theme="light"] .direct-recipient,
+html[data-theme="light"] .bartender-recipient {
+    background: rgba(255, 247, 237, 0.94);
+}
+
+html[data-theme="light"] .direct-recipient button,
+html[data-theme="light"] .bartender-visibility button,
+html[data-theme="light"] .recipient-cancel {
+    background: rgba(255, 255, 255, 0.66);
 }
 
 @media (max-width: 700px) {
