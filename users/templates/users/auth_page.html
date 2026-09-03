@@ -1,0 +1,21 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Доступ{% endblock %} — Самогон</title>
+    {% include "chat/partials/theme_head.html" %}
+    <link rel="icon" href="{% static 'chat/images/favicon.svg' %}" type="image/svg+xml">
+    <link rel="stylesheet" href="{% static 'chat/css/chat.css' %}?v=19">
+</head>
+<body>
+    <main class="modal">
+        <section class="modal-content auth-page-card">
+            {% block content %}{% endblock %}
+        </section>
+    </main>
+    <script src="{% static 'chat/js/auth.js' %}?v=5"></script>
+    <script src="{% static 'chat/js/theme.js' %}?v=1"></script>
+</body>
+</html>

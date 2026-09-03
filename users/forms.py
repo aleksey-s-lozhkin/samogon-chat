@@ -4,6 +4,8 @@ from secrets import compare_digest
 from django import forms
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 
 from .utils import resize_avatar
@@ -18,10 +20,9 @@ class RegistrationForm(forms.ModelForm):
         label="Пароль",
         widget=forms.PasswordInput,
     )
-
-    password_confirm = forms.CharField(
-        label="Повторите пароль",
-        widget=forms.PasswordInput,
+    email = forms.EmailField(
+        label="Email",
+        required=True,
     )
 
     invite_code = forms.CharField(
@@ -36,17 +37,30 @@ class RegistrationForm(forms.ModelForm):
             "username",
             "email",
             "password",
-            "password_confirm",
         )
+
+    def clean_email(self):
+        email = self.cleaned_data["email"].strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
+            raise forms.ValidationError(
+                "Аккаунт с таким email уже есть. Попробуйте войти."
+            )
+        return email
+
+    def clean_password(self):
+        password = self.cleaned_data["password"]
+        candidate = User(
+            username=self.data.get("username", "").strip(),
+            email=self.data.get("email", "").strip(),
+        )
+        try:
+            validate_password(password, user=candidate)
+        except ValidationError as error:
+            raise forms.ValidationError(error.messages) from error
+        return password
 
     def clean(self):
         cleaned_data = super().clean()
-
-        password = cleaned_data.get("password")
-        password_confirm = cleaned_data.get("password_confirm")
-
-        if password and password_confirm and password != password_confirm:
-            raise forms.ValidationError("Пароли не совпадают.")
 
         invite_code = cleaned_data.get("invite_code", "")
         expected_code = settings.REGISTRATION_INVITE_CODE

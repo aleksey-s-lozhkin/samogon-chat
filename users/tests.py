@@ -1,9 +1,11 @@
 from io import BytesIO
+import re
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -19,6 +21,7 @@ class ProfileViewTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
             username="alex",
+            email="alex@example.com",
             password="test-password",
         )
 
@@ -107,6 +110,7 @@ class AuthenticationHtmxTests(TestCase):
         cache.clear()
         self.user = User.objects.create_user(
             username="alex",
+            email="alex@example.com",
             password="test-password",
         )
         self.htmx_headers = {"HTTP_HX_REQUEST": "true"}
@@ -129,8 +133,36 @@ class AuthenticationHtmxTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["HX-Refresh"], "true")
+        self.assertEqual(response["HX-Redirect"], "/")
         self.assertEqual(int(self.client.session["_auth_user_id"]), self.user.id)
+
+    def test_user_can_log_in_with_email(self):
+        response = self.client.post(
+            "/users/login/",
+            {
+                "identifier": "ALEX@EXAMPLE.COM",
+                "password": "test-password",
+                "next": "/chat/",
+            },
+            **self.htmx_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["HX-Redirect"], "/chat/")
+        self.assertEqual(int(self.client.session["_auth_user_id"]), self.user.id)
+
+    def test_login_rejects_external_return_url(self):
+        response = self.client.post(
+            "/users/login/",
+            {
+                "identifier": "alex",
+                "password": "test-password",
+                "next": "https://example.com/stolen-session",
+            },
+            **self.htmx_headers,
+        )
+
+        self.assertEqual(response["HX-Redirect"], "/")
 
     @override_settings(REGISTRATION_INVITE_CODE="bar-secret")
     def test_successful_registration_requests_page_refresh(self):
@@ -140,14 +172,13 @@ class AuthenticationHtmxTests(TestCase):
                 "username": "new-user",
                 "email": "new@example.com",
                 "password": "safe-password",
-                "password_confirm": "safe-password",
                 "invite_code": "bar-secret",
             },
             **self.htmx_headers,
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["HX-Refresh"], "true")
+        self.assertEqual(response["HX-Redirect"], "/")
         self.assertTrue(User.objects.filter(username="new-user").exists())
 
     @override_settings(REGISTRATION_INVITE_CODE="bar-secret")
@@ -158,7 +189,6 @@ class AuthenticationHtmxTests(TestCase):
                 "username": "new-user",
                 "email": "new@example.com",
                 "password": "safe-password",
-                "password_confirm": "safe-password",
                 "invite_code": "wrong-code",
             },
             **self.htmx_headers,
@@ -176,14 +206,31 @@ class AuthenticationHtmxTests(TestCase):
                 "username": "new-user",
                 "email": "new@example.com",
                 "password": "safe-password",
-                "password_confirm": "safe-password",
                 "invite_code": "bar-secret",
             },
             **self.htmx_headers,
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["HX-Refresh"], "true")
+        self.assertEqual(response["HX-Redirect"], "/")
+
+    @override_settings(REGISTRATION_INVITE_CODE="bar-secret")
+    def test_registration_requires_unique_email(self):
+        response = self.client.post(
+            "/users/register/",
+            {
+                "username": "new-user",
+                "email": "ALEX@example.com",
+                "password": "safe-password",
+                "invite_code": "bar-secret",
+            },
+            **self.htmx_headers,
+        )
+
+        self.assertContains(response, "Аккаунт с таким email уже есть")
+        self.assertContains(response, 'id="register-error-email"')
+        self.assertContains(response, 'hx-swap-oob="innerHTML"')
+        self.assertFalse(User.objects.filter(username="new-user").exists())
 
     @patch("users.views.request_is_allowed", return_value=False)
     def test_registration_rate_limit_returns_429(self, _mock_rate_limit):
@@ -213,7 +260,6 @@ class AuthenticationHtmxTests(TestCase):
                 "username": "new-user",
                 "email": "new@example.com",
                 "password": "safe-password",
-                "password_confirm": "safe-password",
             },
             **self.htmx_headers,
         )
@@ -246,6 +292,82 @@ class BannedUserMiddlewareTests(TestCase):
         response = self.client.get("/users/profile/")
 
         self.assertRedirects(response, "/")
+
+
+class PasswordResetTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.user = User.objects.create_user(
+            username="alex",
+            email="alex@example.com",
+            password="old-password-42",
+        )
+
+    def test_known_email_receives_reset_link(self):
+        response = self.client.post(
+            "/users/password-reset/",
+            {"email": "alex@example.com"},
+        )
+
+        self.assertRedirects(
+            response,
+            "/users/password-reset/sent/",
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Восстановление доступа", mail.outbox[0].subject)
+        self.assertIn("/users/password-reset/", mail.outbox[0].body)
+
+    def test_unknown_email_gets_the_same_confirmation(self):
+        response = self.client.post(
+            "/users/password-reset/",
+            {"email": "unknown@example.com"},
+        )
+
+        self.assertRedirects(
+            response,
+            "/users/password-reset/sent/",
+            fetch_redirect_response=False,
+        )
+        self.assertEqual(len(mail.outbox), 0)
+
+    @patch("users.views.request_is_allowed", return_value=False)
+    def test_password_reset_is_rate_limited(self, _mock_rate_limit):
+        response = self.client.post(
+            "/users/password-reset/",
+            {"email": "alex@example.com"},
+        )
+
+        self.assertEqual(response.status_code, 429)
+        self.assertContains(response, "Слишком много запросов", status_code=429)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_reset_link_allows_setting_a_new_password(self):
+        self.client.post(
+            "/users/password-reset/",
+            {"email": "alex@example.com"},
+        )
+        reset_path = re.search(
+            r"http://testserver(?P<path>/users/password-reset/[^\s]+)",
+            mail.outbox[0].body,
+        ).group("path")
+
+        response = self.client.get(reset_path)
+        response = self.client.post(
+            response.url,
+            {
+                "new_password1": "new-comfortable-password-42",
+                "new_password2": "new-comfortable-password-42",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            "/users/password-reset/complete/",
+            fetch_redirect_response=False,
+        )
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("new-comfortable-password-42"))
 
 
 class RateLimitTests(TestCase):

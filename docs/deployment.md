@@ -133,6 +133,7 @@ TURNSTILE_SECRET_KEY=
 RATE_LIMIT_WINDOW_SECONDS=60
 LOGIN_RATE_LIMIT=10
 REGISTRATION_RATE_LIMIT=5
+PASSWORD_RESET_RATE_LIMIT=5
 MESSAGE_RATE_LIMIT=20
 BARTENDER_RATE_LIMIT=5
 REACTION_RATE_LIMIT=30
@@ -188,7 +189,8 @@ bash /path/to/samogon/deployment/ollama/benchmark-api.sh samogon-semen-gemma
 пустые, виджет отключён — это удобно для локальной разработки и закрытой беты.
 
 Django использует общий Redis для лимитов: по умолчанию один IP может сделать
-до 10 попыток входа и 5 регистраций за минуту, один пользователь — до 20
+до 10 попыток входа, 5 регистраций и 5 запросов восстановления пароля за минуту,
+один пользователь — до 20
 сообщений и 5 обращений к Семёну за минуту. Nginx добавляет внешний барьер до
 приложения. Значения меняются только в `/srv/config/env/samogon.env`.
 
