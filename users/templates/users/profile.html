@@ -7,11 +7,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Профиль — Самогон</title>
+    {% include "chat/partials/theme_head.html" %}
     <link rel="icon" href="{% static 'chat/images/favicon.svg' %}" type="image/svg+xml">
     {% include "pwa/head.html" %}
     <link
         rel="stylesheet"
-        href="{% static 'users/css/profile.css' %}?v=2"
+        href="{% static 'users/css/profile.css' %}?v=3"
     >
 
 </head>
@@ -98,6 +99,14 @@
 
         <h2>Изменить профиль</h2>
 
+        <div class="profile-theme-setting">
+            <div>
+                <strong>Тема оформления</strong>
+                <span>Выберите тему вручную или доверьте её устройству.</span>
+            </div>
+            {% include "chat/partials/theme_switcher.html" %}
+        </div>
+
         <form method="post" enctype="multipart/form-data">
             {% csrf_token %}
             {{ form.non_field_errors }}
@@ -175,6 +184,7 @@
     </div>
 
 <script src="{% static 'users/js/profile.js' %}"></script>
+<script src="{% static 'chat/js/theme.js' %}?v=1"></script>
 
 </div>
 

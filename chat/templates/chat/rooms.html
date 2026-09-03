@@ -11,12 +11,13 @@
 
     <title>Самогон — комнаты</title>
 
+    {% include "chat/partials/theme_head.html" %}
     <link rel="icon" href="{% static 'chat/images/favicon.svg' %}" type="image/svg+xml">
     {% include "pwa/head.html" %}
 
     <link
         rel="stylesheet"
-        href="{% static 'chat/css/chat.css' %}?v=8"
+        href="{% static 'chat/css/chat.css' %}?v=17"
     >
 
     <script
@@ -231,6 +232,7 @@
 ></script>
 <script src="{% static 'chat/js/rooms.js' %}?v=1" defer></script>
 <script src="{% static 'chat/js/auth.js' %}?v=4" defer></script>
+<script src="{% static 'chat/js/theme.js' %}?v=1" defer></script>
 
 </body>
 </html>

@@ -419,10 +419,10 @@ function addMessage(data) {
 
     const author = document.createElement("div");
     author.className = "message-username";
-    author.append(createUserAvatar({
+    const avatar = createUserAvatar({
         username: data.username,
         avatar_url: data.avatar_url,
-    }, "message-author-avatar"));
+    }, "message-author-avatar");
     const authorName = document.createElement(
         normalizeUsername(data.username) === normalizeUsername(currentUsername)
             ? "button"
@@ -463,6 +463,9 @@ function addMessage(data) {
     const text = document.createElement("div");
     text.className = "message-text";
     text.textContent = data.message;
+    if (/^(?=.*\p{Extended_Pictographic})[\p{Extended_Pictographic}\p{Emoji_Component}\s]+$/u.test(data.message)) {
+        text.classList.add("is-emoji-only");
+    }
 
     const time = document.createElement("div");
     time.className = "message-time";
@@ -477,7 +480,7 @@ function addMessage(data) {
     // Время должно быть в DOM до вложений: они встают непосредственно перед ним.
     renderMessageAttachments(content, data.attachments || []);
     renderMessageReactions(content, data.reactions || [], data.id);
-    message.append(content);
+    message.append(avatar, content);
     message.addEventListener("click", (event) => {
         if (event.target.closest("button, a")) {
             return;
