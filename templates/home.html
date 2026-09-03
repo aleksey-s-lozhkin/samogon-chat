@@ -6,9 +6,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Самогон — барный чат</title>
+    {% include "chat/partials/theme_head.html" %}
     <link rel="icon" href="{% static 'chat/images/favicon.svg' %}" type="image/svg+xml">
     {% include "pwa/head.html" %}
-    <link rel="stylesheet" href="{% static 'home/css/home.css' %}?v=3">
+    <link rel="stylesheet" href="{% static 'home/css/home.css' %}?v=4">
 </head>
 <body>
 <div class="page">
@@ -69,5 +70,6 @@
 
     <footer class="footer"><span>🍶 Самогон</span><span>Сделано для хороших разговоров</span></footer>
 </div>
+<script src="{% static 'chat/js/theme.js' %}?v=1"></script>
 </body>
 </html>

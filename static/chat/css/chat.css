@@ -3946,6 +3946,27 @@ html[data-theme="light"] .modal-content {
     background-image: linear-gradient(180deg, rgba(255, 252, 247, 0.98), rgba(244, 232, 216, 0.96));
 }
 
+html[data-theme="light"] .message-dialog-card {
+    background-image: none;
+    background-color: rgba(255, 250, 244, 0.98);
+}
+
+html[data-theme="light"] .error:not(:empty),
+html[data-theme="light"] .room-notice.error {
+    border-color: rgba(168, 63, 50, 0.34);
+    background: rgba(255, 242, 238, 0.96);
+    color: #8f3026;
+    box-shadow: 0 10px 28px rgba(86, 46, 36, 0.12);
+}
+
+html[data-theme="light"] .error.is-success,
+html[data-theme="light"] .room-notice.success {
+    border-color: rgba(46, 139, 87, 0.34);
+    background: rgba(239, 251, 244, 0.96);
+    color: #216a43;
+    box-shadow: 0 10px 28px rgba(38, 80, 55, 0.1);
+}
+
 html[data-theme="light"] .presence-sidebar .user-presence-panel {
     background: rgba(255, 250, 244, 0.72);
     border-color: var(--border);
