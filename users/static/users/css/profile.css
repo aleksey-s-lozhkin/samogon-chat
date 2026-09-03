@@ -33,3 +33,132 @@ body { min-height:100vh; margin:0; padding:32px 16px; color:var(--text); font-fa
     font-size: 12px;
     line-height: 1.5;
 }
+
+/* Профиль управляет темой всего приложения. */
+:root {
+    color-scheme: dark;
+    --profile-overlay: rgba(12, 9, 7, 0.56);
+    --profile-surface: rgba(35, 30, 27, 0.9);
+    --profile-field: rgba(7, 12, 20, 0.4);
+}
+
+:root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #eee4d5;
+    --panel: #fff9f1;
+    --panel-soft: #f5eadd;
+    --line: rgba(92, 65, 43, 0.22);
+    --line-strong: rgba(92, 65, 43, 0.38);
+    --text: #2e241d;
+    --soft: #514238;
+    --muted: #7d6858;
+    --amber: #a95520;
+    --amber-light: #783510;
+    --danger: #a83f32;
+    --profile-overlay: rgba(241, 229, 212, 0.7);
+    --profile-surface: rgba(255, 250, 244, 0.9);
+    --profile-field: rgba(255, 255, 255, 0.62);
+}
+
+body {
+    background-color: var(--bg);
+    background-image:
+        linear-gradient(var(--profile-overlay), var(--profile-overlay)),
+        url("../../chat/images/bar-atmosphere.webp");
+    background-position: center;
+    background-size: cover;
+    background-attachment: fixed;
+}
+
+.profile-container {
+    background: var(--profile-surface);
+    backdrop-filter: blur(16px) saturate(115%);
+    -webkit-backdrop-filter: blur(16px) saturate(115%);
+}
+
+.profile-info,
+.profile-edit,
+.form-group input,
+.form-group select {
+    background: var(--profile-field);
+}
+
+.profile-theme-setting {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 22px;
+    padding: 14px 16px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--profile-field);
+}
+
+.profile-theme-setting strong,
+.profile-theme-setting span {
+    display: block;
+}
+
+.profile-theme-setting strong {
+    color: var(--text);
+    font-size: 14px;
+}
+
+.profile-theme-setting > div > span {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.theme-switcher {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 6px;
+    min-height: 42px;
+    padding: 0 8px 0 11px;
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    background: var(--profile-surface);
+    color: var(--soft);
+}
+
+.theme-select {
+    min-height: 38px;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    cursor: pointer;
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+@media (max-width: 600px) {
+    body {
+        background-attachment: scroll;
+    }
+
+    .profile-theme-setting {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .theme-switcher,
+    .theme-select {
+        width: 100%;
+    }
+}
