@@ -6,9 +6,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Заметки — Самогон</title>
+    {% include "chat/partials/theme_head.html" %}
     <link rel="icon" href="{% static 'chat/images/favicon.svg' %}" type="image/svg+xml">
     {% include "pwa/head.html" %}
-    <link rel="stylesheet" href="{% static 'chat/css/chat.css' %}?v=13">
+    <link rel="stylesheet" href="{% static 'chat/css/chat.css' %}?v=17">
 </head>
 <body>
     <main class="notes-page">
@@ -92,5 +93,6 @@
             {% endif %}
         </section>
     </main>
+    <script src="{% static 'chat/js/theme.js' %}?v=1"></script>
 </body>
 </html>

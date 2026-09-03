@@ -1,0 +1,11 @@
+<script>
+    (() => {
+        const saved = localStorage.getItem("samogon-theme") || "auto";
+        const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        document.documentElement.dataset.themeMode = saved;
+        document.documentElement.dataset.theme = saved === "auto"
+            ? (dark ? "dark" : "light")
+            : saved;
+    })();
+</script>
+

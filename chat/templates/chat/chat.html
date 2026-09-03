@@ -12,12 +12,13 @@
 
     <title>{{ room.name }} — Самогон</title>
 
+    {% include "chat/partials/theme_head.html" %}
     <link rel="icon" href="{% static 'chat/images/favicon.svg' %}" type="image/svg+xml">
     {% include "pwa/head.html" %}
 
     <link
         rel="stylesheet"
-        href="{% static 'chat/css/chat.css' %}?v=16"
+        href="{% static 'chat/css/chat.css' %}?v=17"
     >
 
     <script
@@ -91,8 +92,9 @@
     };
 </script>
 
-<script src="{% static 'chat/js/chat.js' %}?v=16"></script>
+<script src="{% static 'chat/js/chat.js' %}?v=17"></script>
 <script src="{% static 'chat/js/auth.js' %}?v=3"></script>
+<script src="{% static 'chat/js/theme.js' %}?v=1"></script>
 
 </body>
 </html>
