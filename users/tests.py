@@ -400,6 +400,13 @@ class OAuthAuthenticationTests(TestCase):
         self.assertNotContains(response, "Продолжить с GitHub")
         self.assertNotContains(response, "Продолжить с Google")
 
+    @override_settings(TURNSTILE_SITE_KEY="production-site-key")
+    def test_turnstile_does_not_retry_configuration_errors_forever(self):
+        response = self.client.get("/chat/")
+
+        self.assertContains(response, 'data-retry="never"')
+        self.assertContains(response, 'data-error-callback="handleTurnstileError"')
+
     def test_existing_email_is_not_silently_connected(self):
         User.objects.create_user(
             username="local-user",
