@@ -1,3 +1,10 @@
 {% if message %}
     {{ message }}
 {% endif %}
+{% for field, error in field_errors.items %}
+    <span
+        id="{{ error_prefix }}-{{ field }}"
+        class="field-error"
+        hx-swap-oob="innerHTML"
+    >{{ error }}</span>
+{% endfor %}

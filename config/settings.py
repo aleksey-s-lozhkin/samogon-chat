@@ -40,6 +40,11 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'channels',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.github',
+    'allauth.socialaccount.providers.google',
     'chat',
     'users',
 ]
@@ -50,6 +55,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'allauth.account.middleware.AccountMiddleware',
     'config.middleware.BannedUserMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -70,6 +76,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'users.context_processors.turnstile',
+                'users.context_processors.oauth_providers',
             ],
         },
     },
@@ -163,22 +170,17 @@ STATICFILES_DIRS = [
 
 
 # Почтовый вывод в консоль удобен локально; production использует SMTP.
-MAILERS = {
-    "default": (
-        {"BACKEND": "django.core.mail.backends.console.EmailBackend"}
-        if DEBUG
-        else {
-            "BACKEND": "django.core.mail.backends.smtp.EmailBackend",
-            "OPTIONS": {
-                "host": os.getenv("EMAIL_HOST", "localhost"),
-                "port": int(os.getenv("EMAIL_PORT", "587")),
-                "username": os.getenv("EMAIL_HOST_USER", ""),
-                "password": os.getenv("EMAIL_HOST_PASSWORD", ""),
-                "use_tls": os.getenv("EMAIL_USE_TLS", "1") == "1",
-            },
-        }
-    ),
-}
+EMAIL_BACKEND = (
+    "django.core.mail.backends.console.EmailBackend"
+    if DEBUG
+    else os.getenv("EMAIL_BACKEND", "django.core.mail.backends.smtp.EmailBackend")
+)
+EMAIL_HOST = os.getenv("EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "1") == "1"
+EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "0") == "1"
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost")
 
 REDIS_URL = os.getenv("REDIS_URL")
@@ -203,6 +205,7 @@ REGISTRATION_INVITE_CODE = os.getenv("REGISTRATION_INVITE_CODE", "")
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 LOGIN_RATE_LIMIT = int(os.getenv("LOGIN_RATE_LIMIT", "10"))
 REGISTRATION_RATE_LIMIT = int(os.getenv("REGISTRATION_RATE_LIMIT", "5"))
+PASSWORD_RESET_RATE_LIMIT = int(os.getenv("PASSWORD_RESET_RATE_LIMIT", "5"))
 MESSAGE_RATE_LIMIT = int(os.getenv("MESSAGE_RATE_LIMIT", "20"))
 BARTENDER_RATE_LIMIT = int(os.getenv("BARTENDER_RATE_LIMIT", "5"))
 REACTION_RATE_LIMIT = int(os.getenv("REACTION_RATE_LIMIT", "30"))
@@ -266,6 +269,55 @@ else:
     }
 
 AUTH_USER_MODEL = 'users.User'
+
+AUTHENTICATION_BACKENDS = [
+    "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
+]
+
+LOGIN_REDIRECT_URL = "/chat/"
+ACCOUNT_LOGIN_METHODS = {"username", "email"}
+ACCOUNT_SIGNUP_FIELDS = ["username*", "email*", "password1*"]
+ACCOUNT_EMAIL_VERIFICATION = "none"
+SOCIALACCOUNT_AUTO_SIGNUP = True
+SOCIALACCOUNT_EMAIL_REQUIRED = True
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = False
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = False
+SOCIALACCOUNT_LOGIN_ON_GET = False
+SOCIALACCOUNT_STORE_TOKENS = False
+SOCIALACCOUNT_ADAPTER = "users.adapters.SamogonSocialAccountAdapter"
+
+GITHUB_OAUTH_CLIENT_ID = os.getenv("GITHUB_OAUTH_CLIENT_ID", "")
+GITHUB_OAUTH_CLIENT_SECRET = os.getenv("GITHUB_OAUTH_CLIENT_SECRET", "")
+GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
+GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET", "")
+
+SOCIALACCOUNT_PROVIDERS = {
+    "github": {
+        "APPS": [
+            {
+                "client_id": GITHUB_OAUTH_CLIENT_ID,
+                "secret": GITHUB_OAUTH_CLIENT_SECRET,
+                "key": "",
+            }
+        ],
+        "SCOPE": ["user:email"],
+        "VERIFIED_EMAIL": True,
+    },
+    "google": {
+        "APPS": [
+            {
+                "client_id": GOOGLE_OAUTH_CLIENT_ID,
+                "secret": GOOGLE_OAUTH_CLIENT_SECRET,
+                "key": "",
+            }
+        ],
+        "SCOPE": ["profile", "email"],
+        "AUTH_PARAMS": {"access_type": "online"},
+        "OAUTH_PKCE_ENABLED": True,
+        "VERIFIED_EMAIL": True,
+    },
+}
 
 if not DEBUG:
     # TLS завершается на Nginx, поэтому Django доверяет заголовку прокси.
