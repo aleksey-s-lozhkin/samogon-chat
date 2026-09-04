@@ -116,6 +116,11 @@ nano /srv/config/env/samogon.env
 - `GITHUB_OAUTH_CLIENT_ID` и `GITHUB_OAUTH_CLIENT_SECRET` из GitHub OAuth App;
 - `GOOGLE_OAUTH_CLIENT_ID` и `GOOGLE_OAUTH_CLIENT_SECRET` из Google OAuth client.
 
+Для SMTP включайте только один режим шифрования. Обычно это
+`EMAIL_PORT=587`, `EMAIL_USE_TLS=1`, `EMAIL_USE_SSL=0`. Для Яндекс Почты с
+SSL используйте `EMAIL_PORT=465`, `EMAIL_USE_TLS=0`, `EMAIL_USE_SSL=1` и
+пароль приложения вместо основного пароля аккаунта.
+
 Оставьте следующие значения как есть:
 
 ```dotenv
