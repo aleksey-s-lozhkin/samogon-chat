@@ -39,7 +39,10 @@
             {% endif %}
 
             {% if ajax_logout %}
-                <button id="logout-button" type="button">Выйти</button>
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit">Выйти</button>
+                </form>
             {% else %}
                 <form method="post" action="{% url 'logout' %}">
                     {% csrf_token %}
