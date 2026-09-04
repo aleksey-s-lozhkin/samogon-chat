@@ -852,6 +852,15 @@ class ChatLayoutViewsTests(TestCase):
         self.assertContains(response, 'data-chat-action="bartender"')
         self.assertNotContains(response, 'id="bartender-trigger"')
 
+    @override_settings(TURNSTILE_SITE_KEY="production-site-key")
+    def test_authenticated_chat_does_not_load_registration_or_turnstile(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+
+        self.assertNotContains(response, 'id="register-form"')
+        self.assertNotContains(response, "challenges.cloudflare.com/turnstile")
+
     def test_robots_disallows_indexing_closed_beta(self):
         response = self.client.get(reverse("robots"))
 
