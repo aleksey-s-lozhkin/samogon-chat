@@ -9,7 +9,7 @@
     {% include "chat/partials/theme_head.html" %}
     <link rel="icon" href="{% static 'chat/images/favicon.svg' %}" type="image/svg+xml">
     {% include "pwa/head.html" %}
-    <link rel="stylesheet" href="{% static 'home/css/home.css' %}?v=4">
+    <link rel="stylesheet" href="{% static 'home/css/home.css' %}?v=5">
 </head>
 <body>
 <div class="page">
@@ -21,15 +21,18 @@
                 <small>Тёплый свет, честные разговоры.</small>
             </span>
         </a>
-        {% if user.is_authenticated %}
-            <div class="account">
+        <div class="header-actions">
+            <span class="open-status"><i></i> Стойка открыта</span>
+            {% if user.is_authenticated %}
+                <div class="account">
                 <div class="user-avatar">
                     {% if user.avatar %}<img src="{{ user.avatar.url }}" alt="{{ user.username }}">{% else %}<span>{{ user.username|first|upper }}</span>{% endif %}
                 </div>
                 <span class="account-name">{{ user.username }}</span>
                 <a href="{% url 'profile' %}" class="header-link">Профиль</a>
-            </div>
-        {% endif %}
+                </div>
+            {% endif %}
+        </div>
     </header>
 
     <main class="main">
@@ -44,15 +47,13 @@
                     <p class="lead">«Самогон» — место для живых разговоров после длинного дня. Выбирайте комнату, знакомьтесь и общайтесь в реальном времени.</p>
                 {% endif %}
                 <div class="actions">
-                    <a href="{% url 'chat:rooms' %}" class="button button-primary">Зайти в комнаты <span aria-hidden="true">→</span></a>
+                    <a href="{% url 'chat:rooms' %}" class="button button-primary">Заглянуть <span aria-hidden="true">→</span></a>
                     {% if user.is_authenticated %}<a href="{% url 'profile' %}" class="button button-secondary">Мой профиль</a>{% endif %}
                 </div>
-                <p class="hint">Внутри: комнаты, люди онлайн и бармен Семён.</p>
             </div>
 
             <aside class="bar-card" aria-label="Бармен Семён онлайн">
                 <div class="bar-glow"></div>
-                <div class="card-topline"><span class="open-status"><i></i> Стойка открыта</span><span class="time">сейчас</span></div>
                 <div class="bartender">
                     <div class="bartender-avatar" aria-hidden="true">С</div>
                     <div><p class="bartender-role">Ваш бармен</p><h2>Семён</h2><p class="bartender-note">«Чем помочь: с идеей, багом или настроением?»</p></div>
