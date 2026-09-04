@@ -860,6 +860,8 @@ class ChatLayoutViewsTests(TestCase):
 
         self.assertNotContains(response, 'id="register-form"')
         self.assertNotContains(response, "challenges.cloudflare.com/turnstile")
+        self.assertContains(response, f'action="{reverse("logout")}"')
+        self.assertContains(response, 'name="csrfmiddlewaretoken"')
 
     def test_robots_disallows_indexing_closed_beta(self):
         response = self.client.get(reverse("robots"))
