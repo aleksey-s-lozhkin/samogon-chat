@@ -112,7 +112,14 @@ nano /srv/config/env/samogon.env
 - пароль в `DATABASE_URL` — на тот же, что использован для роли `samogon`;
 - `REGISTRATION_INVITE_CODE` — вывод `openssl rand -hex 24`, только для
   приглашённых тестеров;
-- SMTP-параметры, если приложение должно отправлять почту.
+- SMTP-параметры, если приложение должно отправлять почту;
+- `GITHUB_OAUTH_CLIENT_ID` и `GITHUB_OAUTH_CLIENT_SECRET` из GitHub OAuth App;
+- `GOOGLE_OAUTH_CLIENT_ID` и `GOOGLE_OAUTH_CLIENT_SECRET` из Google OAuth client.
+
+Для SMTP включайте только один режим шифрования. Обычно это
+`EMAIL_PORT=587`, `EMAIL_USE_TLS=1`, `EMAIL_USE_SSL=0`. Для Яндекс Почты с
+SSL используйте `EMAIL_PORT=465`, `EMAIL_USE_TLS=0`, `EMAIL_USE_SSL=1` и
+пароль приложения вместо основного пароля аккаунта.
 
 Оставьте следующие значения как есть:
 
@@ -133,6 +140,7 @@ TURNSTILE_SECRET_KEY=
 RATE_LIMIT_WINDOW_SECONDS=60
 LOGIN_RATE_LIMIT=10
 REGISTRATION_RATE_LIMIT=5
+PASSWORD_RESET_RATE_LIMIT=5
 MESSAGE_RATE_LIMIT=20
 BARTENDER_RATE_LIMIT=5
 REACTION_RATE_LIMIT=30
@@ -144,6 +152,32 @@ ATTACHMENT_IMAGE_MAX_SIZE=5242880
 ATTACHMENT_FILE_MAX_SIZE=2097152
 ATTACHMENT_RATE_LIMIT=10
 ```
+
+### GitHub и Google OAuth
+
+Создайте отдельные production-приложения у провайдеров и укажите точные
+callback URL:
+
+```text
+https://sam.pyconstrictor.ru/accounts/github/login/callback/
+https://sam.pyconstrictor.ru/accounts/google/login/callback/
+```
+
+Для GitHub создайте OAuth App в `Settings → Developer settings → OAuth Apps`.
+Homepage URL — `https://sam.pyconstrictor.ru/`, Authorization callback URL —
+первый адрес выше. Для Google создайте OAuth 2.0 Client ID типа `Web
+application`, добавьте `https://sam.pyconstrictor.ru` в Authorized JavaScript
+origins, а второй адрес — в Authorized redirect URIs. Экран согласия Google
+должен быть опубликован либо тестовый пользователь должен быть добавлен явно.
+
+Секреты задаются только в `/srv/config/env/samogon.env`; в базе и репозитории
+они не хранятся. Кнопка провайдера появляется только при наличии одновременно
+ID и секрета. Для локальной проверки используйте отдельные OAuth-приложения с
+callback на `http://127.0.0.1:8000`; production-секреты локально не копируйте.
+
+Совпавший подтверждённый email не объединяет аккаунты автоматически. В таком
+случае пользователь сначала входит обычным способом, затем подключает GitHub
+или Google в профиле. Access и refresh tokens провайдеров не сохраняются.
 
 Рядом с `compose.yaml` создайте `.env` только с путями и образом (в нём нет
 секретов):
@@ -188,7 +222,8 @@ bash /path/to/samogon/deployment/ollama/benchmark-api.sh samogon-semen-gemma
 пустые, виджет отключён — это удобно для локальной разработки и закрытой беты.
 
 Django использует общий Redis для лимитов: по умолчанию один IP может сделать
-до 10 попыток входа и 5 регистраций за минуту, один пользователь — до 20
+до 10 попыток входа, 5 регистраций и 5 запросов восстановления пароля за минуту,
+один пользователь — до 20
 сообщений и 5 обращений к Семёну за минуту. Nginx добавляет внешний барьер до
 приложения. Значения меняются только в `/srv/config/env/samogon.env`.
 

@@ -1,15 +1,22 @@
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.views import PasswordResetView
+from django.contrib import messages
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse, reverse_lazy
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
+from allauth.socialaccount.models import SocialAccount
 
 from config.rate_limit import request_is_allowed
 from chat.services.navigation import get_last_room_url
 
 from .forms import ProfileForm, RegistrationForm
 from .turnstile import verify_turnstile
+
+User = get_user_model()
 
 
 def is_htmx_request(request):
@@ -23,6 +30,22 @@ def htmx_error(request, message, status=200):
         "chat/partials/auth_error.html",
         {"message": message},
         status=status,
+    )
+
+
+def registration_form_error(request, form):
+    """Возвращает общую и привязанные к полям ошибки регистрации."""
+    return render(
+        request,
+        "chat/partials/auth_error.html",
+        {
+            "message": registration_error_message(form),
+            "field_errors": {
+                field: " ".join(form.errors.get(field, ()))
+                for field in ("username", "email", "invite_code", "password")
+            },
+            "error_prefix": "register-error",
+        },
     )
 
 
@@ -50,6 +73,70 @@ def authentication_error(request, message, status=400):
     return JsonResponse({"success": False, "error": message}, status=status)
 
 
+def get_safe_return_url(request):
+    """Возвращает только локальный адрес, переданный формой авторизации."""
+    return_url = request.POST.get("next", "").strip()
+    if return_url and url_has_allowed_host_and_scheme(
+        return_url,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return return_url
+    return reverse("home")
+
+
+def find_login_username(identifier):
+    """Находит имя пользователя по логину или уникальному email."""
+    username_field = User.USERNAME_FIELD
+    users = User.objects.filter(**{f"{username_field}__iexact": identifier})
+    if users.count() == 1:
+        return getattr(users.first(), username_field)
+
+    users = User.objects.filter(email__iexact=identifier)
+    if users.count() == 1:
+        return getattr(users.first(), username_field)
+    return identifier
+
+
+class ComfortablePasswordResetView(PasswordResetView):
+    """Не раскрывает наличие email и ограничивает отправку писем по IP."""
+
+    template_name = "users/password_reset_form.html"
+    email_template_name = "users/password_reset_email.txt"
+    subject_template_name = "users/password_reset_subject.txt"
+    success_url = reverse_lazy("password_reset_done")
+
+    def post(self, request, *args, **kwargs):
+        if not request_is_allowed(
+            request,
+            bucket="password-reset",
+            limit=settings.PASSWORD_RESET_RATE_LIMIT,
+        ):
+            form = self.get_form()
+            form.add_error(
+                None,
+                "Слишком много запросов. Подождите минуту и попробуйте снова.",
+            )
+            return self.render_to_response(
+                self.get_context_data(form=form),
+                status=429,
+            )
+        return super().post(request, *args, **kwargs)
+
+
+def authentication_success(request, user):
+    return_url = get_safe_return_url(request)
+    if is_htmx_request(request):
+        return HttpResponse(headers={"HX-Redirect": return_url})
+    return JsonResponse(
+        {
+            "success": True,
+            "username": user.username,
+            "redirect_url": return_url,
+        }
+    )
+
+
 @require_POST
 def login_view(request):
     if not request_is_allowed(
@@ -62,12 +149,15 @@ def login_view(request):
             "Слишком много попыток входа. Подождите минуту.",
         )
 
-    username = request.POST.get("username", "").strip()
+    identifier = request.POST.get(
+        "identifier",
+        request.POST.get("username", ""),
+    ).strip()
     password = request.POST.get("password", "")
 
     user = authenticate(
         request,
-        username=username,
+        username=find_login_username(identifier),
         password=password,
     )
 
@@ -90,17 +180,12 @@ def login_view(request):
             status=403,
         )
 
-    login(request, user)
-
-    if is_htmx_request(request):
-        return HttpResponse(headers={"HX-Refresh": "true"})
-
-    return JsonResponse(
-        {
-            "success": True,
-            "username": user.username,
-        }
+    login(
+        request,
+        user,
+        backend="django.contrib.auth.backends.ModelBackend",
     )
+    return authentication_success(request, user)
 
 
 @require_POST
@@ -138,7 +223,7 @@ def register_view(request):
 
     if not form.is_valid():
         if is_htmx_request(request):
-            return htmx_error(request, registration_error_message(form))
+            return registration_form_error(request, form)
 
         errors = {}
 
@@ -155,17 +240,12 @@ def register_view(request):
 
     user = form.save()
 
-    login(request, user)
-
-    if is_htmx_request(request):
-        return HttpResponse(headers={"HX-Refresh": "true"})
-
-    return JsonResponse(
-        {
-            "success": True,
-            "username": user.username,
-        }
+    login(
+        request,
+        user,
+        backend="django.contrib.auth.backends.ModelBackend",
     )
+    return authentication_success(request, user)
 
 
 @login_required
@@ -203,5 +283,40 @@ def profile(request):
             "form": form,
             "last_room_url": get_last_room_url(request),
             "has_last_room": bool(request.session.get("last_chat_room_slug")),
+            "connected_provider_ids": set(
+                SocialAccount.objects.filter(user=request.user).values_list(
+                    "provider",
+                    flat=True,
+                )
+            ),
         },
     )
+
+
+@login_required
+@require_POST
+def disconnect_social_account(request, provider):
+    """Отключает провайдера, сохраняя хотя бы один рабочий способ входа."""
+    if provider not in {"github", "google"}:
+        messages.error(request, "Неизвестный способ входа.")
+        return redirect("profile")
+
+    account = SocialAccount.objects.filter(
+        user=request.user,
+        provider=provider,
+    ).first()
+    if account is None:
+        messages.error(request, "Этот способ входа уже отключён.")
+        return redirect("profile")
+
+    connected_count = SocialAccount.objects.filter(user=request.user).count()
+    if not request.user.has_usable_password() and connected_count <= 1:
+        messages.error(
+            request,
+            "Сначала задайте пароль или подключите другой сервис.",
+        )
+        return redirect("profile")
+
+    account.delete()
+    messages.success(request, "Способ входа отключён.")
+    return redirect("profile")

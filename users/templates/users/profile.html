@@ -12,7 +12,7 @@
     {% include "pwa/head.html" %}
     <link
         rel="stylesheet"
-        href="{% static 'users/css/profile.css' %}?v=3"
+        href="{% static 'users/css/profile.css' %}?v=4"
     >
 
 </head>
@@ -48,6 +48,14 @@
         </div>
 
     </div>
+
+    {% if messages %}
+        <div class="profile-notices" aria-live="polite">
+            {% for message in messages %}
+                <p class="profile-notice {{ message.tags }}">{{ message }}</p>
+            {% endfor %}
+        </div>
+    {% endif %}
 
 
     <div class="profile-avatar">
@@ -93,6 +101,50 @@
         </div>
 
     </div>
+
+
+    {% if github_oauth_enabled or google_oauth_enabled %}
+        <section class="profile-edit profile-connections">
+            <h2>Способы входа</h2>
+            <p class="connection-help">Подключите сервис после обычного входа — существующий аккаунт не будет объединён по одному совпавшему email.</p>
+            <div class="connection-list">
+                {% if github_oauth_enabled %}
+                    <div class="connection-row">
+                        <span>GitHub</span>
+                        {% if "github" in connected_provider_ids %}
+                            <form method="post" action="{% url 'disconnect_social_account' 'github' %}">
+                                {% csrf_token %}
+                                <button class="connection-disconnect" type="submit">Отключить</button>
+                            </form>
+                        {% else %}
+                            <form method="post" action="{% url 'github_login' %}?process=connect">
+                                {% csrf_token %}
+                                <input type="hidden" name="next" value="{% url 'profile' %}">
+                                <button type="submit">Подключить</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                {% endif %}
+                {% if google_oauth_enabled %}
+                    <div class="connection-row">
+                        <span>Google</span>
+                        {% if "google" in connected_provider_ids %}
+                            <form method="post" action="{% url 'disconnect_social_account' 'google' %}">
+                                {% csrf_token %}
+                                <button class="connection-disconnect" type="submit">Отключить</button>
+                            </form>
+                        {% else %}
+                            <form method="post" action="{% url 'google_login' %}?process=connect">
+                                {% csrf_token %}
+                                <input type="hidden" name="next" value="{% url 'profile' %}">
+                                <button type="submit">Подключить</button>
+                            </form>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
+        </section>
+    {% endif %}
 
 
     <div class="profile-edit">
