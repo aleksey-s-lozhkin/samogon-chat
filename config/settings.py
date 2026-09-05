@@ -215,7 +215,7 @@ TYPING_RATE_LIMIT = int(os.getenv("TYPING_RATE_LIMIT", "60"))
 # environment variable lets local development and production use different
 # hosts without changing application code.
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://192.168.0.78:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "samogon-semen-gemma")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "samogon-semen-caretaker")
 OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "20"))
 OLLAMA_KEEP_ALIVE_RAW = os.getenv("OLLAMA_KEEP_ALIVE", "-1")
 try:
@@ -225,9 +225,9 @@ except ValueError:
     # Строковые интервалы вроде "10m" Ollama также принимает.
     OLLAMA_KEEP_ALIVE = OLLAMA_KEEP_ALIVE_RAW
 OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.5"))
-OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "80"))
+OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "120"))
 BARTENDER_RESPONSE_MAX_LENGTH = int(
-    os.getenv("BARTENDER_RESPONSE_MAX_LENGTH", "200")
+    os.getenv("BARTENDER_RESPONSE_MAX_LENGTH", "360")
 )
 BARTENDER_USERNAME = os.getenv("BARTENDER_USERNAME", "semen")
 
