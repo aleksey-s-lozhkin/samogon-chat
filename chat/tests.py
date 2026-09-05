@@ -437,6 +437,15 @@ class NotesViewTests(TestCase):
         self.assertRedirects(delete_response, reverse("chat:notes"))
         self.assertFalse(self.reader.chat_notes.exists())
 
+    def test_notes_localize_visible_datetime_in_browser(self):
+        self.client.force_login(self.reader)
+        Note.objects.create(user=self.reader, text="Проверить время")
+
+        response = self.client.get(reverse("chat:notes"))
+
+        self.assertContains(response, 'class="local-datetime"')
+        self.assertContains(response, "chat/js/local-datetime.js")
+
     def test_uninvited_guest_cannot_save_private_room_message(self):
         private_room = Room.objects.create(
             name="Тайный столик",
@@ -914,6 +923,26 @@ class ChatLayoutViewsTests(TestCase):
             source.index("content.append(author, text, time);"),
             source.index("renderMessageAttachments(content, data.attachments || []);"),
         )
+
+    def test_composer_uses_short_external_hint_set(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+        with open(
+            settings.BASE_DIR / "static/chat/js/composer-hints.js",
+            encoding="utf-8",
+        ) as script:
+            hints = script.read()
+
+        self.assertContains(response, "chat/js/composer-hints.js")
+        self.assertNotIn("Семён нальёт контекст", hints)
+        self.assertIn("Ваша реплика…", hints)
+
+    def test_scroll_waits_for_layout_and_loaded_images(self):
+        with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
+            source = script.read()
+
+        self.assertIn("scrollToLatestAfterLayout(chatLog, true)", source)
+        self.assertIn('image.addEventListener(', source)
 
     def test_chat_uses_a_custom_delete_dialog(self):
         with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
