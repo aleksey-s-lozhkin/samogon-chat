@@ -996,6 +996,19 @@ class ChatLayoutViewsTests(TestCase):
         message_render = source.index("data.messages.forEach(addMessage);", history_handler)
         self.assertLess(skeleton_clear, message_render)
 
+    def test_message_hover_highlight_respects_pointer_and_motion_preferences(self):
+        with open(settings.BASE_DIR / "static/chat/css/chat.css", encoding="utf-8") as styles:
+            source = styles.read()
+
+        self.assertIn("@media (hover: hover) and (pointer: fine)", source)
+        self.assertIn(
+            ".message:not(.is-selected):not(.reply-highlight):hover .message-content",
+            source,
+        )
+        self.assertIn("border-color: rgba(198, 117, 58, 0.62)", source)
+        self.assertIn("@media (prefers-reduced-motion: reduce)", source)
+        self.assertIn("transition: none", source)
+
 
 class MessageSearchViewsTests(TestCase):
     def setUp(self):

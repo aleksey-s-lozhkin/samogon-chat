@@ -4194,6 +4194,25 @@ body::after { display: none; }
     background: linear-gradient(135deg, rgba(107, 62, 112, 0.25), transparent), var(--message-surface);
 }
 
+.message-content {
+    transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .message:not(.is-selected):not(.reply-highlight):hover .message-content {
+        border-color: rgba(198, 117, 58, 0.62);
+        box-shadow:
+            0 0 0 1px rgba(198, 117, 58, 0.1),
+            0 9px 25px rgba(0, 0, 0, 0.18);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .message-content {
+        transition: none;
+    }
+}
+
 .rooms-content,
 .private-room-create,
 .room-card,
