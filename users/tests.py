@@ -16,6 +16,7 @@ from PIL import Image
 
 from config.rate_limit import is_allowed
 from allauth.account.models import EmailAddress
+from allauth.account.signals import user_signed_up
 from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.models import SocialAccount, SocialLogin
 
@@ -324,7 +325,8 @@ class AuthenticationHtmxTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["HX-Redirect"], "/")
-        self.assertTrue(User.objects.filter(username="new-user").exists())
+        user = User.objects.get(username="new-user")
+        self.assertTrue(user.welcome_pending)
 
     @override_settings(REGISTRATION_INVITE_CODE="bar-secret")
     def test_registration_requires_valid_invite_code_when_enabled(self):
@@ -594,6 +596,18 @@ class OAuthAuthenticationTests(TestCase):
             error.exception.response.url,
             "/chat/?auth=login&oauth_error=email_required",
         )
+
+    def test_oauth_signup_marks_user_for_welcome(self):
+        user = User.objects.create_user(username="oauth-newcomer")
+
+        user_signed_up.send(
+            sender=self.__class__,
+            request=self.factory.get("/accounts/github/login/callback/"),
+            user=user,
+        )
+
+        user.refresh_from_db()
+        self.assertTrue(user.welcome_pending)
 
     @override_settings(
         GITHUB_OAUTH_CLIENT_ID="github-client",

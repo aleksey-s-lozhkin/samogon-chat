@@ -78,6 +78,7 @@ class RegistrationForm(forms.ModelForm):
         user = super().save(commit=False)
 
         user.set_password(self.cleaned_data["password"])
+        user.welcome_pending = True
 
         if commit:
             user.save()

@@ -34,6 +34,7 @@ from .services.attachments import (
     create_attachments,
     validate_attachment,
 )
+from .services.welcome import WELCOME_TEXT, ensure_welcome_message
 from .services.messages import MessageService
 from .services.bartender import BARTENDER_LANGUAGE_FALLBACK, bartender
 from .validators import validate_message
@@ -1006,6 +1007,38 @@ class BartenderServiceTests(TestCase):
         self.assertEqual(reply.text, "Первая мысль закончена.")
 
 
+class WelcomeMessageTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="newcomer",
+            welcome_pending=True,
+        )
+        self.room = Room.objects.create(name="General", slug="general")
+
+    def test_welcome_is_private_and_created_only_once(self):
+        first = ensure_welcome_message(user_id=self.user.id, room=self.room)
+        second = ensure_welcome_message(user_id=self.user.id, room=self.room)
+
+        self.assertIsNotNone(first)
+        self.assertIsNone(second)
+        self.assertEqual(first.recipient, self.user)
+        self.assertEqual(first.user.username, settings.BARTENDER_USERNAME)
+        self.assertEqual(first.text, WELCOME_TEXT)
+        self.assertEqual(
+            Message.objects.filter(recipient=self.user, text=WELCOME_TEXT).count(),
+            1,
+        )
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.welcome_pending)
+
+    def test_existing_user_is_not_welcomed(self):
+        existing = User.objects.create_user(username="existing")
+
+        message = ensure_welcome_message(user_id=existing.id, room=self.room)
+
+        self.assertIsNone(message)
+
+
 class ChatConsumerTests(TransactionTestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="alex")
@@ -1077,6 +1110,37 @@ class ChatConsumerTests(TransactionTestCase):
         self.assertTrue(
             Message.objects.filter(room=self.room, user=self.user, text="New message").exists(),
         )
+
+    def test_newcomer_receives_welcome_in_first_history_only(self):
+        self.user.welcome_pending = True
+        self.user.save(update_fields=("welcome_pending",))
+
+        async_to_sync(self._assert_welcome_history)()
+
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.welcome_pending)
+        self.assertEqual(Message.objects.filter(text=WELCOME_TEXT).count(), 1)
+
+    async def _assert_welcome_history(self):
+        for _ in range(2):
+            communicator = WebsocketCommunicator(
+                self.application,
+                "/ws/chat/general/",
+            )
+            communicator.scope["user"] = self.user
+            connected, _ = await communicator.connect()
+            self.assertTrue(connected)
+
+            history = await communicator.receive_json_from()
+            welcome_messages = [
+                message
+                for message in history["messages"]
+                if message["message"] == WELCOME_TEXT
+            ]
+            self.assertEqual(len(welcome_messages), 1)
+            self.assertTrue(welcome_messages[0]["private"])
+            self.assertEqual(welcome_messages[0]["username"], "Семён")
+            await communicator.disconnect()
 
     def test_user_can_toggle_reaction_over_websocket(self):
         message = Message.objects.create(

@@ -15,6 +15,7 @@ from .models import Message, Room
 from .services.bartender import BartenderUnavailable, bartender
 from .services.messages import MessageService
 from .services.presence import online_users
+from .services.welcome import ensure_welcome_message
 from users.services.push import send_direct_message_push
 from .validators import validate_message
 
@@ -76,6 +77,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_add(PRESENCE_GROUP_NAME, self.channel_name)
         await self.accept()
 
+        await self.ensure_welcome_message()
         messages = await self.get_messages()
         await self.send(
             text_data=json.dumps({"type": "history", "messages": messages})
@@ -584,6 +586,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_bartender_user(self):
         return bartender.get_bartender_user()
+
+    @database_sync_to_async
+    def ensure_welcome_message(self):
+        return ensure_welcome_message(user_id=self.user.id, room=self.room)
 
     @database_sync_to_async
     def get_messages(self):
