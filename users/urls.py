@@ -7,6 +7,9 @@ from .views import (
     login_view,
     logout_view,
     profile,
+    push_subscribe,
+    push_status,
+    push_unsubscribe,
     register_view,
 )
 
@@ -43,6 +46,9 @@ urlpatterns = [
         name="password_reset_complete",
     ),
     path("profile/", profile, name="profile"),
+    path("profile/push/subscribe/", push_subscribe, name="push_subscribe"),
+    path("profile/push/status/", push_status, name="push_status"),
+    path("profile/push/unsubscribe/", push_unsubscribe, name="push_unsubscribe"),
     path(
         "profile/connections/<str:provider>/disconnect/",
         disconnect_social_account,

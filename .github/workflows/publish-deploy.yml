@@ -81,14 +81,42 @@ jobs:
           IMAGE: ${{ env.IMAGE_NAME }}:${{ github.sha }}
         run: |
           ssh -o StrictHostKeyChecking=yes -p "$DEPLOY_PORT" \
-            "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd /srv/compose/samogon && \
-             env SAMOGON_IMAGE='$IMAGE' \
-                 SAMOGON_ENV_FILE=/srv/config/env/samogon.env \
-                 SAMOGON_DATA_DIR=/srv/data/samogon \
-                 docker compose -f compose.yaml pull samogon-web && \
-             env SAMOGON_IMAGE='$IMAGE' \
-                 SAMOGON_ENV_FILE=/srv/config/env/samogon.env \
-                 SAMOGON_DATA_DIR=/srv/data/samogon \
-                 docker compose -f compose.yaml up -d --no-build samogon-web && \
-             docker compose -f compose.yaml ps"
+            "$DEPLOY_USER@$DEPLOY_HOST" "bash -s -- '$IMAGE'" <<'REMOTE'
+          set -eu
+
+          image=$1
+          env_file=/srv/config/env/samogon.env
+          compose_dir=/srv/compose/samogon
+          data_dir=/srv/data/samogon
+
+          cd "$compose_dir"
+          env SAMOGON_IMAGE="$image" \
+              SAMOGON_ENV_FILE="$env_file" \
+              SAMOGON_DATA_DIR="$data_dir" \
+              docker compose -f compose.yaml pull samogon-web
+
+          if ! grep -q '^VAPID_PUBLIC_KEY=.' "$env_file" \
+              || ! grep -q '^VAPID_PRIVATE_KEY=.' "$env_file"; then
+            umask 077
+            keys_file=$(mktemp)
+            next_env=$(mktemp "${env_file}.XXXXXX")
+            trap 'rm -f "$keys_file" "$next_env"' EXIT
+
+            docker run --rm --entrypoint python "$image" \
+              /app/manage.py generate_vapid_keys > "$keys_file"
+            grep -v '^VAPID_' "$env_file" > "$next_env" || true
+            cat "$keys_file" >> "$next_env"
+            printf '%s\n' 'VAPID_SUBJECT=https://sam.pyconstrictor.ru' >> "$next_env"
+            chmod --reference="$env_file" "$next_env"
+            chown --reference="$env_file" "$next_env"
+            mv "$next_env" "$env_file"
+            rm -f "$keys_file"
+            trap - EXIT
+          fi
+
+          env SAMOGON_IMAGE="$image" \
+              SAMOGON_ENV_FILE="$env_file" \
+              SAMOGON_DATA_DIR="$data_dir" \
+              docker compose -f compose.yaml up -d --no-build samogon-web
+          docker compose -f compose.yaml ps
+          REMOTE

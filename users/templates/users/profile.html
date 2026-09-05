@@ -146,6 +146,31 @@
         </section>
     {% endif %}
 
+    <section
+        class="profile-edit push-settings"
+        data-push-settings
+        data-enabled="{{ web_push_enabled|yesno:'true,false' }}"
+        data-vapid-key="{{ vapid_public_key }}"
+        data-subscribe-url="{% url 'push_subscribe' %}"
+        data-status-url="{% url 'push_status' %}"
+        data-unsubscribe-url="{% url 'push_unsubscribe' %}"
+    >
+        <h2>Уведомления на этом устройстве</h2>
+        <p class="connection-help">
+            Включаются только по вашему нажатию. Личный текст и имя отправителя
+            не показываются в уведомлении на экране блокировки.
+        </p>
+        <label class="push-option">
+            <input type="checkbox" data-push-master>
+            <span>Разрешить уведомления</span>
+        </label>
+        <label class="push-option">
+            <input type="checkbox" data-push-direct checked>
+            <span>О личных сообщениях</span>
+        </label>
+        <p class="push-status" data-push-status aria-live="polite"></p>
+    </section>
+
 
     <div class="profile-edit">
 
@@ -235,7 +260,7 @@
 
     </div>
 
-<script src="{% static 'users/js/profile.js' %}"></script>
+<script src="{% static 'users/js/profile.js' %}?v=5"></script>
 <script src="{% static 'chat/js/theme.js' %}?v=1"></script>
 
 </div>

@@ -52,3 +52,34 @@ self.addEventListener("fetch", (event) => {
         );
     }
 });
+
+self.addEventListener("push", (event) => {
+    let payload = {};
+    try {
+        payload = event.data ? event.data.json() : {};
+    } catch (_error) {
+        payload = {};
+    }
+    event.waitUntil(self.registration.showNotification(
+        payload.title || "Новое уведомление Самогона",
+        {
+            body: payload.body || "В Самогоне ждёт новая реплика.",
+            icon: "{% static 'pwa/icon-192.png' %}",
+            badge: "{% static 'pwa/icon-192.png' %}",
+            tag: payload.tag || "samogon-notification",
+            renotify: true,
+            data: {url: payload.url || "/chat/"},
+        },
+    ));
+});
+
+self.addEventListener("notificationclick", (event) => {
+    event.notification.close();
+    const targetUrl = new URL(event.notification.data?.url || "/chat/", self.location.origin).href;
+    event.waitUntil(
+        clients.matchAll({type: "window", includeUncontrolled: true}).then((windows) => {
+            const existing = windows.find((client) => client.url === targetUrl);
+            return existing ? existing.focus() : clients.openWindow(targetUrl);
+        }),
+    );
+});

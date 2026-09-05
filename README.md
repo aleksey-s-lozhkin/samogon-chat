@@ -63,10 +63,16 @@ OLLAMA_TEMPERATURE=0.5
 OLLAMA_NUM_PREDICT=80
 BARTENDER_RESPONSE_MAX_LENGTH=200
 REDIS_URL=redis://127.0.0.1:6379/0
+VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+VAPID_SUBJECT=mailto:admin@example.com
 ```
 
 `OLLAMA_KEEP_ALIVE=-1` keeps the selected model in VRAM between requests.
 Use it only when the Ollama server has enough free GPU memory.
+
+Web Push stays disabled until both VAPID keys are configured. Permission is
+requested only from the notification switch in the authenticated profile.
 
 For the intended two-VM deployment, see [docs/deployment.md](docs/deployment.md).
 Never expose the Ollama port to the public Internet.
