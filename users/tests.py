@@ -9,7 +9,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import RequestFactory, TestCase, override_settings
+from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
@@ -22,7 +22,13 @@ from allauth.socialaccount.models import SocialAccount, SocialLogin
 
 from users.adapters import SamogonSocialAccountAdapter
 from users.models import PushSubscription
-from users.services.push import send_admin_push, send_direct_message_push
+from users.services.push import (
+    PushDeliveryResult,
+    device_id_for_subscription,
+    send_admin_push,
+    send_direct_message_push,
+    send_push_self_test,
+)
 
 
 User = get_user_model()
@@ -249,6 +255,163 @@ class PushSubscriptionTests(TestCase):
         )
         self.user.refresh_from_db()
         self.assertTrue(self.user.avatar.name.endswith("avatar.jpg"))
+
+
+class PushDiagnosticApiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="api-user", password="password")
+        self.other = User.objects.create_user(username="other-api-user")
+        self.subscription = PushSubscription.objects.create(
+            user=self.user,
+            endpoint="https://push.example/api-user-device",
+            p256dh="private-public-key",
+            auth="private-auth-secret",
+        )
+        self.other_subscription = PushSubscription.objects.create(
+            user=self.other,
+            endpoint="https://push.example/other-user-device",
+            p256dh="other-public-key",
+            auth="other-auth-secret",
+        )
+
+    @override_settings(WEB_PUSH_ENABLED=True)
+    def test_public_status_exposes_only_safe_application_state(self):
+        response = self.client.get(reverse("api_v1_status"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {
+                "status": "ok",
+                "api_version": "v1",
+                "authenticated": False,
+                "web_push": {"configured": True},
+            },
+        )
+
+    def test_subscription_list_requires_session_authentication(self):
+        response = self.client.get(reverse("api_v1_push_subscriptions"))
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json(), {"error": "authentication_required"})
+
+    @override_settings(WEB_PUSH_ENABLED=True)
+    def test_subscription_list_returns_only_opaque_current_user_devices(self):
+        self.client.force_login(self.user)
+        session = self.client.session
+        session["push_endpoints"] = [self.subscription.endpoint]
+        session.save()
+
+        response = self.client.get(reverse("api_v1_push_subscriptions"))
+
+        self.assertEqual(response.status_code, 200)
+        devices = response.json()["web_push"]["subscriptions"]
+        self.assertEqual(len(devices), 1)
+        self.assertEqual(
+            devices[0]["device_id"],
+            device_id_for_subscription(self.subscription),
+        )
+        self.assertTrue(devices[0]["current_session"])
+        serialized = response.content.decode()
+        for secret in (
+            self.subscription.endpoint,
+            self.subscription.p256dh,
+            self.subscription.auth,
+            self.other_subscription.endpoint,
+        ):
+            self.assertNotIn(secret, serialized)
+
+    @override_settings(WEB_PUSH_ENABLED=True)
+    @patch("users.api.send_push_self_test")
+    def test_self_test_targets_only_selected_current_user_device(self, mocked_send):
+        mocked_send.return_value = PushDeliveryResult(delivered=1)
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+        csrf_client.get(reverse("api_v1_push_subscriptions"))
+        csrf_token = csrf_client.cookies["csrftoken"].value
+
+        response = csrf_client.post(
+            reverse("api_v1_push_self_test"),
+            data=json.dumps(
+                {"device_id": device_id_for_subscription(self.subscription)}
+            ),
+            content_type="application/json",
+            HTTP_X_CSRFTOKEN=csrf_token,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "accepted")
+        selected = mocked_send.call_args.kwargs["subscriptions"]
+        self.assertEqual(list(selected), [self.subscription])
+        self.assertEqual(mocked_send.call_args.kwargs["url"], "/users/profile/")
+
+    @override_settings(WEB_PUSH_ENABLED=True)
+    def test_self_test_rejects_another_users_device(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("api_v1_push_self_test"),
+            data=json.dumps(
+                {"device_id": device_id_for_subscription(self.other_subscription)}
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json(), {"error": "device_not_found"})
+
+    @override_settings(WEB_PUSH_ENABLED=True)
+    def test_self_test_requires_csrf_token(self):
+        csrf_client = Client(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+
+        response = csrf_client.post(
+            reverse("api_v1_push_self_test"),
+            data=json.dumps(
+                {"device_id": device_id_for_subscription(self.subscription)}
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    @override_settings(WEB_PUSH_ENABLED=True)
+    @patch("users.api.is_allowed", return_value=False)
+    def test_self_test_is_rate_limited(self, mocked_is_allowed):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            reverse("api_v1_push_self_test"),
+            data=json.dumps(
+                {"device_id": device_id_for_subscription(self.subscription)}
+            ),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.json(), {"error": "rate_limited"})
+        mocked_is_allowed.assert_called_once()
+
+    @override_settings(
+        WEB_PUSH_ENABLED=True,
+        VAPID_PRIVATE_KEY="private-key",
+        VAPID_SUBJECT="mailto:test@example.com",
+    )
+    @patch("users.services.push.webpush")
+    def test_self_test_payload_is_neutral(self, mocked_webpush):
+        result = send_push_self_test(
+            subscriptions=PushSubscription.objects.filter(pk=self.subscription.pk),
+            url="/users/profile/",
+        )
+
+        self.assertEqual(result.delivered, 1)
+        payload = json.loads(mocked_webpush.call_args.kwargs["data"])
+        self.assertEqual(payload["title"], "Проверка уведомлений")
+        self.assertEqual(payload["body"], "Web Push в Самогоне работает.")
+        self.assertEqual(payload["url"], "/users/profile/")
+        serialized = json.dumps(payload, ensure_ascii=False)
+        self.assertNotIn(self.user.username, serialized)
+        self.assertNotIn(self.subscription.endpoint, serialized)
 
 
 class AuthenticationHtmxTests(TestCase):
