@@ -6,6 +6,7 @@ const {
     attachmentUploadTemplate,
     messageDeleteTemplate,
     noteCreateUrl,
+    focusMessageId,
 } = chatConfig;
 const MESSAGE_MAX_LENGTH = 1000;
 const BARTENDER_USERNAME = "Семён";
@@ -54,7 +55,8 @@ if (isAuthenticated) {
 
 function connectWebSocket() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${protocol}//${window.location.host}/ws/chat/${encodeURIComponent(roomSlug)}/`;
+    const focusQuery = focusMessageId ? `?focus=${encodeURIComponent(focusMessageId)}` : "";
+    const url = `${protocol}//${window.location.host}/ws/chat/${encodeURIComponent(roomSlug)}/${focusQuery}`;
 
     chatSocket = new WebSocket(url);
     chatSocket.onmessage = ({ data }) => handleServerEvent(JSON.parse(data));
@@ -113,6 +115,12 @@ function finishHistoryLoading() {
 
     if (!chatLog.querySelector(".message")) {
         renderEmptyState(chatLog);
+        return;
+    }
+    if (focusMessageId) {
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => scrollToMessage(focusMessageId));
+        });
         return;
     }
     chatLog.scrollTop = chatLog.scrollHeight;

@@ -1,0 +1,41 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Поиск — Самогон</title>
+    {% include "chat/partials/theme_head.html" %}
+    <link rel="stylesheet" href="{% static 'chat/css/chat.css' %}?v=21">
+</head>
+<body>
+<main class="notes-page">
+    <header class="chat-header">
+        <div class="brand"><div><h1>🍺 Самогон</h1><p>Ищем реплики, к которым у вас есть доступ.</p></div></div>
+        <div class="user-actions"><a href="{{ last_room_url }}" class="profile-link">К беседе</a></div>
+    </header>
+    <section class="notes-panel search-panel">
+        <div class="notes-panel-heading"><div><span class="notes-eyebrow">ПОИСК</span><h2>По сообщениям</h2></div></div>
+        <form method="get" class="message-search-form">
+            {{ form.q.label_tag }}
+            {{ form.q }}
+            {% for error in form.q.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+            <button type="submit">Найти</button>
+        </form>
+        {% if form.is_bound and form.is_valid %}
+            <div class="search-results" aria-live="polite">
+            {% for message in results %}
+                <a class="search-result" href="{% url 'chat:chat' message.room.slug %}?message={{ message.id }}">
+                    <strong>{{ message.display_username }} · {{ message.room.name }}</strong>
+                    <span>{{ message.text|truncatechars:180 }}</span>
+                    <time class="local-datetime" datetime="{{ message.created_at|date:'c' }}">{{ message.created_at|date:"d.m.Y H:i" }}</time>
+                </a>
+            {% empty %}<p class="rooms-empty">Ничего не нашлось.</p>{% endfor %}
+            </div>
+        {% endif %}
+    </section>
+</main>
+<script src="{% static 'chat/js/theme.js' %}?v=1"></script>
+<script src="{% static 'chat/js/local-datetime.js' %}?v=1"></script>
+</body>
+</html>

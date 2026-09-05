@@ -670,6 +670,29 @@ class MessageServiceTests(TestCase):
             ["Message 1", "Message 2"],
         )
 
+    def test_get_room_messages_includes_visible_focus_outside_recent_limit(self):
+        focused = MessageService.create_message(
+            user_id=self.user.id,
+            room=self.room,
+            text="Старая найденная реплика",
+        )
+        for index in range(55):
+            MessageService.create_message(
+                user_id=self.user.id,
+                room=self.room,
+                text=f"Свежая реплика {index}",
+            )
+
+        messages = MessageService.get_room_messages(
+            self.room,
+            viewer_id=self.user.id,
+            limit=50,
+            focus_message_id=focused.id,
+        )
+
+        self.assertEqual(len(messages), 51)
+        self.assertEqual(messages[0]["id"], focused.id)
+
     def test_private_messages_are_visible_only_to_sender_and_recipient(self):
         recipient = User.objects.create_user(username="maria")
         outsider = User.objects.create_user(username="ivan")
@@ -952,6 +975,98 @@ class ChatLayoutViewsTests(TestCase):
         self.assertNotIn("window.confirm", source)
 
 
+class MessageSearchViewsTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="alex")
+        self.other = User.objects.create_user(username="maria")
+        self.outsider = User.objects.create_user(username="ivan")
+        self.public_room = Room.objects.create(name="Общий зал", slug="general")
+        self.private_room = Room.objects.create(
+            name="Свой столик",
+            slug="own-table",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.user,
+        )
+        RoomMembership.objects.create(room=self.private_room, user=self.user)
+        self.closed_room = Room.objects.create(
+            name="Чужой столик",
+            slug="closed-table",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.outsider,
+        )
+        RoomMembership.objects.create(room=self.closed_room, user=self.outsider)
+
+    def test_search_requires_authentication(self):
+        response = self.client.get(reverse("chat:message_search"), {"q": "секрет"})
+
+        self.assertEqual(response.status_code, 302)
+
+    def test_search_returns_only_messages_visible_to_current_user(self):
+        visible_public = Message.objects.create(
+            room=self.public_room,
+            user=self.other,
+            text="needle общий",
+        )
+        visible_direct = Message.objects.create(
+            room=self.public_room,
+            user=self.other,
+            recipient=self.user,
+            text="needle лично",
+        )
+        visible_private_room = Message.objects.create(
+            room=self.private_room,
+            user=self.user,
+            text="needle свой столик",
+        )
+        Message.objects.create(
+            room=self.public_room,
+            user=self.other,
+            recipient=self.outsider,
+            text="needle чужая личка",
+        )
+        Message.objects.create(
+            room=self.closed_room,
+            user=self.outsider,
+            text="needle чужой столик",
+        )
+        Message.objects.create(
+            room=self.public_room,
+            user=self.other,
+            text="needle скрыто",
+            hidden_at=timezone.now(),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("chat:message_search"), {"q": "needle"})
+
+        self.assertEqual(response.status_code, 200)
+        result_ids = [message.id for message in response.context["results"]]
+        self.assertCountEqual(
+            result_ids,
+            [visible_public.id, visible_direct.id, visible_private_room.id],
+        )
+        self.assertContains(response, f"?message={visible_public.id}")
+        self.assertNotContains(response, "needle чужая личка")
+        self.assertNotContains(response, "needle чужой столик")
+        self.assertNotContains(response, "needle скрыто")
+
+    def test_chat_ignores_focus_message_user_cannot_view(self):
+        private_message = Message.objects.create(
+            room=self.public_room,
+            user=self.other,
+            recipient=self.outsider,
+            text="Не для Алекса",
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse("chat:chat", args=[self.public_room.slug]),
+            {"message": private_message.id},
+        )
+
+        self.assertContains(response, "focusMessageId: null")
+
+
 class MessageValidationTests(TestCase):
     def test_accepts_trimmed_message(self):
         message, error = validate_message('{"message": "  Привет  "}')
@@ -1156,6 +1271,35 @@ class ChatConsumerTests(TransactionTestCase):
         self.assertTrue(
             Message.objects.filter(room=self.room, user=self.user, text="New message").exists(),
         )
+
+    def test_history_includes_requested_visible_message_outside_recent_limit(self):
+        focused = Message.objects.create(
+            room=self.room,
+            user=self.user,
+            text="Старая найденная реплика",
+        )
+        Message.objects.bulk_create(
+            [
+                Message(room=self.room, user=self.user, text=f"Свежая {index}")
+                for index in range(55)
+            ]
+        )
+
+        async_to_sync(self._assert_focused_history)(focused.id)
+
+    async def _assert_focused_history(self, focused_id):
+        communicator = WebsocketCommunicator(
+            self.application,
+            f"/ws/chat/general/?focus={focused_id}",
+        )
+        communicator.scope["user"] = self.user
+        connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+
+        history = await communicator.receive_json_from()
+        self.assertEqual(history["type"], "history")
+        self.assertIn(focused_id, [message["id"] for message in history["messages"]])
+        await communicator.disconnect()
 
     def test_newcomer_receives_welcome_in_first_history_only(self):
         self.user.welcome_pending = True
