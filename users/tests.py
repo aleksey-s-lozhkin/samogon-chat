@@ -10,6 +10,7 @@ from django.core.cache import cache
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory, TestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
 from PIL import Image
 
@@ -20,7 +21,7 @@ from allauth.socialaccount.models import SocialAccount, SocialLogin
 
 from users.adapters import SamogonSocialAccountAdapter
 from users.models import PushSubscription
-from users.services.push import send_direct_message_push
+from users.services.push import send_admin_push, send_direct_message_push
 
 
 User = get_user_model()
@@ -181,6 +182,7 @@ class PushSubscriptionTests(TestCase):
         send_direct_message_push(recipient_id=self.user.id, room_slug="u-stoyki")
 
         self.assertFalse(PushSubscription.objects.filter(pk=subscription.pk).exists())
+
 
     def test_profile_saves_message_color_preference(self):
         self.client.force_login(self.user)
@@ -668,3 +670,125 @@ class RateLimitTests(TestCase):
         self.assertTrue(is_allowed(**arguments))
         self.assertTrue(is_allowed(**arguments))
         self.assertFalse(is_allowed(**arguments))
+
+
+class AdminPushTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="password",
+        )
+        self.user = User.objects.create_user(username="subscriber")
+        self.admin_subscription = PushSubscription.objects.create(
+            user=self.admin,
+            endpoint="https://push.example/admin",
+            p256dh="admin-key",
+            auth="admin-auth",
+        )
+        self.user_subscription = PushSubscription.objects.create(
+            user=self.user,
+            endpoint="https://push.example/user",
+            p256dh="user-key",
+            auth="user-auth",
+        )
+        self.url = reverse("admin:users_pushsubscription_send")
+
+    def test_send_page_is_superuser_only(self):
+        staff = User.objects.create_user(username="staff", is_staff=True)
+        self.client.force_login(staff)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_superuser_sees_send_page_and_changelist_link(self):
+        self.client.force_login(self.admin)
+
+        send_response = self.client.get(self.url)
+        list_response = self.client.get(
+            reverse("admin:users_pushsubscription_changelist")
+        )
+
+        self.assertEqual(send_response.status_code, 200)
+        self.assertContains(send_response, "Только мои устройства")
+        self.assertContains(list_response, "Отправить Web Push")
+
+    @patch("users.admin.send_admin_push")
+    def test_self_test_only_selects_admin_devices(self, mocked_send):
+        mocked_send.return_value = type(
+            "Result", (), {"delivered": 1, "failed": 0, "removed": 0}
+        )()
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            self.url,
+            {
+                "audience": "self",
+                "title": "Проверка",
+                "body": "Тестовое уведомление",
+                "url": "/chat/",
+                "confirm": "on",
+            },
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("admin:users_pushsubscription_changelist"),
+        )
+        subscriptions = mocked_send.call_args.kwargs["subscriptions"]
+        self.assertEqual(list(subscriptions), [self.admin_subscription])
+
+    @patch("users.admin.send_admin_push")
+    def test_broadcast_requires_explicit_confirmation(self, mocked_send):
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            self.url,
+            {
+                "audience": "all",
+                "title": "Важно",
+                "body": "Объявление",
+                "url": "/chat/",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Подтверждаю отправку")
+        mocked_send.assert_not_called()
+
+    @override_settings(
+        WEB_PUSH_ENABLED=True,
+        VAPID_PRIVATE_KEY="private-key",
+        VAPID_SUBJECT="mailto:test@example.com",
+    )
+    @patch("users.services.push.webpush")
+    def test_broadcast_sends_visible_admin_content(self, mocked_webpush):
+        result = send_admin_push(
+            subscriptions=PushSubscription.objects.filter(enabled=True),
+            title="Важно",
+            body="Бар закроется в 23:00",
+            url="/chat/",
+        )
+
+        self.assertEqual(result.delivered, 2)
+        payload = json.loads(mocked_webpush.call_args.kwargs["data"])
+        self.assertEqual(payload["title"], "Важно")
+        self.assertEqual(payload["body"], "Бар закроется в 23:00")
+
+    def test_external_broadcast_url_is_rejected(self):
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            self.url,
+            {
+                "audience": "all",
+                "title": "Важно",
+                "body": "Объявление",
+                "url": "https://example.com/",
+                "confirm": "on",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Укажите внутренний путь")

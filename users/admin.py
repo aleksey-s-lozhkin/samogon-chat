@@ -1,12 +1,18 @@
 from datetime import timedelta
 
 from django.contrib import admin
+from django.contrib import messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.core.exceptions import PermissionDenied
+from django.shortcuts import redirect, render
+from django.urls import path, reverse
 from django.utils import timezone
 
 from chat.models import ModerationEvent
 
+from users.forms import AdminPushForm
 from users.models import PushSubscription, User
+from users.services.push import send_admin_push
 
 
 @admin.register(PushSubscription)
@@ -30,6 +36,49 @@ class PushSubscriptionAdmin(admin.ModelAdmin):
         "created_at",
         "updated_at",
     )
+    change_list_template = "admin/users/pushsubscription/change_list.html"
+
+    def get_urls(self):
+        custom_urls = [
+            path(
+                "send/",
+                self.admin_site.admin_view(self.send_push_view),
+                name="users_pushsubscription_send",
+            ),
+        ]
+        return custom_urls + super().get_urls()
+
+    def send_push_view(self, request):
+        """Показывает суперпользователю тест и подтверждаемую общую рассылку."""
+        if not request.user.is_superuser:
+            raise PermissionDenied
+
+        form = AdminPushForm(request.POST or None)
+        if request.method == "POST" and form.is_valid():
+            subscriptions = PushSubscription.objects.filter(enabled=True)
+            if form.cleaned_data["audience"] == AdminPushForm.AUDIENCE_SELF:
+                subscriptions = subscriptions.filter(user=request.user)
+            result = send_admin_push(
+                subscriptions=subscriptions,
+                title=form.cleaned_data["title"],
+                body=form.cleaned_data["body"],
+                url=form.cleaned_data["url"],
+            )
+            messages.success(
+                request,
+                "Push отправлен: принято push-службой — "
+                f"{result.delivered}, ошибок — {result.failed}, "
+                f"удалено недействительных — {result.removed}.",
+            )
+            return redirect(reverse("admin:users_pushsubscription_changelist"))
+
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "Отправить Web Push",
+            "form": form,
+        }
+        return render(request, "admin/users/pushsubscription/send_push.html", context)
 
     def has_add_permission(self, request):
         return False
