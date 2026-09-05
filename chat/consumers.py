@@ -15,6 +15,7 @@ from .models import Message, Room
 from .services.bartender import BartenderUnavailable, bartender
 from .services.messages import MessageService
 from .services.presence import online_users
+from .services.welcome import ensure_welcome_message
 from users.services.push import send_direct_message_push
 from .validators import validate_message
 
@@ -76,6 +77,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_add(PRESENCE_GROUP_NAME, self.channel_name)
         await self.accept()
 
+        await self.ensure_welcome_message()
         messages = await self.get_messages()
         await self.send(
             text_data=json.dumps({"type": "history", "messages": messages})
@@ -150,6 +152,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         data = json.loads(text_data)
         recipient_username = data.get("recipient")
+        reply_to_id = data.get("reply_to")
+        if reply_to_id is not None and (
+            not isinstance(reply_to_id, int) or isinstance(reply_to_id, bool)
+        ):
+            await self.send_error("Исходная реплика указана некорректно")
+            return
         bartender_private = data.get("bartender_private", False)
         if not isinstance(bartender_private, bool):
             await self.send_error(
@@ -200,10 +208,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self.send_error("Этот гость не сидит за вашим тайным столиком")
                 return
 
+        reply_to = None
+        if reply_to_id is not None:
+            reply_to = await self.get_reply_target(reply_to_id)
+            if reply_to is None:
+                await self.send_error("Исходная реплика недоступна")
+                return
+            if reply_to.recipient_id:
+                other_id = (
+                    reply_to.recipient_id
+                    if reply_to.user_id == self.user.id
+                    else reply_to.user_id
+                )
+                recipient = await self.get_user_by_id(other_id)
+
         message = await self.create_message(
             user=self.user,
             text=message_text,
             recipient=recipient,
+            reply_to=reply_to,
         )
         event = {
             "type": "direct_message" if recipient else "chat_message",
@@ -221,6 +244,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "color": self.user.message_color,
             "attachments": [],
             "reactions": [],
+            "reply_to": await self.serialize_reply(message),
             "room_slug": self.room.slug,
             "room_private": self.room.is_private,
         }
@@ -267,6 +291,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     "color": event["color"],
                     "attachments": event.get("attachments", []),
                     "reactions": event.get("reactions", []),
+                    "reply_to": event.get("reply_to"),
                     "room_slug": event["room_slug"],
                     "room_private": event["room_private"],
                 }
@@ -586,6 +611,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return bartender.get_bartender_user()
 
     @database_sync_to_async
+    def ensure_welcome_message(self):
+        return ensure_welcome_message(user_id=self.user.id, room=self.room)
+
+    @database_sync_to_async
     def get_messages(self):
         return MessageService.get_room_messages(
             self.room,
@@ -620,11 +649,29 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }
 
     @database_sync_to_async
-    def create_message(self, user, text, recipient):
+    def create_message(self, user, text, recipient, reply_to=None):
         """Сохраняет сообщение после проверки WebSocket-пакета."""
         return MessageService.create_message(
             user_id=user.id,
             room=self.room,
             text=text,
             recipient_id=recipient.id if recipient else None,
+            reply_to_id=reply_to.id if reply_to else None,
         )
+
+    @database_sync_to_async
+    def get_reply_target(self, message_id):
+        message = Message.objects.select_related("room", "recipient").filter(
+            pk=message_id, room=self.room, hidden_at__isnull=True,
+        ).first()
+        if message and MessageService.can_view_message(message=message, user=self.user):
+            return message
+        return None
+
+    @database_sync_to_async
+    def get_user_by_id(self, user_id):
+        return User.objects.filter(pk=user_id).first()
+
+    @database_sync_to_async
+    def serialize_reply(self, message):
+        return MessageService.serialize_reply(message, self.user.id)

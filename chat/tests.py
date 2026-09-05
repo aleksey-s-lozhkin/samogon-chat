@@ -34,6 +34,7 @@ from .services.attachments import (
     create_attachments,
     validate_attachment,
 )
+from .services.welcome import WELCOME_TEXT, ensure_welcome_message
 from .services.messages import MessageService
 from .services.bartender import BARTENDER_LANGUAGE_FALLBACK, bartender
 from .validators import validate_message
@@ -541,6 +542,23 @@ class MessageServiceTests(TestCase):
         self.assertEqual(message.room, self.room)
         self.assertEqual(message.text, "Hello, Samogon!")
 
+    def test_reply_serialization_hides_removed_source_text(self):
+        source = MessageService.create_message(
+            user_id=self.user.id, room=self.room, text="Исходная реплика",
+        )
+        reply = MessageService.create_message(
+            user_id=self.user.id, room=self.room, text="Ответ", reply_to_id=source.id,
+        )
+
+        visible = MessageService.serialize_message(reply, self.user.id)["reply_to"]
+        self.assertEqual(visible["message"], "Исходная реплика")
+
+        source.hidden_at = timezone.now()
+        source.save(update_fields=("hidden_at",))
+        reply = Message.objects.select_related("reply_to__user").get(pk=reply.pk)
+        hidden = MessageService.serialize_message(reply, self.user.id)["reply_to"]
+        self.assertEqual(hidden, {"id": source.id, "available": False})
+
     def test_reaction_summary_keeps_count_and_current_user_state(self):
         second_user = User.objects.create_user(username="maria")
         message = MessageService.create_message(
@@ -1006,6 +1024,38 @@ class BartenderServiceTests(TestCase):
         self.assertEqual(reply.text, "Первая мысль закончена.")
 
 
+class WelcomeMessageTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="newcomer",
+            welcome_pending=True,
+        )
+        self.room = Room.objects.create(name="General", slug="general")
+
+    def test_welcome_is_private_and_created_only_once(self):
+        first = ensure_welcome_message(user_id=self.user.id, room=self.room)
+        second = ensure_welcome_message(user_id=self.user.id, room=self.room)
+
+        self.assertIsNotNone(first)
+        self.assertIsNone(second)
+        self.assertEqual(first.recipient, self.user)
+        self.assertEqual(first.user.username, settings.BARTENDER_USERNAME)
+        self.assertEqual(first.text, WELCOME_TEXT)
+        self.assertEqual(
+            Message.objects.filter(recipient=self.user, text=WELCOME_TEXT).count(),
+            1,
+        )
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.welcome_pending)
+
+    def test_existing_user_is_not_welcomed(self):
+        existing = User.objects.create_user(username="existing")
+
+        message = ensure_welcome_message(user_id=existing.id, room=self.room)
+
+        self.assertIsNone(message)
+
+
 class ChatConsumerTests(TransactionTestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="alex")
@@ -1078,6 +1128,37 @@ class ChatConsumerTests(TransactionTestCase):
             Message.objects.filter(room=self.room, user=self.user, text="New message").exists(),
         )
 
+    def test_newcomer_receives_welcome_in_first_history_only(self):
+        self.user.welcome_pending = True
+        self.user.save(update_fields=("welcome_pending",))
+
+        async_to_sync(self._assert_welcome_history)()
+
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.welcome_pending)
+        self.assertEqual(Message.objects.filter(text=WELCOME_TEXT).count(), 1)
+
+    async def _assert_welcome_history(self):
+        for _ in range(2):
+            communicator = WebsocketCommunicator(
+                self.application,
+                "/ws/chat/general/",
+            )
+            communicator.scope["user"] = self.user
+            connected, _ = await communicator.connect()
+            self.assertTrue(connected)
+
+            history = await communicator.receive_json_from()
+            welcome_messages = [
+                message
+                for message in history["messages"]
+                if message["message"] == WELCOME_TEXT
+            ]
+            self.assertEqual(len(welcome_messages), 1)
+            self.assertTrue(welcome_messages[0]["private"])
+            self.assertEqual(welcome_messages[0]["username"], "Семён")
+            await communicator.disconnect()
+
     def test_user_can_toggle_reaction_over_websocket(self):
         message = Message.objects.create(
             room=self.room,
@@ -1098,6 +1179,20 @@ class ChatConsumerTests(TransactionTestCase):
         outsider = User.objects.create_user(username="ivan")
 
         async_to_sync(self._assert_direct_typing_privacy)(recipient, outsider)
+
+    def test_private_reply_keeps_participants_and_rejects_outsider(self):
+        recipient = User.objects.create_user(username="maria")
+        outsider = User.objects.create_user(username="ivan")
+        source = Message.objects.create(
+            room=self.room, user=self.user, recipient=recipient, text="Только для Марии",
+        )
+
+        async_to_sync(self._assert_private_reply_security)(source, recipient, outsider)
+
+        reply = Message.objects.get(text="Отвечаю")
+        self.assertEqual(reply.reply_to, source)
+        self.assertEqual(reply.user, recipient)
+        self.assertEqual(reply.recipient, self.user)
 
     async def _connect_communicator(self, user):
         communicator = WebsocketCommunicator(
@@ -1153,6 +1248,23 @@ class ChatConsumerTests(TransactionTestCase):
         for communicator in (sender_socket, recipient_socket, outsider_socket):
             await communicator.disconnect()
 
+    async def _assert_private_reply_security(self, source, recipient, outsider):
+        outsider_socket = await self._connect_communicator(outsider)
+        await self._drain_communicator(outsider_socket)
+        await outsider_socket.send_json_to({"message": "Чужой ответ", "reply_to": source.id})
+        error = await outsider_socket.receive_json_from()
+        self.assertEqual(error, {"type": "error", "message": "Исходная реплика недоступна"})
+        await outsider_socket.disconnect()
+
+        recipient_socket = await self._connect_communicator(recipient)
+        await self._drain_communicator(recipient_socket)
+        await recipient_socket.send_json_to({"message": "Отвечаю", "reply_to": source.id})
+        event = await recipient_socket.receive_json_from()
+        self.assertTrue(event["private"])
+        self.assertEqual(event["recipient"], "alex")
+        self.assertEqual(event["reply_to"]["id"], source.id)
+        await recipient_socket.disconnect()
+
     async def _assert_reaction_toggle(self, message_id):
         communicator = WebsocketCommunicator(self.application, "/ws/chat/general/")
         communicator.scope["user"] = self.user
@@ -1203,6 +1315,7 @@ class ChatConsumerTests(TransactionTestCase):
                         "color": "amber",
                         "attachments": [],
                         "reactions": [],
+                        "reply_to": None,
                     }
                 ],
             },

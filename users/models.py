@@ -24,6 +24,7 @@ class User(AbstractUser):
     banned_at = models.DateTimeField(blank=True, null=True)
     banned_until = models.DateTimeField(blank=True, null=True)
     ban_reason = models.CharField(blank=True, max_length=240)
+    welcome_pending = models.BooleanField(default=False)
 
     @property
     def is_banned(self) -> bool:

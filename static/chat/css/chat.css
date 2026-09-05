@@ -1213,6 +1213,26 @@ a {
     font-size: 10px;
 }
 
+.message-reply-quote {
+    display: block;
+    max-width: 100%;
+    margin: 0 0 7px;
+    padding: 5px 8px;
+    overflow: hidden;
+    border: 0;
+    border-left: 2px solid var(--amber);
+    background: var(--primary-soft);
+    color: var(--text-soft);
+    font-size: 11px;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.message.reply-highlight .message-content {
+    box-shadow: 0 0 0 2px var(--amber);
+}
+
 .message-attachments {
     display: flex;
     flex-wrap: wrap;

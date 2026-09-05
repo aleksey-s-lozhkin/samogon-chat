@@ -32,12 +32,14 @@ class MessageService:
         room: Room,
         text: str,
         recipient_id: int | None = None,
+        reply_to_id: int | None = None,
     ) -> Message:
         return Message.objects.create(
             user_id=user_id,
             room=room,
             text=text,
             recipient_id=recipient_id,
+            reply_to_id=reply_to_id,
         )
 
     @staticmethod
@@ -193,7 +195,7 @@ class MessageService:
                 | Q(user_id=viewer_id)
                 | Q(recipient_id=viewer_id),
             )
-            .select_related("user", "recipient")
+            .select_related("user", "recipient", "reply_to__user", "reply_to__recipient")
             .prefetch_related("attachments", "reactions")
             .order_by("created_at")
         )
@@ -221,6 +223,7 @@ class MessageService:
                     message,
                     viewer_id=viewer_id,
                 ),
+                "reply_to": MessageService.serialize_reply(message, viewer_id),
             }
             for message in messages
         ]
@@ -245,6 +248,25 @@ class MessageService:
                 message,
                 viewer_id=viewer_id,
             ),
+            "reply_to": MessageService.serialize_reply(message, viewer_id),
+        }
+
+    @staticmethod
+    def serialize_reply(message: Message, viewer_id: int | None) -> dict | None:
+        source = message.reply_to
+        if source is None:
+            return None
+        unavailable = source.hidden_at is not None or (
+            source.recipient_id is not None
+            and viewer_id not in {source.user_id, source.recipient_id}
+        )
+        if viewer_id is None or unavailable:
+            return {"id": source.id, "available": False}
+        return {
+            "id": source.id,
+            "available": True,
+            "username": MessageService.display_username(source.user.username),
+            "message": source.text[:160],
         }
 
     @staticmethod
