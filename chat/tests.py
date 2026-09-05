@@ -852,6 +852,17 @@ class ChatLayoutViewsTests(TestCase):
         self.assertContains(response, 'data-chat-action="bartender"')
         self.assertNotContains(response, 'id="bartender-trigger"')
 
+    @override_settings(TURNSTILE_SITE_KEY="production-site-key")
+    def test_authenticated_chat_does_not_load_registration_or_turnstile(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+
+        self.assertNotContains(response, 'id="register-form"')
+        self.assertNotContains(response, "challenges.cloudflare.com/turnstile")
+        self.assertContains(response, f'action="{reverse("logout")}"')
+        self.assertContains(response, 'name="csrfmiddlewaretoken"')
+
     def test_robots_disallows_indexing_closed_beta(self):
         response = self.client.get(reverse("robots"))
 
@@ -945,7 +956,7 @@ class BartenderServiceTests(TestCase):
         self.assertFalse(payload["think"])
         self.assertEqual(payload["keep_alive"], -1)
         self.assertEqual(payload["options"]["temperature"], 0.5)
-        self.assertEqual(payload["options"]["num_predict"], 80)
+        self.assertEqual(payload["options"]["num_predict"], 120)
         self.assertIn("Гость @alex", payload["messages"][1]["content"])
 
     @patch("chat.services.bartender.urlopen")
@@ -982,6 +993,17 @@ class BartenderServiceTests(TestCase):
         reply = bartender.reply(room_name="Python", username="alex", text="@Семён помоги")
 
         self.assertEqual(reply.text, BARTENDER_LANGUAGE_FALLBACK)
+
+    @override_settings(BARTENDER_RESPONSE_MAX_LENGTH=34)
+    @patch("chat.services.bartender.urlopen")
+    def test_reply_truncates_at_sentence_boundary(self, mock_urlopen):
+        mock_urlopen.return_value.__enter__.return_value.read.return_value = (
+            '{"message": {"content": "Первая мысль закончена. Вторая мысль слишком длинная."}}'.encode()
+        )
+
+        reply = bartender.reply(room_name="Python", username="alex", text="@Семён помоги")
+
+        self.assertEqual(reply.text, "Первая мысль закончена.")
 
 
 class ChatConsumerTests(TransactionTestCase):

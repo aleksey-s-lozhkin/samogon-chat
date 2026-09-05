@@ -34,7 +34,9 @@
 
 <body>
 
-{% include "chat/partials/auth_modal.html" %}
+{% if not user.is_authenticated %}
+    {% include "chat/partials/auth_modal.html" %}
+{% endif %}
 
 
 <!-- =========================================================
