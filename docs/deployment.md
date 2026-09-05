@@ -193,7 +193,7 @@ SAMOGON_IMAGE=docker.io/alserloz/samogon_chat:latest
 curl --fail http://192.168.0.78:11434/api/tags
 ```
 
-### Профиль Семёна-Смотрителя на Gemma 3 4B
+### Профиль Семёна-бармена на Gemma 3 4B
 
 На VM с Ollama один раз создайте профиль. В репозитории уже лежит готовый
 `deployment/ollama/Modelfile.semen-caretaker`. Системный промпт хранится только в
