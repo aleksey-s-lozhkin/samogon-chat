@@ -488,7 +488,7 @@ function addMessage(data) {
 
     const text = document.createElement("div");
     text.className = "message-text";
-    text.textContent = data.message;
+    renderMessageText(text, data.message);
     if (/^(?=.*\p{Extended_Pictographic})[\p{Extended_Pictographic}\p{Emoji_Component}\s]+$/u.test(data.message)) {
         text.classList.add("is-emoji-only");
     }
@@ -537,6 +537,70 @@ function addMessage(data) {
     } else if (!message.classList.contains("own")) {
         document.getElementById("scroll-to-latest")?.classList.remove("hidden");
     }
+}
+
+function renderMessageText(container, source) {
+    const lines = String(source).split("\n");
+    let proseLines = [];
+    let fencedLines = null;
+    let fencedLanguage = "";
+
+    const appendProse = () => {
+        if (!proseLines.length) return;
+        const prose = document.createElement("span");
+        prose.className = "message-prose";
+        prose.textContent = proseLines.join("\n");
+        container.append(prose);
+        proseLines = [];
+    };
+
+    const appendCode = (codeLines, language = "") => {
+        const block = document.createElement("pre");
+        block.className = "message-code-block";
+        block.tabIndex = 0;
+        block.setAttribute("aria-label", "Блок кода");
+        const code = document.createElement("code");
+        code.textContent = codeLines.join("\n");
+        if (language) code.dataset.language = language;
+        block.append(code);
+        container.append(block);
+    };
+
+    for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index];
+        const openingFence = line.match(/^```([a-z0-9_+-]*)\s*$/i);
+        if (fencedLines !== null) {
+            if (/^```\s*$/.test(line)) {
+                appendCode(fencedLines, fencedLanguage);
+                fencedLines = null;
+                fencedLanguage = "";
+            } else {
+                fencedLines.push(line);
+            }
+            continue;
+        }
+        if (openingFence) {
+            appendProse();
+            fencedLines = [];
+            fencedLanguage = openingFence[1];
+            continue;
+        }
+        if (line.startsWith(">>>")) {
+            appendProse();
+            const quotedLines = [];
+            while (index < lines.length && lines[index].startsWith(">>>")) {
+                quotedLines.push(lines[index]);
+                index += 1;
+            }
+            appendCode(quotedLines);
+            index -= 1;
+            continue;
+        }
+        proseLines.push(line);
+    }
+
+    if (fencedLines !== null) appendCode(fencedLines, fencedLanguage);
+    appendProse();
 }
 
 function updateMessageAttachments(messageId, attachments) {

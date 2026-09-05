@@ -1009,6 +1009,17 @@ class ChatLayoutViewsTests(TestCase):
         self.assertIn("@media (prefers-reduced-motion: reduce)", source)
         self.assertIn("transition: none", source)
 
+    def test_message_code_renderer_uses_safe_dom_nodes(self):
+        with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
+            source = script.read()
+
+        self.assertIn("renderMessageText(text, data.message);", source)
+        self.assertIn('document.createElement("pre")', source)
+        self.assertIn('code.textContent = codeLines.join("\\n")', source)
+        self.assertNotIn("text.innerHTML = data.message", source)
+        self.assertIn('line.startsWith(">>>")', source)
+        self.assertIn("openingFence", source)
+
 
 class MessageSearchViewsTests(TestCase):
     def setUp(self):
