@@ -4,12 +4,21 @@ from dataclasses import dataclass
 
 from django.conf import settings
 from django.urls import reverse
+from django.utils.crypto import salted_hmac
 from pywebpush import WebPushException, webpush
 
 from users.models import PushSubscription
 
 
 logger = logging.getLogger(__name__)
+
+
+def device_id_for_subscription(subscription: PushSubscription) -> str:
+    """Возвращает стабильный непрозрачный ID без endpoint и push-ключей."""
+    return salted_hmac(
+        "samogon.push-device",
+        str(subscription.pk),
+    ).hexdigest()[:32]
 
 
 @dataclass(frozen=True)
@@ -91,5 +100,18 @@ def send_admin_push(
             "body": body,
             "url": url,
             "tag": "admin-announcement",
+        },
+    )
+
+
+def send_push_self_test(*, subscriptions, url: str) -> PushDeliveryResult:
+    """Отправляет нейтральную диагностическую проверку выбранному устройству."""
+    return send_push_payload(
+        subscriptions=subscriptions,
+        payload={
+            "title": "Проверка уведомлений",
+            "body": "Web Push в Самогоне работает.",
+            "url": url,
+            "tag": "push-self-test",
         },
     )

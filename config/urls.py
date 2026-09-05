@@ -7,6 +7,7 @@ from config.views import home, offline, pwa_manifest, robots, service_worker
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/v1/", include("users.api_urls")),
     path("accounts/", include("allauth.urls")),
     path("chat/", include("chat.urls")),
     path("users/", include("users.urls")),
