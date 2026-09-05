@@ -1,5 +1,6 @@
 import json
 import logging
+from dataclasses import dataclass
 
 from django.conf import settings
 from django.urls import reverse
@@ -11,26 +12,20 @@ from users.models import PushSubscription
 logger = logging.getLogger(__name__)
 
 
-def send_direct_message_push(*, recipient_id: int, room_slug: str) -> int:
-    """Доставляет нейтральное уведомление и удаляет мёртвые endpoint."""
-    if not settings.WEB_PUSH_ENABLED:
-        return 0
+@dataclass(frozen=True)
+class PushDeliveryResult:
+    delivered: int = 0
+    failed: int = 0
+    removed: int = 0
 
-    payload = json.dumps(
-        {
-            "title": "Новое личное сообщение",
-            "body": "В Самогоне ждёт личная реплика.",
-            "url": reverse("chat:chat", args=[room_slug]),
-            "tag": f"direct-message-{room_slug}",
-        },
-        ensure_ascii=False,
-    )
-    delivered = 0
-    subscriptions = PushSubscription.objects.filter(
-        user_id=recipient_id,
-        enabled=True,
-        direct_messages_enabled=True,
-    )
+
+def send_push_payload(*, subscriptions, payload: dict) -> PushDeliveryResult:
+    """Отправляет payload выбранным подпискам без раскрытия endpoint в журнале."""
+    if not settings.WEB_PUSH_ENABLED:
+        return PushDeliveryResult()
+
+    delivered = failed = removed = 0
+    data = json.dumps(payload, ensure_ascii=False)
     for subscription in subscriptions.iterator():
         try:
             webpush(
@@ -41,7 +36,7 @@ def send_direct_message_push(*, recipient_id: int, room_slug: str) -> int:
                         "auth": subscription.auth,
                     },
                 },
-                data=payload,
+                data=data,
                 vapid_private_key=settings.VAPID_PRIVATE_KEY,
                 vapid_claims={"sub": settings.VAPID_SUBJECT},
                 timeout=5,
@@ -50,13 +45,51 @@ def send_direct_message_push(*, recipient_id: int, room_slug: str) -> int:
             status_code = getattr(exc.response, "status_code", None)
             if status_code in {404, 410}:
                 subscription.delete()
+                removed += 1
             else:
-                # Endpoint и ключи намеренно не попадают в журнал.
                 logger.warning("Web Push delivery failed with status %s", status_code)
+                failed += 1
         except Exception:
-            # Push — best effort: его сбой не должен ломать отправку сообщения.
             # Текст исключения может содержать endpoint, поэтому не журналируем его.
             logger.exception("Unexpected Web Push delivery failure", exc_info=False)
+            failed += 1
         else:
             delivered += 1
-    return delivered
+    return PushDeliveryResult(delivered=delivered, failed=failed, removed=removed)
+
+
+def send_direct_message_push(*, recipient_id: int, room_slug: str) -> int:
+    """Доставляет нейтральное уведомление и удаляет мёртвые endpoint."""
+    if not settings.WEB_PUSH_ENABLED:
+        return 0
+
+    payload = {
+        "title": "Новое личное сообщение",
+        "body": "В Самогоне ждёт личная реплика.",
+        "url": reverse("chat:chat", args=[room_slug]),
+        "tag": f"direct-message-{room_slug}",
+    }
+    subscriptions = PushSubscription.objects.filter(
+        user_id=recipient_id,
+        enabled=True,
+        direct_messages_enabled=True,
+    )
+    return send_push_payload(
+        subscriptions=subscriptions,
+        payload=payload,
+    ).delivered
+
+
+def send_admin_push(
+    *, subscriptions, title: str, body: str, url: str
+) -> PushDeliveryResult:
+    """Отправляет подтверждённое администратором объявление выбранной аудитории."""
+    return send_push_payload(
+        subscriptions=subscriptions,
+        payload={
+            "title": title,
+            "body": body,
+            "url": url,
+            "tag": "admin-announcement",
+        },
+    )

@@ -84,6 +84,44 @@ class RegistrationForm(forms.ModelForm):
 
         return user
 
+
+class AdminPushForm(forms.Form):
+    """Проверенная форма административного Web Push."""
+
+    AUDIENCE_SELF = "self"
+    AUDIENCE_ALL = "all"
+
+    audience = forms.ChoiceField(
+        label="Получатели",
+        choices=(
+            (AUDIENCE_SELF, "Только мои устройства (проверка)"),
+            (AUDIENCE_ALL, "Все активные подписки"),
+        ),
+    )
+    title = forms.CharField(label="Заголовок", max_length=80)
+    body = forms.CharField(
+        label="Текст уведомления",
+        max_length=180,
+        widget=forms.Textarea(attrs={"rows": 3}),
+        help_text="Этот текст может быть виден на заблокированном экране.",
+    )
+    url = forms.CharField(
+        label="Ссылка внутри Самогона",
+        max_length=300,
+        initial="/chat/",
+        help_text="Например: /chat/ — внешние ссылки запрещены.",
+    )
+    confirm = forms.BooleanField(
+        label="Подтверждаю отправку выбранным получателям",
+    )
+
+    def clean_url(self):
+        url = self.cleaned_data["url"].strip()
+        if not url.startswith("/") or url.startswith("//"):
+            raise forms.ValidationError("Укажите внутренний путь, начинающийся с /.")
+        return url
+
+
 class ProfileForm(forms.ModelForm):
     """Форма редактирования профиля пользователя."""
 
