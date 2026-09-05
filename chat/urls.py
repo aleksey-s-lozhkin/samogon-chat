@@ -37,6 +37,7 @@ urlpatterns = [
         name="delete_message",
     ),
     path("notes/", views.notes_page, name="notes"),
+    path("search/", views.message_search, name="message_search"),
     path("notes/create/", views.create_note, name="create_note"),
     path("notes/<int:note_id>/delete/", views.delete_note, name="delete_note"),
     path(

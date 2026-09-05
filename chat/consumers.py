@@ -1,5 +1,6 @@
 import asyncio
 import json
+from urllib.parse import parse_qs
 
 from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
@@ -78,7 +79,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.accept()
 
         await self.ensure_welcome_message()
-        messages = await self.get_messages()
+        focus_values = parse_qs(
+            self.scope.get("query_string", b"").decode("ascii", errors="ignore")
+        ).get("focus", [])
+        focus_message_id = (
+            int(focus_values[0])
+            if focus_values and focus_values[0].isdigit()
+            else None
+        )
+        messages = await self.get_messages(focus_message_id)
         await self.send(
             text_data=json.dumps({"type": "history", "messages": messages})
         )
@@ -615,11 +624,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return ensure_welcome_message(user_id=self.user.id, room=self.room)
 
     @database_sync_to_async
-    def get_messages(self):
+    def get_messages(self, focus_message_id=None):
         return MessageService.get_room_messages(
             self.room,
             viewer_id=self.user.id,
             limit=HISTORY_LIMIT,
+            focus_message_id=focus_message_id,
         )
 
     @database_sync_to_async

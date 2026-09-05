@@ -4190,6 +4190,75 @@ html[data-theme="light"] .scroll-to-latest {
     box-shadow: 0 8px 22px rgba(72, 45, 24, 0.12);
 }
 
+.search-panel {
+    max-width: 920px;
+    margin: 0 auto;
+}
+
+.message-search-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: end;
+    margin: 20px 0 26px;
+}
+
+.message-search-form label,
+.message-search-form .field-error {
+    grid-column: 1 / -1;
+}
+
+.message-search-form input {
+    min-width: 0;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+}
+
+.message-search-form button {
+    padding: 12px 20px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--accent);
+    color: var(--button-text, #fff);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.search-results {
+    display: grid;
+    gap: 10px;
+}
+
+.search-result {
+    display: grid;
+    gap: 5px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+    color: var(--text);
+    text-decoration: none;
+}
+
+.search-result:hover,
+.search-result:focus-visible {
+    border-color: var(--accent);
+}
+
+.search-result span {
+    overflow-wrap: anywhere;
+}
+
+.search-result time {
+    color: var(--muted);
+    font-size: 0.88rem;
+}
+
 html[data-theme="light"] .direct-recipient,
 html[data-theme="light"] .bartender-recipient {
     background: rgba(255, 247, 237, 0.94);
@@ -4206,4 +4275,6 @@ html[data-theme="light"] .recipient-cancel {
     .message { max-width: 94%; gap: 7px; }
     .message-author-avatar { width: 34px; height: 34px; }
     .message-content { max-width: calc(100% - 41px); }
+    .message-search-form { grid-template-columns: 1fr; }
+    .message-search-form button { width: 100%; }
 }

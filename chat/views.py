@@ -16,7 +16,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 
 from config.rate_limit import is_allowed
 
-from .forms import PrivateRoomForm
+from .forms import MessageSearchForm, PrivateRoomForm
 from .models import (
     Attachment,
     Message,
@@ -126,6 +126,18 @@ def chat_page(request, room_slug):
     rooms = list(get_visible_rooms(request.user))
     add_unread_counts(rooms, request.user)
 
+    focus_message_id = None
+    raw_focus = request.GET.get("message")
+    if request.user.is_authenticated and raw_focus and raw_focus.isdigit():
+        candidate = Message.objects.select_related("room", "recipient").filter(
+            pk=int(raw_focus), room=room,
+        ).first()
+        if candidate and MessageService.can_view_message(
+            message=candidate,
+            user=request.user,
+        ):
+            focus_message_id = candidate.id
+
     return render(
         request,
         "chat/chat.html",
@@ -134,6 +146,44 @@ def chat_page(request, room_slug):
             "rooms": rooms,
             "public_rooms": [item for item in rooms if not item.is_private],
             "private_rooms": [item for item in rooms if item.is_private],
+            "focus_message_id": focus_message_id,
+        },
+    )
+
+
+@login_required
+def message_search(request):
+    """Ищет только среди реплик и комнат, доступных текущему пользователю."""
+    form = MessageSearchForm(request.GET or None)
+    results = []
+    if form.is_valid():
+        query = form.cleaned_data["q"]
+        results = list(
+            Message.objects.filter(hidden_at__isnull=True, text__icontains=query)
+            .filter(
+                Q(room__visibility=Room.Visibility.PUBLIC)
+                | Q(room__memberships__user=request.user)
+            )
+            .filter(
+                Q(recipient__isnull=True)
+                | Q(user=request.user)
+                | Q(recipient=request.user)
+            )
+            .select_related("room", "user", "recipient")
+            .distinct()
+            .order_by("-created_at")[:50]
+        )
+        for result in results:
+            result.display_username = MessageService.display_username(
+                result.user.username,
+            )
+    return render(
+        request,
+        "chat/search.html",
+        {
+            "form": form,
+            "results": results,
+            "last_room_url": get_last_room_url(request),
         },
     )
 
