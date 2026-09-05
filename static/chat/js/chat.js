@@ -68,6 +68,7 @@ function handleServerEvent(data) {
     if (data.type === "history") {
         loadingHistory = true;
         lastMessageDay = null;
+        clearHistorySkeleton();
         data.messages.forEach(addMessage);
         loadingHistory = false;
         finishHistoryLoading();
@@ -124,6 +125,10 @@ function finishHistoryLoading() {
         return;
     }
     chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function clearHistorySkeleton() {
+    document.querySelector("#chat-log .chat-history-skeleton")?.remove();
 }
 
 function increaseUnreadCount(data) {
@@ -401,6 +406,7 @@ function addMessage(data) {
     }
 
     const wasNearBottom = isNearBottom(chatLog);
+    clearHistorySkeleton();
     chatLog.querySelector(".chat-empty-state")?.remove();
     const timestamp = data.timestamp || data.created_at;
     appendDayDivider(chatLog, timestamp);

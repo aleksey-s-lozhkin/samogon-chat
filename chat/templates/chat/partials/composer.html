@@ -1,5 +1,20 @@
 <div class="chat-log-area">
-    <div id="chat-log" class="chat-log"></div>
+    <div id="chat-log" class="chat-log">
+        {% if user.is_authenticated %}
+            <div class="chat-history-skeleton" role="status" aria-label="Загружаем историю сообщений">
+                <span class="visually-hidden">Загружаем историю сообщений…</span>
+                {% for position in "12345" %}
+                    <div class="message-skeleton {% if position == '2' or position == '4' %}own{% endif %}" aria-hidden="true">
+                        <span class="message-skeleton-avatar"></span>
+                        <span class="message-skeleton-body">
+                            <span class="message-skeleton-line short"></span>
+                            <span class="message-skeleton-line"></span>
+                        </span>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
 
     <button id="scroll-to-latest" class="scroll-to-latest hidden" type="button">
         У стойки появились новые реплики

@@ -974,6 +974,28 @@ class ChatLayoutViewsTests(TestCase):
         self.assertIn("delete-message-modal", source)
         self.assertNotIn("window.confirm", source)
 
+    def test_authenticated_chat_shows_history_skeleton_until_history_arrives(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+
+        self.assertContains(response, 'class="chat-history-skeleton"')
+        self.assertContains(response, 'class="message-skeleton ', count=5)
+
+    def test_guest_chat_does_not_show_history_skeleton(self):
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+
+        self.assertNotContains(response, "chat-history-skeleton")
+
+    def test_history_event_removes_skeleton_before_rendering_messages(self):
+        with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
+            source = script.read()
+
+        history_handler = source.index('if (data.type === "history")')
+        skeleton_clear = source.index("clearHistorySkeleton();", history_handler)
+        message_render = source.index("data.messages.forEach(addMessage);", history_handler)
+        self.assertLess(skeleton_clear, message_render)
+
 
 class MessageSearchViewsTests(TestCase):
     def setUp(self):

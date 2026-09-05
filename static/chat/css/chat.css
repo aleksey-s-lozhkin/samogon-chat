@@ -994,6 +994,93 @@ a {
     font-size: 13px;
 }
 
+.chat-history-skeleton {
+    display: grid;
+    gap: 12px;
+    width: 100%;
+}
+
+.message-skeleton {
+    display: flex;
+    align-items: end;
+    gap: 9px;
+    width: min(72%, 620px);
+}
+
+.message-skeleton.own {
+    flex-direction: row-reverse;
+    justify-self: end;
+}
+
+.message-skeleton-avatar,
+.message-skeleton-line {
+    position: relative;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.message-skeleton-avatar {
+    flex: 0 0 38px;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+}
+
+.message-skeleton-body {
+    display: grid;
+    gap: 9px;
+    width: 100%;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 17px 17px 17px 5px;
+    background: var(--message-surface);
+}
+
+.message-skeleton.own .message-skeleton-body {
+    border-radius: 17px 17px 5px 17px;
+}
+
+.message-skeleton-line {
+    display: block;
+    height: 11px;
+    border-radius: 999px;
+}
+
+.message-skeleton-line.short {
+    width: 38%;
+}
+
+.message-skeleton-avatar::after,
+.message-skeleton-line::after {
+    position: absolute;
+    inset: 0;
+    content: "";
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
+    transform: translateX(-100%);
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+    to { transform: translateX(100%); }
+}
+
+html[data-theme="light"] .message-skeleton-avatar,
+html[data-theme="light"] .message-skeleton-line {
+    background: rgba(92, 67, 48, 0.1);
+}
+
+html[data-theme="light"] .message-skeleton-avatar::after,
+html[data-theme="light"] .message-skeleton-line::after {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.62), transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .message-skeleton-avatar::after,
+    .message-skeleton-line::after {
+        animation: none;
+    }
+}
+
 
 /* =========================================================
    MESSAGES
