@@ -210,6 +210,10 @@ MESSAGE_RATE_LIMIT = int(os.getenv("MESSAGE_RATE_LIMIT", "20"))
 BARTENDER_RATE_LIMIT = int(os.getenv("BARTENDER_RATE_LIMIT", "5"))
 REACTION_RATE_LIMIT = int(os.getenv("REACTION_RATE_LIMIT", "30"))
 TYPING_RATE_LIMIT = int(os.getenv("TYPING_RATE_LIMIT", "60"))
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "mailto:noreply@localhost")
+WEB_PUSH_ENABLED = bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)
 
 # Ollama runs on a separate machine in the local network.  Keeping this in an
 # environment variable lets local development and production use different

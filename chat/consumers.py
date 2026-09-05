@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 from asgiref.sync import sync_to_async
@@ -14,12 +15,33 @@ from .models import Message, Room
 from .services.bartender import BartenderUnavailable, bartender
 from .services.messages import MessageService
 from .services.presence import online_users
+from users.services.push import send_direct_message_push
 from .validators import validate_message
 
 
 User = get_user_model()
 HISTORY_LIMIT = 50
 PRESENCE_GROUP_NAME = "chat_presence"
+PUSH_TASKS = set()
+
+
+def finish_push_task(task) -> None:
+    """Убирает завершённую задачу и забирает исключение фоновой операции."""
+    PUSH_TASKS.discard(task)
+    if not task.cancelled():
+        task.exception()
+
+
+def schedule_direct_message_push(*, recipient_id: int, room_slug: str) -> None:
+    """Запускает best-effort push, не задерживая WebSocket-ответ."""
+    task = asyncio.create_task(
+        sync_to_async(send_direct_message_push, thread_sensitive=False)(
+            recipient_id=recipient_id,
+            room_slug=room_slug,
+        )
+    )
+    PUSH_TASKS.add(task)
+    task.add_done_callback(finish_push_task)
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -206,6 +228,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if recipient:
             await self.channel_layer.group_send(self.user_group_name, event)
             await self.channel_layer.group_send(f"chat_user_{recipient.id}", event)
+            if recipient.username != settings.BARTENDER_USERNAME:
+                schedule_direct_message_push(
+                    recipient_id=recipient.id,
+                    room_slug=self.room.slug,
+                )
             if bartender_question and bartender_private:
                 await self.reply_as_bartender(message_text, recipient=self.user)
             return
@@ -465,6 +492,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }
         if recipient:
             await self.channel_layer.group_send(f"chat_user_{recipient.id}", event)
+            schedule_direct_message_push(
+                recipient_id=recipient.id,
+                room_slug=self.room.slug,
+            )
             return
 
         if self.room.is_private:

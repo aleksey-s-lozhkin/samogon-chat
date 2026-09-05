@@ -1,0 +1,62 @@
+import json
+import logging
+
+from django.conf import settings
+from django.urls import reverse
+from pywebpush import WebPushException, webpush
+
+from users.models import PushSubscription
+
+
+logger = logging.getLogger(__name__)
+
+
+def send_direct_message_push(*, recipient_id: int, room_slug: str) -> int:
+    """Доставляет нейтральное уведомление и удаляет мёртвые endpoint."""
+    if not settings.WEB_PUSH_ENABLED:
+        return 0
+
+    payload = json.dumps(
+        {
+            "title": "Новое личное сообщение",
+            "body": "В Самогоне ждёт личная реплика.",
+            "url": reverse("chat:chat", args=[room_slug]),
+            "tag": f"direct-message-{room_slug}",
+        },
+        ensure_ascii=False,
+    )
+    delivered = 0
+    subscriptions = PushSubscription.objects.filter(
+        user_id=recipient_id,
+        enabled=True,
+        direct_messages_enabled=True,
+    )
+    for subscription in subscriptions.iterator():
+        try:
+            webpush(
+                subscription_info={
+                    "endpoint": subscription.endpoint,
+                    "keys": {
+                        "p256dh": subscription.p256dh,
+                        "auth": subscription.auth,
+                    },
+                },
+                data=payload,
+                vapid_private_key=settings.VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": settings.VAPID_SUBJECT},
+                timeout=5,
+            )
+        except WebPushException as exc:
+            status_code = getattr(exc.response, "status_code", None)
+            if status_code in {404, 410}:
+                subscription.delete()
+            else:
+                # Endpoint и ключи намеренно не попадают в журнал.
+                logger.warning("Web Push delivery failed with status %s", status_code)
+        except Exception:
+            # Push — best effort: его сбой не должен ломать отправку сообщения.
+            # Текст исключения может содержать endpoint, поэтому не журналируем его.
+            logger.exception("Unexpected Web Push delivery failure", exc_info=False)
+        else:
+            delivered += 1
+    return delivered

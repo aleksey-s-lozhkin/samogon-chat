@@ -1,3 +1,6 @@
+import json
+from urllib.parse import urlparse
+
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import PasswordResetView
@@ -7,13 +10,14 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from allauth.socialaccount.models import SocialAccount
 
 from config.rate_limit import request_is_allowed
 from chat.services.navigation import get_last_room_url
 
 from .forms import ProfileForm, RegistrationForm
+from .models import PushSubscription
 from .turnstile import verify_turnstile
 
 User = get_user_model()
@@ -191,7 +195,11 @@ def login_view(request):
 @require_POST
 def logout_view(request):
     """Завершает пользовательскую сессию."""
-
+    if request.user.is_authenticated:
+        PushSubscription.objects.filter(
+            user=request.user,
+            endpoint__in=request.session.get("push_endpoints", []),
+        ).delete()
     logout(request)
     return redirect("home")
 
@@ -289,7 +297,84 @@ def profile(request):
                     flat=True,
                 )
             ),
+            "web_push_enabled": settings.WEB_PUSH_ENABLED,
+            "vapid_public_key": settings.VAPID_PUBLIC_KEY,
         },
+    )
+
+
+@login_required
+@require_POST
+def push_subscribe(request):
+    """Создаёт или обновляет подписку текущего браузера."""
+    if not settings.WEB_PUSH_ENABLED:
+        return JsonResponse({"error": "Web Push не настроен."}, status=503)
+    try:
+        data = json.loads(request.body)
+        endpoint = data["endpoint"]
+        keys = data["keys"]
+        p256dh = keys["p256dh"]
+        auth = keys["auth"]
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return JsonResponse({"error": "Некорректная подписка."}, status=400)
+    if (
+        not all(isinstance(value, str) and value for value in (endpoint, p256dh, auth))
+        or urlparse(endpoint).scheme != "https"
+        or len(endpoint) > 1000
+        or len(p256dh) > 255
+        or len(auth) > 255
+    ):
+        return JsonResponse({"error": "Некорректная подписка."}, status=400)
+
+    subscription, _ = PushSubscription.objects.update_or_create(
+        endpoint=endpoint,
+        defaults={
+            "user": request.user,
+            "p256dh": p256dh,
+            "auth": auth,
+            "enabled": bool(data.get("enabled", True)),
+            "direct_messages_enabled": bool(data.get("directMessages", True)),
+        },
+    )
+    endpoints = set(request.session.get("push_endpoints", []))
+    endpoints.add(subscription.endpoint)
+    request.session["push_endpoints"] = list(endpoints)
+    return JsonResponse({"ok": True, "id": subscription.pk})
+
+
+@login_required
+@require_POST
+def push_unsubscribe(request):
+    """Удаляет подписку текущего браузера после добровольного отключения."""
+    try:
+        endpoint = json.loads(request.body)["endpoint"]
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+        return JsonResponse({"error": "Некорректная подписка."}, status=400)
+    PushSubscription.objects.filter(user=request.user, endpoint=endpoint).delete()
+    request.session["push_endpoints"] = [
+        item
+        for item in request.session.get("push_endpoints", [])
+        if item != endpoint
+    ]
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_GET
+def push_status(request):
+    """Возвращает настройки известной подписки текущего браузера."""
+    subscription = PushSubscription.objects.filter(
+        user=request.user,
+        endpoint=request.GET.get("endpoint", ""),
+    ).first()
+    return JsonResponse(
+        {
+            "known": subscription is not None,
+            "enabled": subscription.enabled if subscription else False,
+            "directMessages": (
+                subscription.direct_messages_enabled if subscription else True
+            ),
+        }
     )
 
 

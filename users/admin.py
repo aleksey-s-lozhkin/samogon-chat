@@ -6,7 +6,33 @@ from django.utils import timezone
 
 from chat.models import ModerationEvent
 
-from users.models import User
+from users.models import PushSubscription, User
+
+
+@admin.register(PushSubscription)
+class PushSubscriptionAdmin(admin.ModelAdmin):
+    """Показывает подписки без endpoint и криптографических ключей."""
+
+    list_display = ("id", "user", "enabled", "direct_messages_enabled", "updated_at")
+    list_filter = ("enabled", "direct_messages_enabled")
+    search_fields = ("user__username", "user__email")
+    fields = (
+        "user",
+        "enabled",
+        "direct_messages_enabled",
+        "created_at",
+        "updated_at",
+    )
+    readonly_fields = (
+        "user",
+        "enabled",
+        "direct_messages_enabled",
+        "created_at",
+        "updated_at",
+    )
+
+    def has_add_permission(self, request):
+        return False
 
 
 @admin.register(User)

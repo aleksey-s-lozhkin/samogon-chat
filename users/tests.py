@@ -1,4 +1,5 @@
 from io import BytesIO
+import json
 import re
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -18,6 +19,8 @@ from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.models import SocialAccount, SocialLogin
 
 from users.adapters import SamogonSocialAccountAdapter
+from users.models import PushSubscription
+from users.services.push import send_direct_message_push
 
 
 User = get_user_model()
@@ -44,6 +47,140 @@ class ProfileViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'href="/chat/"')
         self.assertContains(response, "Вернуться к комнатам")
+
+    @override_settings(
+        VAPID_PUBLIC_KEY="public-key",
+        VAPID_PRIVATE_KEY="private-key",
+        WEB_PUSH_ENABLED=True,
+    )
+    def test_profile_offers_voluntary_push_controls(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get("/users/profile/")
+
+        self.assertContains(response, "Уведомления на этом устройстве")
+        self.assertContains(response, 'data-vapid-key="public-key"')
+
+
+class PushSubscriptionTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="push-user", password="password")
+        self.client.force_login(self.user)
+        self.payload = {
+            "endpoint": "https://push.example/subscription/one",
+            "keys": {"p256dh": "public-device-key", "auth": "auth-secret"},
+            "enabled": True,
+            "directMessages": True,
+        }
+
+    @override_settings(WEB_PUSH_ENABLED=True)
+    def test_subscribe_creates_device_subscription(self):
+        response = self.client.post(
+            "/users/profile/push/subscribe/",
+            data=json.dumps(self.payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        subscription = PushSubscription.objects.get()
+        self.assertEqual(subscription.user, self.user)
+        self.assertTrue(subscription.direct_messages_enabled)
+
+    @override_settings(WEB_PUSH_ENABLED=True)
+    def test_unsubscribe_only_deletes_current_users_device(self):
+        subscription = PushSubscription.objects.create(
+            user=self.user,
+            endpoint=self.payload["endpoint"],
+            p256dh="public-device-key",
+            auth="auth-secret",
+        )
+
+        response = self.client.post(
+            "/users/profile/push/unsubscribe/",
+            data=json.dumps({"endpoint": subscription.endpoint}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(PushSubscription.objects.exists())
+
+    @override_settings(WEB_PUSH_ENABLED=True)
+    def test_logout_removes_subscriptions_created_in_current_session(self):
+        self.client.post(
+            "/users/profile/push/subscribe/",
+            data=json.dumps(self.payload),
+            content_type="application/json",
+        )
+
+        response = self.client.post("/users/logout/")
+
+        self.assertRedirects(response, "/", fetch_redirect_response=False)
+        self.assertFalse(PushSubscription.objects.exists())
+
+    def test_status_does_not_claim_another_users_device(self):
+        another_user = User.objects.create_user(username="another-user")
+        PushSubscription.objects.create(
+            user=another_user,
+            endpoint=self.payload["endpoint"],
+            p256dh="public-device-key",
+            auth="auth-secret",
+        )
+
+        response = self.client.get(
+            "/users/profile/push/status/",
+            {"endpoint": self.payload["endpoint"]},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["known"])
+
+    @override_settings(
+        WEB_PUSH_ENABLED=True,
+        VAPID_PRIVATE_KEY="private-key",
+        VAPID_SUBJECT="mailto:test@example.com",
+    )
+    @patch("users.services.push.webpush")
+    def test_direct_push_has_no_message_text_or_sender(self, mocked_webpush):
+        PushSubscription.objects.create(
+            user=self.user,
+            endpoint=self.payload["endpoint"],
+            p256dh="public-device-key",
+            auth="auth-secret",
+        )
+
+        delivered = send_direct_message_push(
+            recipient_id=self.user.id,
+            room_slug="u-stoyki",
+        )
+
+        self.assertEqual(delivered, 1)
+        payload = json.loads(mocked_webpush.call_args.kwargs["data"])
+        self.assertEqual(payload["body"], "В Самогоне ждёт личная реплика.")
+        self.assertNotIn("sender", payload)
+        self.assertNotIn("message", payload)
+        self.assertEqual(payload["url"], "/chat/u-stoyki/")
+
+    @override_settings(
+        WEB_PUSH_ENABLED=True,
+        VAPID_PRIVATE_KEY="private-key",
+        VAPID_SUBJECT="mailto:test@example.com",
+    )
+    @patch("users.services.push.webpush")
+    def test_gone_subscription_is_removed(self, mocked_webpush):
+        from pywebpush import WebPushException
+
+        subscription = PushSubscription.objects.create(
+            user=self.user,
+            endpoint=self.payload["endpoint"],
+            p256dh="public-device-key",
+            auth="auth-secret",
+        )
+        response = type("Response", (), {"status_code": 410})()
+        mocked_webpush.side_effect = WebPushException("gone", response=response)
+
+        send_direct_message_push(recipient_id=self.user.id, room_slug="u-stoyki")
+
+        self.assertFalse(PushSubscription.objects.filter(pk=subscription.pk).exists())
 
     def test_profile_saves_message_color_preference(self):
         self.client.force_login(self.user)
