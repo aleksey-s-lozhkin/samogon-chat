@@ -1,0 +1,8 @@
+FROM gemma3:4b
+
+# Характер Семёна хранится в Django и передаётся каждым запросом. Здесь только
+# параметры модели, поэтому системные инструкции не конфликтуют и не расходятся.
+PARAMETER temperature 0.5
+PARAMETER num_ctx 4096
+PARAMETER num_predict 120
+PARAMETER stop "<end_of_turn>"

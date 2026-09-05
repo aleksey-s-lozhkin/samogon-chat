@@ -128,11 +128,11 @@ ALLOWED_HOSTS=sam.pyconstrictor.ru
 CSRF_TRUSTED_ORIGINS=https://sam.pyconstrictor.ru
 REDIS_URL=redis://redis:6379/0
 OLLAMA_BASE_URL=http://192.168.0.78:11434
-OLLAMA_MODEL=samogon-semen-gemma
+OLLAMA_MODEL=samogon-semen-caretaker
 OLLAMA_KEEP_ALIVE=-1
 OLLAMA_TEMPERATURE=0.5
-OLLAMA_NUM_PREDICT=80
-BARTENDER_RESPONSE_MAX_LENGTH=200
+OLLAMA_NUM_PREDICT=120
+BARTENDER_RESPONSE_MAX_LENGTH=360
 REGISTRATION_INVITE_CODE=replace-with-a-long-random-invite-code
 # Turnstile включается только когда заданы оба ключа.
 TURNSTILE_SITE_KEY=
@@ -193,17 +193,25 @@ SAMOGON_IMAGE=docker.io/alserloz/samogon_chat:latest
 curl --fail http://192.168.0.78:11434/api/tags
 ```
 
-### Профиль Семёна на Gemma 3 4B
+### Профиль Семёна-Смотрителя на Gemma 3 4B
 
 На VM с Ollama один раз создайте профиль. В репозитории уже лежит готовый
-`deployment/ollama/Modelfile.semen-gemma`:
+`deployment/ollama/Modelfile.semen-caretaker`. Системный промпт хранится только в
+`chat/services/prompts/semen-caretaker.txt` и передаётся приложением, поэтому
+образ персонажа не дублируется в модели:
 
 ```bash
 ollama pull gemma3:4b
-ollama create samogon-semen-gemma \
-  -f /path/to/samogon/deployment/ollama/Modelfile.semen-gemma
-bash /path/to/samogon/deployment/ollama/benchmark-api.sh samogon-semen-gemma
+ollama create samogon-semen-caretaker \
+  -f /path/to/samogon/deployment/ollama/Modelfile.semen-caretaker
+bash /path/to/samogon/deployment/ollama/benchmark-api.sh \
+  samogon-semen-gemma samogon-semen-caretaker
 ```
+
+Сравните естественность русского языка, устойчивость роли и время ответа.
+Qwen3 4B Instruct проверен как запасной вариант, но Gemma 3 4B выбрана для
+беты за более естественную русскую речь и меньшую задержку после прогрева.
+Production-профиль выбирается одной переменной `OLLAMA_MODEL`.
 
 `OLLAMA_KEEP_ALIVE=-1` удерживает профиль в VRAM до перезапуска Ollama или
 необходимости освободить память. `benchmark-api.sh` проверяет модель через тот

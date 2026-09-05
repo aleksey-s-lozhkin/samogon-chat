@@ -956,7 +956,7 @@ class BartenderServiceTests(TestCase):
         self.assertFalse(payload["think"])
         self.assertEqual(payload["keep_alive"], -1)
         self.assertEqual(payload["options"]["temperature"], 0.5)
-        self.assertEqual(payload["options"]["num_predict"], 80)
+        self.assertEqual(payload["options"]["num_predict"], 120)
         self.assertIn("Гость @alex", payload["messages"][1]["content"])
 
     @patch("chat.services.bartender.urlopen")
@@ -993,6 +993,17 @@ class BartenderServiceTests(TestCase):
         reply = bartender.reply(room_name="Python", username="alex", text="@Семён помоги")
 
         self.assertEqual(reply.text, BARTENDER_LANGUAGE_FALLBACK)
+
+    @override_settings(BARTENDER_RESPONSE_MAX_LENGTH=34)
+    @patch("chat.services.bartender.urlopen")
+    def test_reply_truncates_at_sentence_boundary(self, mock_urlopen):
+        mock_urlopen.return_value.__enter__.return_value.read.return_value = (
+            '{"message": {"content": "Первая мысль закончена. Вторая мысль слишком длинная."}}'.encode()
+        )
+
+        reply = bartender.reply(room_name="Python", username="alex", text="@Семён помоги")
+
+        self.assertEqual(reply.text, "Первая мысль закончена.")
 
 
 class ChatConsumerTests(TransactionTestCase):
