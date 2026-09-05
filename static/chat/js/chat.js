@@ -44,12 +44,7 @@ const TAGLINES = [
     "Связь есть. Наливаю первую тему.",
     "У стойки спорят о табах и мирятся на пробелах.",
 ];
-const COMPOSER_HINTS = [
-    "Скажите что-нибудь у стойки…",
-    "Опишите баг — Семён нальёт контекст…",
-    "Есть идея? Ставьте её на стойку…",
-    "Код, вопрос или тост за удачный деплой…",
-];
+const COMPOSER_HINTS = window.SAMOGON_COMPOSER_HINTS || ["Ваша реплика…"];
 let taglineIndex = 0;
 let composerHintIndex = 0;
 
@@ -523,7 +518,8 @@ function addMessage(data) {
     if (loadingHistory) {
         scrollToLatest(chatLog, false);
     } else if (wasNearBottom) {
-        scrollToLatest(chatLog, true);
+        scrollToLatestAfterLayout(chatLog, true);
+        keepLatestAfterImages(content, chatLog);
     } else if (!message.classList.contains("own")) {
         document.getElementById("scroll-to-latest")?.classList.remove("hidden");
     }
@@ -535,7 +531,13 @@ function updateMessageAttachments(messageId, attachments) {
     );
     const content = message?.querySelector(".message-content");
     if (content) {
+        const chatLog = document.getElementById("chat-log");
+        const shouldFollow = chatLog && isNearBottom(chatLog);
         renderMessageAttachments(content, attachments);
+        if (shouldFollow) {
+            scrollToLatestAfterLayout(chatLog, true);
+            keepLatestAfterImages(content, chatLog);
+        }
     }
 }
 
@@ -900,6 +902,24 @@ function scrollToLatest(chatLog, smooth = true) {
         behavior: smooth && !window.matchMedia("(prefers-reduced-motion: reduce)").matches
             ? "smooth"
             : "auto",
+    });
+}
+
+function scrollToLatestAfterLayout(chatLog, smooth = true) {
+    window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => scrollToLatest(chatLog, smooth));
+    });
+}
+
+function keepLatestAfterImages(content, chatLog) {
+    content.querySelectorAll("img").forEach((image) => {
+        if (!image.complete) {
+            image.addEventListener(
+                "load",
+                () => scrollToLatestAfterLayout(chatLog, false),
+                {once: true},
+            );
+        }
     });
 }
 
@@ -1336,7 +1356,7 @@ chatInput?.addEventListener("keydown", (event) => {
 document.getElementById("scroll-to-latest")?.addEventListener("click", () => {
     const chatLog = document.getElementById("chat-log");
     if (chatLog) {
-        scrollToLatest(chatLog, true);
+        scrollToLatestAfterLayout(chatLog, true);
     }
     document.getElementById("scroll-to-latest")?.classList.add("hidden");
 });

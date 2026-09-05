@@ -74,7 +74,7 @@
                                 </div>
                             {% endif %}
                             <footer>
-                                <time datetime="{{ note.created_at|date:'c' }}">
+                                <time class="local-datetime" datetime="{{ note.created_at|date:'c' }}">
                                     {{ note.created_at|date:"d.m.Y H:i" }}
                                 </time>
                                 <form method="post" action="{% url 'chat:delete_note' note.id %}">
@@ -94,5 +94,6 @@
         </section>
     </main>
     <script src="{% static 'chat/js/theme.js' %}?v=1"></script>
+    <script src="{% static 'chat/js/local-datetime.js' %}?v=1"></script>
 </body>
 </html>
