@@ -26,6 +26,7 @@ let presenceOnlineUsers = [];
 let selectedAttachments = [];
 let pendingAttachmentUpload = null;
 let selectedMessageElement = null;
+let replyTarget = null;
 let pendingDeletionMessageId = null;
 let bartenderTyping = false;
 let typingDebounceTimer = null;
@@ -315,6 +316,7 @@ function clearDirectRecipient(focus = true) {
 
 function activateNoteMode() {
     stopTyping();
+    clearReply();
     clearDirectRecipient(false);
     clearBartenderMode(false);
     noteMode = true;
@@ -342,6 +344,7 @@ function clearNoteMode(focus = true) {
 
 function activateBartender() {
     stopTyping();
+    clearReply();
     clearDirectRecipient(false);
     bartenderMode = true;
     bartenderPrivate = false;
@@ -417,6 +420,17 @@ function addMessage(data) {
     const content = document.createElement("div");
     content.className = "message-content";
 
+    if (data.reply_to) {
+        const quote = document.createElement("button");
+        quote.type = "button";
+        quote.className = "message-reply-quote";
+        quote.textContent = data.reply_to.available
+            ? `↩ ${data.reply_to.username}: ${data.reply_to.message}`
+            : "↩ Исходная реплика недоступна";
+        quote.addEventListener("click", () => scrollToMessage(data.reply_to.id));
+        content.append(quote);
+    }
+
     const author = document.createElement("div");
     author.className = "message-username";
     const avatar = createUserAvatar({
@@ -451,6 +465,9 @@ function addMessage(data) {
         author.append(remove);
     }
     if (data.id) {
+        const reply = createMessageAction("message-reply", "Ответить", "reply");
+        reply.addEventListener("click", () => activateReply(data));
+        author.append(reply);
         const save = createMessageAction(
             "message-save-note",
             "Приколоть к личным заметкам",
@@ -550,6 +567,36 @@ function toggleMessageSelection(message) {
     selectedMessageElement?.classList.remove("is-selected");
     selectedMessageElement = message;
     message.classList.add("is-selected");
+}
+
+function activateReply(data) {
+    clearBartenderMode(false);
+    clearNoteMode();
+    if (data.private) {
+        const other = normalizeUsername(data.username) === normalizeUsername(currentUsername)
+            ? data.recipient : data.username;
+        setDirectRecipient(other);
+    } else {
+        clearDirectRecipient();
+    }
+    replyTarget = {id: data.id, username: data.username, message: data.message};
+    document.getElementById("reply-author").textContent = data.username;
+    document.getElementById("reply-preview").textContent = data.message.slice(0, 100);
+    document.getElementById("reply-recipient")?.classList.remove("hidden");
+    document.getElementById("chat-message-input")?.focus();
+}
+
+function clearReply() {
+    replyTarget = null;
+    document.getElementById("reply-recipient")?.classList.add("hidden");
+}
+
+function scrollToMessage(messageId) {
+    const source = document.querySelector(`.message[data-message-id="${CSS.escape(String(messageId))}"]`);
+    if (!source) return;
+    source.scrollIntoView({behavior: "smooth", block: "center"});
+    source.classList.add("reply-highlight");
+    window.setTimeout(() => source.classList.remove("reply-highlight"), 1400);
 }
 
 function openDeleteMessageDialog(messageId) {
@@ -931,11 +978,13 @@ function sendMessage() {
         message,
         recipient: directRecipient,
         bartender_private: bartenderMode && bartenderPrivate,
+        reply_to: replyTarget?.id || null,
     }));
     if (bartenderMode || isBartenderRequest(message)) {
         setBartenderTyping(true);
     }
     input.value = bartenderMode ? `@${BARTENDER_USERNAME} ` : "";
+    clearReply();
     updateInputSize();
     input.focus();
 }
@@ -1231,7 +1280,9 @@ function createMessageAction(className, title, icon) {
     action.ariaLabel = title;
     action.innerHTML = icon === "trash"
         ? '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6m4-6v6M9 7l1-3h4l1 3m-9 0 1 13h10l1-13" /></svg>'
-        : '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14 4 6 6-4 2-3 6-2-2-4 4-1-1 4-4-2-2 6-3 2-4Z" /></svg>';
+        : icon === "reply"
+            ? '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 8 4 12l5 4v-3h4c3 0 5 1 7 4-1-6-4-8-7-8H9V8Z" /></svg>'
+            : '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14 4 6 6-4 2-3 6-2-2-4 4-1-1 4-4-2-2 6-3 2-4Z" /></svg>';
     return action;
 }
 
@@ -1239,6 +1290,7 @@ document.getElementById("chat-message-submit")?.addEventListener("click", sendMe
 document.getElementById("chat-attachment-trigger")?.addEventListener("click", selectAttachments);
 document.getElementById("chat-attachment-input")?.addEventListener("change", handleAttachmentSelection);
 document.getElementById("cancel-direct-message")?.addEventListener("click", clearDirectRecipient);
+document.getElementById("cancel-reply")?.addEventListener("click", clearReply);
 document.getElementById("note-trigger")?.addEventListener("click", activateNoteMode);
 document.querySelectorAll('[data-chat-action="bartender"]').forEach((button) => {
     button.addEventListener("click", activateBartender);

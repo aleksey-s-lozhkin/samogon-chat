@@ -542,6 +542,23 @@ class MessageServiceTests(TestCase):
         self.assertEqual(message.room, self.room)
         self.assertEqual(message.text, "Hello, Samogon!")
 
+    def test_reply_serialization_hides_removed_source_text(self):
+        source = MessageService.create_message(
+            user_id=self.user.id, room=self.room, text="Исходная реплика",
+        )
+        reply = MessageService.create_message(
+            user_id=self.user.id, room=self.room, text="Ответ", reply_to_id=source.id,
+        )
+
+        visible = MessageService.serialize_message(reply, self.user.id)["reply_to"]
+        self.assertEqual(visible["message"], "Исходная реплика")
+
+        source.hidden_at = timezone.now()
+        source.save(update_fields=("hidden_at",))
+        reply = Message.objects.select_related("reply_to__user").get(pk=reply.pk)
+        hidden = MessageService.serialize_message(reply, self.user.id)["reply_to"]
+        self.assertEqual(hidden, {"id": source.id, "available": False})
+
     def test_reaction_summary_keeps_count_and_current_user_state(self):
         second_user = User.objects.create_user(username="maria")
         message = MessageService.create_message(
@@ -1163,6 +1180,20 @@ class ChatConsumerTests(TransactionTestCase):
 
         async_to_sync(self._assert_direct_typing_privacy)(recipient, outsider)
 
+    def test_private_reply_keeps_participants_and_rejects_outsider(self):
+        recipient = User.objects.create_user(username="maria")
+        outsider = User.objects.create_user(username="ivan")
+        source = Message.objects.create(
+            room=self.room, user=self.user, recipient=recipient, text="Только для Марии",
+        )
+
+        async_to_sync(self._assert_private_reply_security)(source, recipient, outsider)
+
+        reply = Message.objects.get(text="Отвечаю")
+        self.assertEqual(reply.reply_to, source)
+        self.assertEqual(reply.user, recipient)
+        self.assertEqual(reply.recipient, self.user)
+
     async def _connect_communicator(self, user):
         communicator = WebsocketCommunicator(
             self.application,
@@ -1217,6 +1248,23 @@ class ChatConsumerTests(TransactionTestCase):
         for communicator in (sender_socket, recipient_socket, outsider_socket):
             await communicator.disconnect()
 
+    async def _assert_private_reply_security(self, source, recipient, outsider):
+        outsider_socket = await self._connect_communicator(outsider)
+        await self._drain_communicator(outsider_socket)
+        await outsider_socket.send_json_to({"message": "Чужой ответ", "reply_to": source.id})
+        error = await outsider_socket.receive_json_from()
+        self.assertEqual(error, {"type": "error", "message": "Исходная реплика недоступна"})
+        await outsider_socket.disconnect()
+
+        recipient_socket = await self._connect_communicator(recipient)
+        await self._drain_communicator(recipient_socket)
+        await recipient_socket.send_json_to({"message": "Отвечаю", "reply_to": source.id})
+        event = await recipient_socket.receive_json_from()
+        self.assertTrue(event["private"])
+        self.assertEqual(event["recipient"], "alex")
+        self.assertEqual(event["reply_to"]["id"], source.id)
+        await recipient_socket.disconnect()
+
     async def _assert_reaction_toggle(self, message_id):
         communicator = WebsocketCommunicator(self.application, "/ws/chat/general/")
         communicator.scope["user"] = self.user
@@ -1267,6 +1315,7 @@ class ChatConsumerTests(TransactionTestCase):
                         "color": "amber",
                         "attachments": [],
                         "reactions": [],
+                        "reply_to": None,
                     }
                 ],
             },
