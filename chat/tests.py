@@ -1209,6 +1209,36 @@ class ChatLayoutViewsTests(TestCase):
         message_render = source.index("data.messages.forEach(addMessage);", history_handler)
         self.assertLess(skeleton_clear, message_render)
 
+    def test_chat_adapts_to_android_keyboard_viewport(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+        with open(settings.BASE_DIR / "static/chat/css/chat.css", encoding="utf-8") as styles:
+            css = styles.read()
+        with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
+            javascript = script.read()
+
+        self.assertContains(response, "interactive-widget=resizes-content")
+        self.assertContains(response, "viewport-fit=cover")
+        self.assertIn("--app-height", css)
+        self.assertIn("safe-area-inset-bottom", css)
+        self.assertIn('visualViewport?.addEventListener("resize"', javascript)
+
+    def test_chat_reconnects_websocket_after_pwa_resume(self):
+        with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
+            source = script.read()
+
+        self.assertIn('document.addEventListener("visibilitychange"', source)
+        self.assertIn('window.addEventListener("online", reconnectWebSocketNow)', source)
+        self.assertIn('window.addEventListener("pageshow"', source)
+        self.assertIn("scheduleWebSocketReconnect()", source)
+        self.assertIn("SOCKET_FATAL_CLOSE_CODES", source)
+        self.assertIn("SOCKET_RECONNECT_MAX_DELAY_MS", source)
+        self.assertIn(
+            'querySelectorAll(".message, .day-divider, .chat-empty-state")',
+            source,
+        )
+
     def test_message_hover_highlight_respects_pointer_and_motion_preferences(self):
         with open(settings.BASE_DIR / "static/chat/css/chat.css", encoding="utf-8") as styles:
             source = styles.read()

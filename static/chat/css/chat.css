@@ -145,7 +145,7 @@ a {
 .chat-page {
     min-height: 0;
     height: calc(100vh - 32px);
-    height: calc(100dvh - 32px);
+    height: calc(var(--app-height, 100dvh) - 32px);
 
     overflow: hidden;
 }
@@ -2105,6 +2105,7 @@ html[data-theme="light"] .message-skeleton-line::after {
 
 .chat-composer {
     position: relative;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
 
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -3050,7 +3051,7 @@ html[data-theme="light"] .message-skeleton-line::after {
 
     .chat-page {
         height: 100vh;
-        height: 100dvh;
+        height: var(--app-height, 100dvh);
     }
 
     .chat-header,
