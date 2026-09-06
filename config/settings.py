@@ -40,6 +40,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'channels',
+    'rest_framework',
+    'drf_spectacular',
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
@@ -48,6 +50,20 @@ INSTALLED_APPS = [
     'chat',
     'users',
 ]
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework.authentication.SessionAuthentication",
+    ),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Samogon API",
+    "DESCRIPTION": "Versioned HTTP API for Samogon clients and diagnostics.",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -210,6 +226,7 @@ MESSAGE_RATE_LIMIT = int(os.getenv("MESSAGE_RATE_LIMIT", "20"))
 BARTENDER_RATE_LIMIT = int(os.getenv("BARTENDER_RATE_LIMIT", "5"))
 REACTION_RATE_LIMIT = int(os.getenv("REACTION_RATE_LIMIT", "30"))
 TYPING_RATE_LIMIT = int(os.getenv("TYPING_RATE_LIMIT", "60"))
+PRESENCE_STATUS_RATE_LIMIT = int(os.getenv("PRESENCE_STATUS_RATE_LIMIT", "20"))
 PUSH_SELF_TEST_RATE_LIMIT = int(os.getenv("PUSH_SELF_TEST_RATE_LIMIT", "3"))
 MESSAGE_REPORT_RATE_LIMIT = int(os.getenv("MESSAGE_REPORT_RATE_LIMIT", "10"))
 VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
@@ -217,10 +234,9 @@ VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
 VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "mailto:noreply@localhost")
 WEB_PUSH_ENABLED = bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)
 
-# Ollama runs on a separate machine in the local network.  Keeping this in an
-# environment variable lets local development and production use different
-# hosts without changing application code.
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://192.168.0.78:11434")
+# Keep the endpoint environment-specific: localhost is a safe development
+# default, while deployments may point to a dedicated internal service.
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "samogon-semen-caretaker")
 OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "20"))
 OLLAMA_KEEP_ALIVE_RAW = os.getenv("OLLAMA_KEEP_ALIVE", "-1")

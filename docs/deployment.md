@@ -1,23 +1,23 @@
 # Production-деплой Самогона
 
-## Реальная схема сервера
+## Рекомендуемая схема сервера
 
-Samogon запускается на VM `infra-dev` (`192.168.0.123`) рядом с уже
-работающими контейнерами. Новые PostgreSQL, Redis и Nginx не создаются.
+Samogon запускается на хосте приложения рядом с существующими PostgreSQL,
+Redis и Nginx. Конкретные имена серверов и адреса хранятся вне репозитория.
 
 ```text
-sam.pyconstrictor.ru → nginx → samogon-web:8000
+app.example.invalid → nginx → samogon-web:8000
                                   ├── postgres:5432
                                   ├── redis:6379
-                                  └── Ollama 192.168.0.78:11434
+                                  └── Ollama ollama.internal:11434
 ```
 
 Все контейнеры находятся в существующей внешней Docker-сети `infra`.
 
 ## 1. Перед запуском
 
-DNS `sam.pyconstrictor.ru` должен указывать на публичный IP маршрутизатора,
-а порты 80 и 443 — перенаправляться на `infra-dev`. Для TLS используется
+DNS `app.example.invalid` должен указывать на публичный адрес балансировщика,
+а порты 80 и 443 — вести на хост приложения. Для TLS используется
 отдельный сертификат Let's Encrypt. Создайте каталоги для проверки и сертификатов:
 
 ```bash
@@ -40,7 +40,7 @@ sudo docker run --rm \
   -v /srv/data/certbot:/var/www/certbot \
   -v /srv/data/letsencrypt:/etc/letsencrypt \
   certbot/certbot certonly --webroot -w /var/www/certbot \
-  -d sam.pyconstrictor.ru --email YOUR_EMAIL \
+  -d app.example.invalid --email admin@example.invalid \
   --agree-tos --no-eff-email
 ```
 
@@ -78,7 +78,7 @@ GRANT ALL ON SCHEMA public TO samogon;
 
 ```bash
 sudo mkdir -p /srv/data/samogon/static /srv/data/samogon/media
-sudo chown -R alserloz:alserloz /srv/data/samogon
+sudo chown -R deploy-user:deploy-user /srv/data/samogon
 ```
 
 Добавьте два mount в сервис `nginx` файла
@@ -125,10 +125,10 @@ SSL используйте `EMAIL_PORT=465`, `EMAIL_USE_TLS=0`, `EMAIL_USE_SSL=1
 Оставьте следующие значения как есть:
 
 ```dotenv
-ALLOWED_HOSTS=sam.pyconstrictor.ru
-CSRF_TRUSTED_ORIGINS=https://sam.pyconstrictor.ru
+ALLOWED_HOSTS=app.example.invalid
+CSRF_TRUSTED_ORIGINS=https://app.example.invalid
 REDIS_URL=redis://redis:6379/0
-OLLAMA_BASE_URL=http://192.168.0.78:11434
+OLLAMA_BASE_URL=http://ollama.internal:11434
 OLLAMA_MODEL=samogon-semen-caretaker
 OLLAMA_KEEP_ALIVE=-1
 OLLAMA_TEMPERATURE=0.5
@@ -147,7 +147,7 @@ BARTENDER_RATE_LIMIT=5
 REACTION_RATE_LIMIT=30
 TYPING_RATE_LIMIT=60
 SAMOGON_DATA_DIR=/srv/data/samogon
-SAMOGON_IMAGE=docker.io/alserloz/samogon_chat:latest
+SAMOGON_IMAGE=registry.example.invalid/project/samogon:latest
 ATTACHMENT_MAX_COUNT=3
 ATTACHMENT_IMAGE_MAX_SIZE=5242880
 ATTACHMENT_FILE_MAX_SIZE=2097152
@@ -160,21 +160,21 @@ ATTACHMENT_RATE_LIMIT=10
 callback URL:
 
 ```text
-https://sam.pyconstrictor.ru/accounts/github/login/callback/
-https://sam.pyconstrictor.ru/accounts/google/login/callback/
+https://app.example.invalid/accounts/github/login/callback/
+https://app.example.invalid/accounts/google/login/callback/
 ```
 
 Для GitHub создайте OAuth App в `Settings → Developer settings → OAuth Apps`.
-Homepage URL — `https://sam.pyconstrictor.ru/`, Authorization callback URL —
+Homepage URL — `https://app.example.invalid/`, Authorization callback URL —
 первый адрес выше. Для Google создайте OAuth 2.0 Client ID типа `Web
-application`, добавьте `https://sam.pyconstrictor.ru` в Authorized JavaScript
+application`, добавьте `https://app.example.invalid` в Authorized JavaScript
 origins, а второй адрес — в Authorized redirect URIs. Экран согласия Google
 должен быть опубликован либо тестовый пользователь должен быть добавлен явно.
 
 Секреты задаются только в `/srv/config/env/samogon.env`; в базе и репозитории
 они не хранятся. Кнопка провайдера появляется только при наличии одновременно
 ID и секрета. Для локальной проверки используйте отдельные OAuth-приложения с
-callback на `http://127.0.0.1:8000`; production-секреты локально не копируйте.
+callback на адрес локального приложения; production-секреты локально не копируйте.
 
 Совпавший подтверждённый email не объединяет аккаунты автоматически. В таком
 случае пользователь сначала входит обычным способом, затем подключает GitHub
@@ -199,7 +199,7 @@ poetry run python manage.py generate_vapid_keys > vapid.env
 Штатный GitHub Actions deploy также умеет выполнить первичную инициализацию:
 если в `/srv/config/env/samogon.env` отсутствует хотя бы один VAPID-ключ, workflow
 после загрузки образа создаёт пару непосредственно на сервере, записывает её с
-правами исходного env-файла и использует `https://sam.pyconstrictor.ru` как
+правами исходного env-файла и использует настроенный публичный origin как
 `VAPID_SUBJECT`. Уже настроенную пару workflow не заменяет, поэтому подписки
 устройств сохраняются между релизами. Значения ключей в журнал Actions не
 выводятся.
@@ -214,7 +214,7 @@ Push работает только в безопасном HTTPS-контекс�
 секретов или персональных данных:
 
 ```bash
-curl --fail https://sam.pyconstrictor.ru/api/v1/status/
+curl --fail https://app.example.invalid/api/v1/status/
 ```
 
 В авторизованной PWA откройте `/api/v1/push/subscriptions/`: ответ должен
@@ -230,13 +230,13 @@ push-служба приняла отправку; появление уведо
 
 ```dotenv
 SAMOGON_ENV_FILE=/srv/config/env/samogon.env
-SAMOGON_IMAGE=docker.io/alserloz/samogon_chat:latest
+SAMOGON_IMAGE=registry.example.invalid/project/samogon:latest
 ```
 
 Перед стартом проверьте связь с Ollama:
 
 ```bash
-curl --fail http://192.168.0.78:11434/api/tags
+curl --fail http://ollama.internal:11434/api/tags
 ```
 
 ### Профиль Семёна-бармена на Gemma 3 4B
@@ -270,7 +270,7 @@ Production-профиль выбирается одной переменной `
 вводит код в форме, но код нигде не хранится и не попадает в базу данных.
 
 Для открытой регистрации создайте виджет Cloudflare Turnstile для
-`sam.pyconstrictor.ru` и задайте оба ключа в `samogon.env`. Публичный
+публичного домена приложения и задайте оба ключа в `samogon.env`. Публичный
 `TURNSTILE_SITE_KEY` попадает только в HTML, а `TURNSTILE_SECRET_KEY` остаётся
 на сервере. Без серверной проверки токена регистрация не проходит. Пока ключи
 пустые, виджет отключён — это удобно для локальной разработки и закрытой беты.
@@ -336,8 +336,8 @@ docker exec nginx nginx -s reload
 ```bash
 cp deployment/nginx/samogon-rate-limits.conf \
   /srv/config/nginx/conf.d/samogon-rate-limits.conf
-cp deployment/nginx/sam.pyconstrictor.ru.conf \
-  /srv/config/nginx/conf.d/sam.pyconstrictor.ru.conf
+cp deployment/nginx/samogon-site.conf \
+  /srv/config/nginx/conf.d/samogon-site.conf
 docker exec nginx nginx -t
 docker exec nginx nginx -s reload
 ```
@@ -350,7 +350,7 @@ Nginx.
 ## 7. Боевая проверка
 
 ```bash
-curl -I https://sam.pyconstrictor.ru/chat/
+curl -I https://app.example.invalid/chat/
 docker logs --tail 100 samogon-web
 ```
 
@@ -368,7 +368,7 @@ cp .env.docker.example .env.docker
 docker compose -f docker-compose.local.yml up --build
 ```
 
-Сайт откроется на `http://127.0.0.1:8000`. Остановка с удалением тестовой БД:
+Сайт откроется на локальном порту Django. Остановка с удалением тестовой БД:
 
 ```bash
 docker compose -f docker-compose.local.yml down --volumes
@@ -379,14 +379,14 @@ docker compose -f docker-compose.local.yml down --volumes
 Pull request в `develop` запускает `.github/workflows/ci.yml`: Django checks,
 тесты и Docker build без публикации образа и без доступа к серверу. После push
 в `main` workflow `publish-deploy.yml` публикует
-`alserloz/samogon_chat:latest` и тег SHA коммита, затем разворачивает SHA-тег
-на `infra-dev`.
+образ `project/samogon:latest` и тег SHA коммита, затем разворачивает SHA-тег
+на настроенном хосте приложения.
 
 ## Обновление
 
 ```bash
 cd /srv/compose/samogon
-SAMOGON_IMAGE=docker.io/alserloz/samogon_chat:IMAGE_SHA \
+SAMOGON_IMAGE=registry.example.invalid/project/samogon:IMAGE_SHA \
   docker compose up -d --no-build
 docker image prune -f
 ```

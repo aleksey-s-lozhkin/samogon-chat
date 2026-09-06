@@ -55,6 +55,18 @@ if (isAuthenticated) {
     connectWebSocket();
 }
 
+const presenceStatusSelect = document.getElementById("presence-status-select");
+presenceStatusSelect?.addEventListener("change", () => {
+    if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
+        showError("Нет связи с чатом. Попробуйте изменить статус ещё раз.");
+        return;
+    }
+    chatSocket.send(JSON.stringify({
+        type: "presence_status",
+        status: presenceStatusSelect.value,
+    }));
+});
+
 function connectWebSocket() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const focusQuery = focusMessageId ? `?focus=${encodeURIComponent(focusMessageId)}` : "";
@@ -193,13 +205,13 @@ function normalizeUsername(username) {
 
 function userDetails(user) {
     if (typeof user === "string") {
-        return { username: user, avatarUrl: null, glassesPoured: 0 };
+        return { username: user, avatarUrl: null, status: "" };
     }
 
     return {
         username: String(user?.username || ""),
         avatarUrl: user?.avatar_url || null,
-        glassesPoured: Number(user?.glasses_poured) || 0,
+        status: String(user?.status || ""),
     };
 }
 
@@ -268,13 +280,14 @@ function renderUserList(
             button.className = `online-user user-contact ${className}`;
             const name = document.createElement("span");
             const identity = document.createElement("span");
-            const glasses = document.createElement("span");
+            const status = document.createElement("span");
             identity.className = "user-contact-identity";
             name.className = "user-contact-name";
             name.textContent = details.username;
-            glasses.className = "user-contact-glasses";
-            glasses.textContent = `Стаканов налито: ${details.glassesPoured}`;
-            identity.append(name, glasses);
+            name.title = details.username;
+            status.className = "user-contact-status";
+            status.textContent = details.status || "Без статуса";
+            identity.append(name, status);
             button.append(createUserAvatar(details), identity);
             button.addEventListener("click", () => setDirectRecipient(details.username));
             return button;
@@ -446,6 +459,7 @@ function addMessage(data) {
         quote.textContent = data.reply_to.available
             ? `↩ ${data.reply_to.username}: ${data.reply_to.message}`
             : "↩ Исходная реплика недоступна";
+        quote.title = quote.textContent;
         quote.addEventListener("click", () => scrollToMessage(data.reply_to.id));
         content.append(quote);
     }
@@ -470,6 +484,8 @@ function addMessage(data) {
     authorName.textContent = data.private && data.username === currentUsername
         ? `Вы → ${data.recipient}`
         : data.username;
+    authorName.classList.add("message-author-name");
+    authorName.title = authorName.textContent;
     author.append(authorName);
 
     const canDelete = normalizeUsername(data.username) === normalizeUsername(currentUsername)
@@ -882,19 +898,51 @@ function refreshReactionContainer(container) {
 }
 
 function createReactionButton(messageId, reaction) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "message-reaction";
-    button.dataset.emoji = reaction.emoji;
-    button.classList.toggle("is-active", Boolean(reaction.reacted));
-    button.textContent = `${reaction.emoji} ${reaction.count}`;
+    const reactionElement = document.createElement("span");
+    reactionElement.className = "message-reaction";
+    reactionElement.dataset.emoji = reaction.emoji;
+    reactionElement.classList.toggle("is-active", Boolean(reaction.reacted));
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "message-reaction-toggle";
+    toggle.textContent = reaction.emoji;
+    toggle.ariaLabel = reaction.reacted
+        ? `Снять реакцию ${reaction.emoji}`
+        : `Поставить реакцию ${reaction.emoji}`;
+    toggle.addEventListener("click", () => toggleReaction(messageId, reaction.emoji));
+
+    const count = document.createElement("button");
+    count.type = "button";
+    count.className = "message-reaction-users";
+    count.textContent = String(reaction.count);
     const users = reaction.users || [];
-    button.title = users.length ? users.join(", ") : "Реакция";
-    button.ariaLabel = users.length
-        ? `${reaction.emoji}: ${users.join(", ")}`
-        : `${reaction.emoji}: ${reaction.count}`;
-    button.addEventListener("click", () => toggleReaction(messageId, reaction.emoji));
-    return button;
+    count.ariaLabel = `Кто поставил ${reaction.emoji}: ${reaction.count}`;
+    count.setAttribute("aria-expanded", "false");
+
+    const popover = document.createElement("span");
+    popover.className = "message-reaction-users-popover hidden";
+    popover.setAttribute("role", "tooltip");
+    popover.textContent = users.length ? users.join("\n") : "Пока никто";
+    count.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const willOpen = popover.classList.contains("hidden");
+        closeReactionUserPopovers();
+        popover.classList.toggle("hidden", !willOpen);
+        count.setAttribute("aria-expanded", String(willOpen));
+    });
+
+    reactionElement.append(toggle, count, popover);
+    return reactionElement;
+}
+
+function closeReactionUserPopovers() {
+    document.querySelectorAll(".message-reaction-users-popover").forEach((popover) => {
+        popover.classList.add("hidden");
+        popover.parentElement
+            ?.querySelector(".message-reaction-users")
+            ?.setAttribute("aria-expanded", "false");
+    });
 }
 
 function createReactionPicker(messageId) {
@@ -957,13 +1005,18 @@ function updateMessageReaction(data) {
     }
     if (existing) {
         const users = data.users || [];
-        existing.textContent = `${data.emoji} ${data.count}`;
-        existing.title = users.length ? users.join(", ") : "Реакция";
-        existing.ariaLabel = users.length
-            ? `${data.emoji}: ${users.join(", ")}`
-            : `${data.emoji}: ${data.count}`;
+        const count = existing.querySelector(".message-reaction-users");
+        count.textContent = String(data.count);
+        count.ariaLabel = `Кто поставил ${data.emoji}: ${data.count}`;
+        existing.querySelector(".message-reaction-users-popover").textContent = users.length
+            ? users.join("\n")
+            : "Пока никто";
         if (isCurrentUser) {
             existing.classList.toggle("is-active", data.active);
+            const toggle = existing.querySelector(".message-reaction-toggle");
+            toggle.ariaLabel = data.active
+                ? `Снять реакцию ${data.emoji}`
+                : `Поставить реакцию ${data.emoji}`;
         }
         return;
     }
@@ -978,6 +1031,18 @@ function updateMessageReaction(data) {
     picker?.before(button);
     refreshReactionContainer(content.querySelector(".message-reactions"));
 }
+
+document.addEventListener("click", (event) => {
+    if (!event.target.closest(".message-reaction")) {
+        closeReactionUserPopovers();
+    }
+});
+
+document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+        closeReactionUserPopovers();
+    }
+});
 
 function toggleReaction(messageId, emoji) {
     if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {

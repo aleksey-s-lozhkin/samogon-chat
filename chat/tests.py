@@ -2,7 +2,7 @@ import json
 import tempfile
 from io import BytesIO
 from io import StringIO
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from asgiref.sync import async_to_sync
 from channels.routing import URLRouter
@@ -17,6 +17,7 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from .consumers import ChatConsumer
 from .models import (
     Attachment,
     Message,
@@ -1065,6 +1066,21 @@ class ChatLayoutViewsTests(TestCase):
         self.assertContains(response, 'data-chat-action="bartender"')
         self.assertNotContains(response, 'id="bartender-trigger"')
 
+    def test_chat_header_has_current_presence_status_control(self):
+        self.user.presence_status = User.PresenceStatus.READING
+        self.user.save(update_fields=("presence_status",))
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+
+        self.assertContains(response, 'id="presence-status-select"')
+        self.assertContains(response, "Читаю, но не отвечаю")
+        self.assertContains(
+            response,
+            '<option value="reading" selected>',
+            html=False,
+        )
+
     def test_only_moderator_sees_pending_report_counter(self):
         author = User.objects.create_user(username="reported-author")
         reporter = User.objects.create_user(username="reporter")
@@ -1458,6 +1474,44 @@ class ChatConsumerTests(TransactionTestCase):
 
         async_to_sync(self._assert_banned_user_is_rejected)()
 
+    def test_presence_orders_more_active_users_first(self):
+        active_user = User.objects.create_user(
+            username="maria",
+            presence_status=User.PresenceStatus.THINKING,
+        )
+        Message.objects.create(user=active_user, room=self.room, text="one")
+        Message.objects.create(user=active_user, room=self.room, text="two")
+
+        users = async_to_sync(ChatConsumer().get_all_users)()
+
+        self.assertEqual([item["username"] for item in users], ["maria", "alex"])
+        self.assertEqual([item["status"] for item in users], ["Думаю", ""])
+
+    def test_presence_status_is_saved_and_broadcast(self):
+        consumer = ChatConsumer()
+        consumer.user = self.user
+        consumer.is_rate_allowed = AsyncMock(return_value=True)
+        consumer.broadcast_presence = AsyncMock()
+
+        async_to_sync(consumer.handle_presence_status)(
+            {"status": User.PresenceStatus.BACK_SOON}
+        )
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.presence_status, User.PresenceStatus.BACK_SOON)
+        consumer.broadcast_presence.assert_awaited_once()
+
+    def test_presence_status_rejects_unknown_value(self):
+        consumer = ChatConsumer()
+        consumer.user = self.user
+        consumer.send_error = AsyncMock()
+
+        async_to_sync(consumer.handle_presence_status)({"status": "custom-text"})
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.presence_status, "")
+        consumer.send_error.assert_awaited_once_with("Такой статус недоступен.")
+
     def test_uninvited_user_cannot_connect_to_private_room(self):
         outsider = User.objects.create_user(username="maria")
         private_room = Room.objects.create(
@@ -1744,7 +1798,7 @@ class ChatConsumerTests(TransactionTestCase):
         self.assertEqual(presence_message["type"], "user_presence")
         self.assertEqual(
             presence_message["users"],
-            [{"username": "alex", "avatar_url": None, "glasses_poured": 1}],
+            [{"username": "alex", "avatar_url": None, "status": ""}],
         )
         self.assertEqual(presence_message["online"], ["alex"])
 

@@ -1,127 +1,28 @@
-# Samogon / Самогон
+# Самогон
 
-## English
+[English version](README.en.md)
 
-Samogon is a cosy real-time Django chat with rooms, private messages, online
-presence, and an AI bartender named Semyon. The interface uses server-rendered
-templates with HTMX and Alpine.js; real-time delivery is powered by Django
-Channels.
+«Самогон» — адаптивный чат для разработчиков на Django и Channels с комнатами,
+личными сообщениями, закрытыми столиками и локальным ИИ-барменом Семёном.
 
-### Features
+## Возможности
 
-- authenticated WebSocket chat with a 50-message history;
-- room presence, online and offline user lists;
-- private messages between users;
-- one private table per owner with one or two invited guests;
-- configurable message colours;
-- Semyon, a local Ollama assistant: mention `@Семён` or use the bartender card;
-- public or private questions to Semyon.
-- moderation through Django Admin: message hiding, timed bans and audit trail;
-- optional Cloudflare Turnstile protection for registration.
-- attachments: select up to three validated images/documents, see a local
-  preview, and open or download them through protected URLs.
-- message deletion: authors remove their own messages, while moderators can
-  hide any message with an audit record;
-- personal notes: save any visible message or switch the composer to private
-  note mode. Notes are visible only to their owner.
+- сообщения, присутствие и индикатор набора в реальном времени;
+- ответы, реакции с просмотром участников, emoji и безопасные блоки кода;
+- личные сообщения, приватные комнаты, поиск и личные заметки;
+- защищённые изображения и документы до трёх файлов на сообщение;
+- модерация, жалобы, временные и постоянные блокировки;
+- регистрация, восстановление пароля, GitHub и Google OAuth;
+- устанавливаемая PWA и добровольные Web Push-уведомления;
+- светлая, тёмная и системная темы;
+- версионированный диагностический API и OpenAPI/Swagger.
 
-### Local development
+## Стек
 
-Requirements: Python 3.14 and Poetry.
+Python 3.14, Django 6.1, Django Channels, PostgreSQL, Redis, Daphne, HTMX,
+django-allauth, Ollama, DRF и drf-spectacular.
 
-```bash
-poetry install
-poetry run python manage.py migrate
-poetry run python manage.py runserver
-```
-
-Run the checks and test suite:
-
-```bash
-poetry run python manage.py check
-poetry run python manage.py test
-```
-
-Create local demo accounts for a long user-list check:
-
-```bash
-poetry run python manage.py seed_demo_users --count 60
-```
-
-The command is blocked outside `DEBUG` by default. It creates offline accounts;
-testing real online presence also needs persistent WebSocket connections.
-
-Ollama is optional during local development. Configure it through environment
-variables when it is available:
-
-```dotenv
-OLLAMA_BASE_URL=http://192.168.0.78:11434
-OLLAMA_MODEL=samogon-semen-gemma
-OLLAMA_TIMEOUT_SECONDS=20
-OLLAMA_KEEP_ALIVE=-1
-OLLAMA_TEMPERATURE=0.5
-OLLAMA_NUM_PREDICT=80
-BARTENDER_RESPONSE_MAX_LENGTH=200
-REDIS_URL=redis://127.0.0.1:6379/0
-VAPID_PUBLIC_KEY=
-VAPID_PRIVATE_KEY=
-VAPID_SUBJECT=mailto:admin@example.com
-```
-
-`OLLAMA_KEEP_ALIVE=-1` keeps the selected model in VRAM between requests.
-Use it only when the Ollama server has enough free GPU memory.
-
-Web Push stays disabled until both VAPID keys are configured. Permission is
-requested only from the notification switch in the authenticated profile.
-
-For the intended two-VM deployment, see [docs/deployment.md](docs/deployment.md).
-Never expose the Ollama port to the public Internet.
-
-The agreed product roadmap is maintained in
-[docs/product-specification.md](docs/product-specification.md).
-
-### Project structure
-
-```text
-chat/                 Rooms, messages, WebSocket consumer and services
-chat/services/        Message, presence and Ollama integrations
-users/                Authentication and profile management
-config/               Django and Channels configuration
-templates/            Landing page templates
-static/               Shared front-end assets
-docs/                 Deployment documentation
-```
-
-## Русский
-
-«Самогон» — уютный чат на Django: комнаты, личные сообщения, присутствие
-пользователей онлайн и ИИ-бармен Семён. Интерфейс построен на Django Templates,
-HTMX и Alpine.js, а сообщения в реальном времени доставляет Django Channels.
-
-### Возможности
-
-- WebSocket-чат для авторизованных пользователей и история из 50 сообщений;
-- пользователи онлайн/офлайн по комнатам;
-- личные сообщения;
-- один тайный столик на владельца с одним или двумя приглашёнными гостями;
-- выбор оттенка сообщений в профиле;
-- Семён на локальной Ollama: упоминание `@Семён` или клик по его карточке;
-- вопрос Семёну можно отправить в общий чат или лично.
-- модерация через Django Admin: скрытие сообщений, временные баны и журнал;
-- защита регистрации Cloudflare Turnstile при включённых ключах.
-- вложения: до трёх проверенных изображений или документов, локальный
-  предпросмотр перед отправкой и защищённое открытие либо скачивание.
-- удаление сообщений: автор скрывает только свои реплики, модератор — любые с
-  записью в журнале;
-- личные заметки: можно сохранить доступную реплику вместе с её вложениями или
-  переключить поле ввода в режим заметки. Их видит только владелец; копии
-  вложений переживают скрытие исходной реплики.
-
-После обновления, добавившего копии вложений к заметкам, один раз запустите
-`python manage.py backfill_note_attachments`: он дополнит только старые заметки
-без вложений и не создаст дубликатов у уже обновлённых.
-
-### Локальный запуск
+## Локальный запуск
 
 Нужны Python 3.14 и Poetry.
 
@@ -131,39 +32,47 @@ poetry run python manage.py migrate
 poetry run python manage.py runserver
 ```
 
-Проверка проекта и тесты:
+Проверки:
 
 ```bash
 poetry run python manage.py check
+poetry run python manage.py spectacular --validate
 poetry run python manage.py test
 ```
 
-Чтобы проверить длинный список пользователей локально, создайте тестовые
-аккаунты:
+Ollama, Redis, OAuth, Turnstile и Web Push необязательны для базовой локальной
+разработки. Их параметры задаются только переменными окружения. Начните с
+`.env.example`; реальные адреса и секреты в репозиторий не добавляются.
 
-```bash
-poetry run python manage.py seed_demo_users --count 60
-```
+## API
 
-Команда по умолчанию заблокирована вне `DEBUG`. Она создаёт офлайн-аккаунты;
-для проверки реального присутствия понадобятся постоянные WebSocket-подключения.
+- Swagger UI: `/api/docs/`;
+- OpenAPI schema: `/api/schema/`;
+- API v1: `/api/v1/`.
 
-Ollama при локальной разработке необязательна. Если она доступна, задайте
-переменные окружения из английского раздела выше. Подробности развёртывания на
-двух VM — в [docs/deployment.md](docs/deployment.md). Порт Ollama не должен быть
-доступен из интернета.
+REST API каждого приложения находится рядом с его Web-слоем и использует те же
+модели и сервисы. Подробнее: [документация API](docs/api.md) и
+[протокол WebSocket](docs/websocket-protocol.md).
 
-Согласованное ТЗ и roadmap следующего этапа — в
-[docs/product-specification.md](docs/product-specification.md).
-
-### Архитектура
+## Структура
 
 ```text
-chat/                 Комнаты, сообщения, WebSocket и сервисы
-chat/services/        Сообщения, presence и интеграция с Ollama
-users/                Аутентификация и профиль
-config/               Настройки Django и Channels
-templates/            Шаблоны стартовой страницы
-static/               Общие стили и JavaScript
-docs/                 Инструкции по развёртыванию
+chat/                 Чат, сообщения, комнаты, WebSocket и сервисы
+users/                Пользователи, профиль, OAuth, Push и API устройств
+config/               Настройки и сборка маршрутов
+templates/            Общие серверные шаблоны
+static/               CSS, JavaScript и PWA-ресурсы
+deployment/           Шаблоны и сценарии развёртывания
+docs/                 Архитектура, ТЗ, API и эксплуатация
 ```
+
+## Документация
+
+- [Оглавление](docs/README.md)
+- [Архитектура](docs/architecture.md)
+- [Техническое задание и roadmap](docs/product-specification.md)
+- [Развёртывание](docs/deployment.md)
+
+После обновления старых заметок с вложениями один раз выполните
+`python manage.py backfill_note_attachments`. Команда дополняет только записи,
+для которых копии вложений ещё не созданы.

@@ -12,7 +12,7 @@
     {% include "pwa/head.html" %}
     <link
         rel="stylesheet"
-        href="{% static 'users/css/profile.css' %}?v=4"
+        href="{% static 'users/css/profile.css' %}?v=5"
     >
 
 </head>
@@ -93,10 +93,11 @@
 
         <div class="profile-row">
             <span class="profile-label">
-                Стаканов налито
+                Сообщений отправлено
             </span>
-            <span class="profile-value">
-                {{ glasses_poured }}
+            <span class="profile-value profile-value-with-help">
+                <strong>{{ glasses_poured }}</strong>
+                <small>За всё время; скрытые и удалённые реплики не учитываются.</small>
             </span>
         </div>
 
@@ -214,6 +215,13 @@
                 {{ form.message_color }}
                 <span class="form-help">Выберите оттенок, которым будут отмечены ваши сообщения.</span>
                 {{ form.message_color.errors }}
+            </div>
+
+            <div class="form-group presence-status-setting">
+                {{ form.presence_status.label_tag }}
+                {{ form.presence_status }}
+                <span class="form-help">Показывается рядом с вашим именем в списке участников.</span>
+                {{ form.presence_status.errors }}
             </div>
 
             <div class="form-group">
