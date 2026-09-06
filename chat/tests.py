@@ -1221,7 +1221,11 @@ class ChatLayoutViewsTests(TestCase):
         self.assertContains(response, "interactive-widget=resizes-content")
         self.assertContains(response, "viewport-fit=cover")
         self.assertIn("--app-height", css)
+        self.assertIn("safe-area-inset-top", css)
         self.assertIn("safe-area-inset-bottom", css)
+        self.assertIn("USE_VISUAL_VIEWPORT_HEIGHT", javascript)
+        self.assertIn('/Android/i.test(navigator.userAgent)', javascript)
+        self.assertIn('style.removeProperty("--app-height")', javascript)
         self.assertIn('visualViewport?.addEventListener("resize"', javascript)
 
     def test_chat_reconnects_websocket_after_pwa_resume(self):

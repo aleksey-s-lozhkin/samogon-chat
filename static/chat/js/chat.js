@@ -43,6 +43,7 @@ let typingRecipient = null;
 const typingUsers = new Map();
 const expandedPresenceLists = new Set();
 const PRESENCE_PREVIEW_LIMIT = 6;
+const USE_VISUAL_VIEWPORT_HEIGHT = /Android/i.test(navigator.userAgent);
 const SOCKET_RECONNECT_MAX_DELAY_MS = 30000;
 const SOCKET_FATAL_CLOSE_CODES = new Set([4401, 4403, 4404]);
 
@@ -197,6 +198,10 @@ function showConnectionLost() {
 }
 
 function updateAppHeight() {
+    if (!USE_VISUAL_VIEWPORT_HEIGHT) {
+        document.documentElement.style.removeProperty("--app-height");
+        return;
+    }
     const height = window.visualViewport?.height || window.innerHeight;
     document.documentElement.style.setProperty("--app-height", `${Math.round(height)}px`);
 }
