@@ -217,6 +217,13 @@
                 {{ form.message_color.errors }}
             </div>
 
+            <div class="form-group presence-status-setting">
+                {{ form.presence_status.label_tag }}
+                {{ form.presence_status }}
+                <span class="form-help">Показывается рядом с вашим именем в списке участников.</span>
+                {{ form.presence_status.errors }}
+            </div>
+
             <div class="form-group">
 
                 <label for="id_avatar">Аватар</label>

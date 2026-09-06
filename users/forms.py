@@ -131,6 +131,12 @@ class AdminPushForm(forms.Form):
 class ProfileForm(forms.ModelForm):
     """Форма редактирования профиля пользователя."""
 
+    presence_status = forms.ChoiceField(
+        label="Статус в чате",
+        choices=(("", "Без статуса"), *User.PresenceStatus.choices),
+        required=False,
+    )
+
     class Meta:
         model = User
         fields = (
@@ -138,6 +144,7 @@ class ProfileForm(forms.ModelForm):
             "email",
             "avatar",
             "message_color",
+            "presence_status",
         )
 
         labels = {
@@ -145,6 +152,7 @@ class ProfileForm(forms.ModelForm):
             "email": "Email",
             "avatar": "Аватар",
             "message_color": "Цвет моих сообщений",
+            "presence_status": "Статус в чате",
         }
 
         widgets = {

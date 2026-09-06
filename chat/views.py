@@ -15,6 +15,7 @@ from django.utils.text import slugify
 from django.views.decorators.csrf import ensure_csrf_cookie
 
 from config.rate_limit import is_allowed
+from users.models import User
 from users.services.push import send_moderator_report_push
 
 from .forms import MessageSearchForm, PrivateRoomForm
@@ -155,6 +156,7 @@ def chat_page(request, room_slug):
             "private_rooms": [item for item in rooms if item.is_private],
             "focus_message_id": focus_message_id,
             "pending_report_count": pending_report_count,
+            "presence_status_choices": User.PresenceStatus.choices,
         },
     )
 

@@ -94,6 +94,26 @@ class ProfileViewTests(TestCase):
         self.assertFalse(changed.is_valid())
         self.assertIn("не больше 32", changed.errors["username"][0])
 
+    def test_profile_saves_presence_status(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            "/users/profile/",
+            {
+                "username": self.user.username,
+                "email": self.user.email,
+                "message_color": "amber",
+                "presence_status": User.PresenceStatus.BACK_SOON,
+            },
+        )
+
+        self.assertRedirects(response, "/users/profile/")
+        self.user.refresh_from_db()
+        self.assertEqual(
+            self.user.presence_status,
+            User.PresenceStatus.BACK_SOON,
+        )
+
     @override_settings(
         VAPID_PUBLIC_KEY="public-key",
         VAPID_PRIVATE_KEY="private-key",
