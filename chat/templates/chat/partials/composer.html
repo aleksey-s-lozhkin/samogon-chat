@@ -21,6 +21,37 @@
     </button>
 </div>
 
+<div
+    id="report-message-modal"
+    class="message-dialog hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="report-message-title"
+>
+    <div class="message-dialog-card">
+        <span class="message-dialog-eyebrow">Сообщить модератору</span>
+        <h2 id="report-message-title">Что не так с репликой?</h2>
+        <p>Жалоба не удаляет сообщение автоматически. Решение примет модератор.</p>
+        <label class="message-report-field">
+            <span>Причина</span>
+            <select id="message-report-reason">
+                <option value="abuse">Оскорбление или травля</option>
+                <option value="spam">Спам или реклама</option>
+                <option value="privacy">Личные данные</option>
+                <option value="other">Другое</option>
+            </select>
+        </label>
+        <label class="message-report-field">
+            <span>Комментарий, необязательно</span>
+            <textarea id="message-report-details" maxlength="240" rows="3"></textarea>
+        </label>
+        <div class="message-dialog-actions">
+            <button id="cancel-message-report" type="button">Отмена</button>
+            <button id="confirm-message-report" type="button">Отправить жалобу</button>
+        </div>
+    </div>
+</div>
+
 <section class="chat-composer">
     <div id="typing-indicator" class="typing-indicator hidden" aria-live="polite">
         Кто-то набирает сообщение…

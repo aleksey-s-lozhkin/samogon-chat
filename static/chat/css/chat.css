@@ -1188,6 +1188,12 @@ html[data-theme="light"] .message-skeleton-line::after {
     color: #ff9292;
 }
 
+.message-report:hover,
+.message-report:focus-visible {
+    background: rgba(240, 189, 116, 0.12);
+    color: var(--amber-light);
+}
+
 .message-save-note:hover,
 .message-save-note:focus-visible {
     background: var(--primary-soft);
@@ -1260,6 +1266,33 @@ html[data-theme="light"] .message-skeleton-line::after {
     border-color: rgba(255, 107, 107, 0.5);
     background: rgba(167, 61, 61, 0.22);
     color: #ffb2b2;
+}
+
+.message-report-field {
+    display: grid;
+    gap: 7px;
+    margin-top: 16px;
+    color: var(--text-soft);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.message-report-field select,
+.message-report-field textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    background: var(--surface-strong);
+    color: var(--text);
+    font: inherit;
+    resize: vertical;
+}
+
+#confirm-message-report {
+    border-color: rgba(198, 117, 58, 0.5);
+    background: var(--primary-soft);
+    color: var(--amber-light);
 }
 
 .message-author-avatar {

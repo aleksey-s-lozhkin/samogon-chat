@@ -36,6 +36,11 @@ urlpatterns = [
         views.delete_message,
         name="delete_message",
     ),
+    path(
+        "messages/<int:message_id>/report/",
+        views.report_message,
+        name="report_message",
+    ),
     path("notes/", views.notes_page, name="notes"),
     path("search/", views.message_search, name="message_search"),
     path("notes/create/", views.create_note, name="create_note"),

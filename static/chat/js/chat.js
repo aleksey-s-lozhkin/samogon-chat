@@ -5,6 +5,7 @@ const {
     canModerateMessages,
     attachmentUploadTemplate,
     messageDeleteTemplate,
+    messageReportTemplate,
     noteCreateUrl,
     focusMessageId,
 } = chatConfig;
@@ -29,6 +30,7 @@ let pendingAttachmentUpload = null;
 let selectedMessageElement = null;
 let replyTarget = null;
 let pendingDeletionMessageId = null;
+let pendingReportMessageId = null;
 let bartenderTyping = false;
 let typingDebounceTimer = null;
 let typingIdleTimer = null;
@@ -485,6 +487,18 @@ function addMessage(data) {
         save.addEventListener("click", () => saveNote(data.id));
         author.append(save);
     }
+    if (
+        data.id
+        && normalizeUsername(data.username) !== normalizeUsername(currentUsername)
+    ) {
+        const report = createMessageAction(
+            "message-report",
+            "Пожаловаться модератору",
+            "flag",
+        );
+        report.addEventListener("click", () => openReportMessageDialog(data.id));
+        author.append(report);
+    }
 
     const text = document.createElement("div");
     text.className = "message-text";
@@ -692,6 +706,45 @@ function openDeleteMessageDialog(messageId) {
 function closeDeleteMessageDialog() {
     pendingDeletionMessageId = null;
     document.getElementById("delete-message-modal")?.classList.add("hidden");
+}
+
+function openReportMessageDialog(messageId) {
+    pendingReportMessageId = messageId;
+    document.getElementById("message-report-details").value = "";
+    document.getElementById("report-message-modal")?.classList.remove("hidden");
+    document.getElementById("message-report-reason")?.focus();
+}
+
+function closeReportMessageDialog() {
+    pendingReportMessageId = null;
+    document.getElementById("report-message-modal")?.classList.add("hidden");
+}
+
+async function submitMessageReport() {
+    if (!pendingReportMessageId) return;
+    const messageId = pendingReportMessageId;
+    const reason = document.getElementById("message-report-reason")?.value;
+    const details = document.getElementById("message-report-details")?.value || "";
+    try {
+        const response = await fetch(
+            messageReportTemplate.replace("/0/", `/${messageId}/`),
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": getCsrfToken(),
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({reason, details}),
+            },
+        );
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Не удалось отправить жалобу.");
+        closeReportMessageDialog();
+        showSuccess(payload.created ? "Жалоба отправлена модератору." : "Жалоба уже отправлена.");
+    } catch (error) {
+        showError(error.message || "Не удалось отправить жалобу.");
+    }
 }
 
 async function deleteMessage(messageId) {
@@ -1380,6 +1433,8 @@ function createMessageAction(className, title, icon) {
         ? '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6m4-6v6M9 7l1-3h4l1 3m-9 0 1 13h10l1-13" /></svg>'
         : icon === "reply"
             ? '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 8 4 12l5 4v-3h4c3 0 5 1 7 4-1-6-4-8-7-8H9V8Z" /></svg>'
+            : icon === "flag"
+                ? '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3v18m1-16h10l-2 4 2 4H7" /></svg>'
             : '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14 4 6 6-4 2-3 6-2-2-4 4-1-1 4-4-2-2 6-3 2-4Z" /></svg>';
     return action;
 }
@@ -1409,6 +1464,11 @@ document.getElementById("delete-message-modal")?.addEventListener("click", (even
         closeDeleteMessageDialog();
     }
 });
+document.getElementById("cancel-message-report")?.addEventListener("click", closeReportMessageDialog);
+document.getElementById("confirm-message-report")?.addEventListener("click", submitMessageReport);
+document.getElementById("report-message-modal")?.addEventListener("click", (event) => {
+    if (event.target.id === "report-message-modal") closeReportMessageDialog();
+});
 document.getElementById("bartender-public")?.addEventListener("click", () => setBartenderVisibility(false));
 document.getElementById("bartender-private")?.addEventListener("click", () => setBartenderVisibility(true));
 document.getElementById("cancel-bartender-message")?.addEventListener("click", clearBartenderMode);
@@ -1425,6 +1485,7 @@ chatInput?.addEventListener("keydown", (event) => {
     }
     if (event.key === "Escape") {
         closeDeleteMessageDialog();
+        closeReportMessageDialog();
         clearDirectRecipient(false);
         clearBartenderMode(false);
         clearNoteMode(false);

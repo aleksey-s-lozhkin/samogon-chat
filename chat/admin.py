@@ -5,6 +5,7 @@ from .models import (
     Attachment,
     Message,
     MessageReaction,
+    MessageReport,
     ModerationEvent,
     Room,
     RoomMembership,
@@ -130,6 +131,30 @@ class MessageReactionAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+@admin.register(MessageReport)
+class MessageReportAdmin(admin.ModelAdmin):
+    """Очередь пользовательских жалоб без автоматического решения."""
+
+    list_display = ("reason", "message_author", "reporter", "created_at")
+    list_filter = ("reason", "created_at")
+    search_fields = ("message__user__username", "reporter__username", "details")
+    readonly_fields = ("message", "reporter", "reason", "details", "created_at")
+    list_select_related = ("message__user", "reporter")
+
+    @admin.display(description="Автор сообщения")
+    def message_author(self, report):
+        return report.message.user
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
 
 
 @admin.register(ModerationEvent)

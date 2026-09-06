@@ -9,7 +9,7 @@ from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
 from PIL import Image
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import AnonymousUser, Permission
+from django.contrib.auth.models import AnonymousUser, Group, Permission
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
@@ -21,6 +21,7 @@ from .models import (
     Attachment,
     Message,
     MessageReaction,
+    MessageReport,
     Note,
     NoteAttachment,
     Room,
@@ -375,6 +376,127 @@ class MessageDeleteViewTests(TestCase):
             ).exists()
         )
         broadcast.assert_called_once_with(self.message)
+
+
+class MessageReportViewTests(TestCase):
+    def setUp(self):
+        self.author = User.objects.create_user(username="author")
+        self.reporter = User.objects.create_user(username="reporter")
+        self.outsider = User.objects.create_user(username="outsider")
+        self.room = Room.objects.create(name="General", slug="general")
+        self.message = Message.objects.create(
+            user=self.author,
+            room=self.room,
+            text="Реплика для жалобы",
+        )
+        self.url = reverse("chat:report_message", args=[self.message.id])
+
+    def test_visible_message_can_be_reported_once(self):
+        self.client.force_login(self.reporter)
+        payload = {"reason": "abuse", "details": "Переход на личности"}
+
+        first = self.client.post(
+            self.url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        second = self.client.post(
+            self.url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertTrue(first.json()["created"])
+        self.assertEqual(second.status_code, 200)
+        self.assertFalse(second.json()["created"])
+        report = MessageReport.objects.get()
+        self.assertEqual(report.reporter, self.reporter)
+        self.assertEqual(report.reason, MessageReport.Reason.ABUSE)
+        self.assertEqual(report.details, "Переход на личности")
+        self.message.refresh_from_db()
+        self.assertIsNone(self.message.hidden_at)
+
+    def test_user_cannot_report_own_message(self):
+        self.client.force_login(self.author)
+
+        response = self.client.post(
+            self.url,
+            data=json.dumps({"reason": "other"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(MessageReport.objects.exists())
+
+    def test_user_cannot_report_invisible_direct_message(self):
+        direct = Message.objects.create(
+            user=self.author,
+            recipient=self.outsider,
+            room=self.room,
+            text="Чужая личная реплика",
+        )
+        self.client.force_login(self.reporter)
+
+        response = self.client.post(
+            reverse("chat:report_message", args=[direct.id]),
+            data=json.dumps({"reason": "privacy"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(MessageReport.objects.exists())
+
+    def test_invalid_report_reason_is_rejected(self):
+        self.client.force_login(self.reporter)
+
+        response = self.client.post(
+            self.url,
+            data=json.dumps({"reason": "delete-it"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(MessageReport.objects.exists())
+
+    def test_non_object_report_payload_is_rejected(self):
+        self.client.force_login(self.reporter)
+
+        response = self.client.post(
+            self.url,
+            data=json.dumps(["spam"]),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(MessageReport.objects.exists())
+
+    @patch("chat.views.is_allowed", return_value=False)
+    def test_reports_are_rate_limited(self, mocked_is_allowed):
+        self.client.force_login(self.reporter)
+
+        response = self.client.post(
+            self.url,
+            data=json.dumps({"reason": "spam"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 429)
+        self.assertFalse(MessageReport.objects.exists())
+        mocked_is_allowed.assert_called_once()
+
+
+class ModeratorSetupCommandTests(TestCase):
+    def test_moderators_can_view_message_reports(self):
+        call_command("setup_moderators", stdout=StringIO())
+
+        moderators = Group.objects.get(name="Moderators")
+        self.assertTrue(
+            moderators.permissions.filter(
+                content_type__app_label="chat",
+                codename="view_messagereport",
+            ).exists()
+        )
 
 
 class NotesViewTests(TestCase):
