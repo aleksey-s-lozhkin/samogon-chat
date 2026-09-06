@@ -15,11 +15,13 @@ from django.utils.text import slugify
 from django.views.decorators.csrf import ensure_csrf_cookie
 
 from config.rate_limit import is_allowed
+from users.services.push import send_moderator_report_push
 
 from .forms import MessageSearchForm, PrivateRoomForm
 from .models import (
     Attachment,
     Message,
+    MessageReport,
     Note,
     NoteAttachment,
     Room,
@@ -125,6 +127,11 @@ def chat_page(request, room_slug):
         request.session["last_chat_room_slug"] = room.slug
     rooms = list(get_visible_rooms(request.user))
     add_unread_counts(rooms, request.user)
+    pending_report_count = (
+        MessageReport.objects.filter(resolved_at__isnull=True).count()
+        if request.user.has_perm("chat.view_messagereport")
+        else 0
+    )
 
     focus_message_id = None
     raw_focus = request.GET.get("message")
@@ -147,6 +154,7 @@ def chat_page(request, room_slug):
             "public_rooms": [item for item in rooms if not item.is_private],
             "private_rooms": [item for item in rooms if item.is_private],
             "focus_message_id": focus_message_id,
+            "pending_report_count": pending_report_count,
         },
     )
 
@@ -310,6 +318,53 @@ def delete_message(request, message_id):
 
     broadcast_message_deleted(message)
     return JsonResponse({"message_id": message.id})
+
+
+@login_required
+def report_message(request, message_id):
+    """Сохраняет жалобу для модератора, не скрывая реплику автоматически."""
+    if request.method != "POST":
+        raise Http404("Маршрут жалоб не найден")
+    if not is_allowed(
+        identifier=f"user:{request.user.id}",
+        bucket="message-report",
+        limit=settings.MESSAGE_REPORT_RATE_LIMIT,
+        window_seconds=settings.RATE_LIMIT_WINDOW_SECONDS,
+    ):
+        return JsonResponse({"error": "Слишком много жалоб. Подождите минуту."}, status=429)
+    try:
+        payload = json.loads(request.body)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return JsonResponse({"error": "Некорректная жалоба."}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"error": "Некорректная жалоба."}, status=400)
+
+    reason = payload.get("reason")
+    details = payload.get("details", "")
+    if reason not in MessageReport.Reason.values or not isinstance(details, str):
+        return JsonResponse({"error": "Укажите причину жалобы."}, status=400)
+    details = details.strip()
+    if len(details) > 240:
+        return JsonResponse({"error": "Комментарий не может быть длиннее 240 символов."}, status=400)
+
+    message = get_object_or_404(
+        Message.objects.select_related("room", "recipient", "user"),
+        id=message_id,
+        hidden_at__isnull=True,
+    )
+    if not MessageService.can_view_message(message=message, user=request.user):
+        raise Http404("Сообщение не найдено")
+    if message.user_id == request.user.id:
+        return JsonResponse({"error": "На свою реплику жалоба не нужна."}, status=400)
+
+    report, created = MessageReport.objects.get_or_create(
+        message=message,
+        reporter=request.user,
+        defaults={"reason": reason, "details": details},
+    )
+    if created:
+        send_moderator_report_push()
+    return JsonResponse({"reported": True, "created": created}, status=201 if created else 200)
 
 
 @login_required

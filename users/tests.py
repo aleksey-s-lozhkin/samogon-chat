@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import AnonymousUser
+from django.contrib.auth.models import AnonymousUser, Group, Permission
 from django.core.cache import cache
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -27,6 +27,7 @@ from users.services.push import (
     device_id_for_subscription,
     send_admin_push,
     send_direct_message_push,
+    send_moderator_report_push,
     send_push_self_test,
 )
 
@@ -255,6 +256,49 @@ class PushSubscriptionTests(TestCase):
         )
         self.user.refresh_from_db()
         self.assertTrue(self.user.avatar.name.endswith("avatar.jpg"))
+
+
+class ModeratorReportPushTests(TestCase):
+    @override_settings(
+        WEB_PUSH_ENABLED=True,
+        VAPID_PRIVATE_KEY="private-key",
+        VAPID_SUBJECT="mailto:test@example.com",
+    )
+    @patch("users.services.push.webpush")
+    def test_report_push_reaches_all_moderators_without_report_details(self, webpush):
+        permission = Permission.objects.get(
+            content_type__app_label="chat",
+            codename="view_messagereport",
+        )
+        direct_moderator = User.objects.create_user(username="direct-moderator")
+        direct_moderator.user_permissions.add(permission)
+        group_moderator = User.objects.create_user(username="group-moderator")
+        group = Group.objects.create(name="Push moderators")
+        group.permissions.add(permission)
+        group_moderator.groups.add(group)
+        superuser = User.objects.create_superuser(username="root", password="password")
+        ordinary = User.objects.create_user(username="ordinary")
+        for user in (direct_moderator, group_moderator, superuser, ordinary):
+            PushSubscription.objects.create(
+                user=user,
+                endpoint=f"https://push.example/{user.username}",
+                p256dh=f"key-{user.username}",
+                auth=f"auth-{user.username}",
+            )
+
+        result = send_moderator_report_push()
+
+        self.assertEqual(result.delivered, 3)
+        self.assertEqual(webpush.call_count, 3)
+        endpoints = {
+            call.kwargs["subscription_info"]["endpoint"]
+            for call in webpush.call_args_list
+        }
+        self.assertNotIn("https://push.example/ordinary", endpoints)
+        payload = json.loads(webpush.call_args.kwargs["data"])
+        self.assertEqual(payload["body"], "В Самогоне появилась новая жалоба.")
+        self.assertNotIn("reporter", payload)
+        self.assertNotIn("message", payload)
 
 
 class PushDiagnosticApiTests(TestCase):
