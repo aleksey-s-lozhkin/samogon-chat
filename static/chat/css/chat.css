@@ -2724,6 +2724,16 @@ html[data-theme="light"] .message-skeleton-line::after {
     text-decoration: underline;
 }
 
+.auth-rules-note {
+    margin-top: 14px;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.auth-rules-note a {
+    color: var(--primary-hover);
+}
+
 .auth-page-card .primary-button {
     display: flex;
     align-items: center;
