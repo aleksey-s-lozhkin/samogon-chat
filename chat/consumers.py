@@ -7,7 +7,7 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from config.rate_limit import is_allowed
@@ -591,12 +591,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 | Q(banned_until__lte=timezone.now())
             )
             .exclude(username=settings.BARTENDER_USERNAME)
+            .annotate(
+                glasses_poured=Count(
+                    "chat_messages",
+                    filter=Q(chat_messages__hidden_at__isnull=True),
+                )
+            )
             .order_by("username")
         )
         return [
             {
                 "username": user.username,
                 "avatar_url": MessageService.get_avatar_url(user),
+                "glasses_poured": user.glasses_poured,
             }
             for user in users
         ]
