@@ -11,6 +11,7 @@ from django.core.files.base import ContentFile
 from .utils import resize_avatar
 
 User = get_user_model()
+PUBLIC_USERNAME_MAX_LENGTH = 32
 
 
 class RegistrationForm(forms.ModelForm):
@@ -23,6 +24,10 @@ class RegistrationForm(forms.ModelForm):
     email = forms.EmailField(
         label="Email",
         required=True,
+    )
+    username = forms.CharField(
+        label="Имя в чате",
+        max_length=PUBLIC_USERNAME_MAX_LENGTH,
     )
 
     invite_code = forms.CharField(
@@ -146,6 +151,7 @@ class ProfileForm(forms.ModelForm):
             "username": forms.TextInput(
                 attrs={
                     "placeholder": "Введите имя пользователя",
+                    "maxlength": PUBLIC_USERNAME_MAX_LENGTH,
                 }
             ),
             "email": forms.EmailInput(
@@ -154,6 +160,17 @@ class ProfileForm(forms.ModelForm):
                 }
             ),
         }
+
+    def clean_username(self):
+        username = self.cleaned_data["username"].strip()
+        if (
+            len(username) > PUBLIC_USERNAME_MAX_LENGTH
+            and username != self.instance.username
+        ):
+            raise forms.ValidationError(
+                f"Используйте не больше {PUBLIC_USERNAME_MAX_LENGTH} символов."
+            )
+        return username
 
     def clean_avatar(self):
         avatar = self.cleaned_data.get("avatar")

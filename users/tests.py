@@ -21,6 +21,7 @@ from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.models import SocialAccount, SocialLogin
 
 from users.adapters import SamogonSocialAccountAdapter
+from users.forms import ProfileForm, RegistrationForm
 from users.models import PushSubscription
 from chat.models import Message, Room
 from users.services.push import (
@@ -71,8 +72,27 @@ class ProfileViewTests(TestCase):
 
         response = self.client.get("/users/profile/")
 
-        self.assertContains(response, "Стаканов налито")
+        self.assertContains(response, "Сообщений отправлено")
+        self.assertContains(response, "За всё время")
         self.assertEqual(response.context["glasses_poured"], 1)
+
+    def test_profile_keeps_existing_long_username_but_rejects_a_new_one(self):
+        existing = "x" * 40
+        self.user.username = existing
+        self.user.save(update_fields=("username",))
+
+        unchanged = ProfileForm(
+            data={"username": existing, "email": self.user.email, "message_color": "amber"},
+            instance=self.user,
+        )
+        changed = ProfileForm(
+            data={"username": "y" * 40, "email": self.user.email, "message_color": "amber"},
+            instance=self.user,
+        )
+
+        self.assertTrue(unchanged.is_valid())
+        self.assertFalse(changed.is_valid())
+        self.assertIn("не больше 32", changed.errors["username"][0])
 
     @override_settings(
         VAPID_PUBLIC_KEY="public-key",
@@ -363,6 +383,23 @@ class PushDiagnosticApiTests(TestCase):
             },
         )
 
+    def test_openapi_schema_and_swagger_are_public_and_safe(self):
+        schema_response = self.client.get(reverse("api_schema"))
+        docs_response = self.client.get(reverse("api_docs"))
+
+        self.assertEqual(schema_response.status_code, 200)
+        self.assertEqual(docs_response.status_code, 200)
+        schema = schema_response.content.decode()
+        self.assertIn("/api/v1/status/", schema)
+        self.assertIn("/api/v1/push/subscriptions/", schema)
+        self.assertIn("/api/v1/push/self-test/", schema)
+        for secret in (
+            self.subscription.endpoint,
+            self.subscription.p256dh,
+            self.subscription.auth,
+        ):
+            self.assertNotIn(secret, schema)
+
     def test_subscription_list_requires_session_authentication(self):
         response = self.client.get(reverse("api_v1_push_subscriptions"))
 
@@ -396,7 +433,7 @@ class PushDiagnosticApiTests(TestCase):
             self.assertNotIn(secret, serialized)
 
     @override_settings(WEB_PUSH_ENABLED=True)
-    @patch("users.api.send_push_self_test")
+    @patch("users.api.views.send_push_self_test")
     def test_self_test_targets_only_selected_current_user_device(self, mocked_send):
         mocked_send.return_value = PushDeliveryResult(delivered=1)
         csrf_client = Client(enforce_csrf_checks=True)
@@ -450,7 +487,7 @@ class PushDiagnosticApiTests(TestCase):
         self.assertEqual(response.status_code, 403)
 
     @override_settings(WEB_PUSH_ENABLED=True)
-    @patch("users.api.is_allowed", return_value=False)
+    @patch("users.api.views.is_allowed", return_value=False)
     def test_self_test_is_rate_limited(self, mocked_is_allowed):
         self.client.force_login(self.user)
 
@@ -546,6 +583,18 @@ class AuthenticationHtmxTests(TestCase):
         )
 
         self.assertEqual(response["HX-Redirect"], "/")
+
+    def test_registration_username_is_limited_to_32_characters(self):
+        form = RegistrationForm(
+            data={
+                "username": "x" * 33,
+                "email": "long@example.invalid",
+                "password": "safe-password",
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("не более 32", form.errors["username"][0])
 
     @override_settings(REGISTRATION_INVITE_CODE="bar-secret")
     def test_successful_registration_requests_page_refresh(self):
