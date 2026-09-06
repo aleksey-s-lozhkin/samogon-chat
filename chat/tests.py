@@ -417,6 +417,16 @@ class MessageReportViewTests(TestCase):
         self.message.refresh_from_db()
         self.assertIsNone(self.message.hidden_at)
 
+    @patch("chat.views.send_moderator_report_push")
+    def test_push_is_sent_only_for_new_report(self, send_push):
+        self.client.force_login(self.reporter)
+        payload = json.dumps({"reason": "spam"})
+
+        self.client.post(self.url, data=payload, content_type="application/json")
+        self.client.post(self.url, data=payload, content_type="application/json")
+
+        send_push.assert_called_once_with()
+
     def test_user_cannot_report_own_message(self):
         self.client.force_login(self.author)
 
@@ -497,6 +507,37 @@ class ModeratorSetupCommandTests(TestCase):
                 codename="view_messagereport",
             ).exists()
         )
+
+
+class MessageReportAdminTests(TestCase):
+    def test_superuser_can_mark_report_as_resolved(self):
+        admin_user = User.objects.create_superuser(
+            username="admin",
+            password="password",
+        )
+        author = User.objects.create_user(username="reported-user")
+        reporter = User.objects.create_user(username="reporter-user")
+        room = Room.objects.create(name="Admin reports", slug="admin-reports")
+        message = Message.objects.create(user=author, room=room, text="Проверить")
+        report = MessageReport.objects.create(
+            message=message,
+            reporter=reporter,
+            reason=MessageReport.Reason.OTHER,
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("admin:chat_messagereport_changelist"),
+            {
+                "action": "mark_resolved",
+                "_selected_action": [report.id],
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        report.refresh_from_db()
+        self.assertIsNotNone(report.resolved_at)
+        self.assertEqual(report.resolved_by, admin_user)
 
 
 class NotesViewTests(TestCase):
@@ -1023,6 +1064,40 @@ class ChatLayoutViewsTests(TestCase):
         self.assertContains(response, 'class="presence-sidebar"')
         self.assertContains(response, 'data-chat-action="bartender"')
         self.assertNotContains(response, 'id="bartender-trigger"')
+
+    def test_only_moderator_sees_pending_report_counter(self):
+        author = User.objects.create_user(username="reported-author")
+        reporter = User.objects.create_user(username="reporter")
+        message = Message.objects.create(
+            user=author,
+            room=self.room,
+            text="Реплика с жалобой",
+        )
+        report = MessageReport.objects.create(
+            message=message,
+            reporter=reporter,
+            reason=MessageReport.Reason.SPAM,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+        self.assertNotContains(response, "Жалобы:")
+
+        self.user.user_permissions.add(
+            Permission.objects.get(
+                content_type__app_label="chat",
+                codename="view_messagereport",
+            )
+        )
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+        self.assertContains(response, "Жалобы:")
+        self.assertContains(response, "<strong>1</strong>", html=True)
+
+        report.resolved_at = timezone.now()
+        report.resolved_by = self.user
+        report.save(update_fields=("resolved_at", "resolved_by"))
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+        self.assertNotContains(response, "Жалобы:")
 
     @override_settings(TURNSTILE_SITE_KEY="production-site-key")
     def test_authenticated_chat_does_not_load_registration_or_turnstile(self):

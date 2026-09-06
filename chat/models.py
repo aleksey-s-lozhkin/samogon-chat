@@ -341,6 +341,14 @@ class MessageReport(models.Model):
     )
     reason = models.CharField(max_length=16, choices=Reason.choices)
     details = models.CharField(blank=True, max_length=240)
+    resolved_at = models.DateTimeField(blank=True, null=True)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="resolved_message_reports",
+        blank=True,
+        null=True,
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

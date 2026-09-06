@@ -1194,6 +1194,27 @@ html[data-theme="light"] .message-skeleton-line::after {
     color: var(--amber-light);
 }
 
+.moderation-report-alert {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 40px;
+    padding: 0 13px;
+    border: 1px solid rgba(255, 174, 66, 0.5);
+    border-radius: 999px;
+    background: rgba(150, 78, 25, 0.2);
+    color: var(--amber-light);
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.moderation-report-alert:hover,
+.moderation-report-alert:focus-visible {
+    background: rgba(198, 117, 58, 0.28);
+    outline: none;
+}
+
 .message-save-note:hover,
 .message-save-note:focus-visible {
     background: var(--primary-soft);

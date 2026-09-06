@@ -15,6 +15,7 @@ from django.utils.text import slugify
 from django.views.decorators.csrf import ensure_csrf_cookie
 
 from config.rate_limit import is_allowed
+from users.services.push import send_moderator_report_push
 
 from .forms import MessageSearchForm, PrivateRoomForm
 from .models import (
@@ -126,6 +127,11 @@ def chat_page(request, room_slug):
         request.session["last_chat_room_slug"] = room.slug
     rooms = list(get_visible_rooms(request.user))
     add_unread_counts(rooms, request.user)
+    pending_report_count = (
+        MessageReport.objects.filter(resolved_at__isnull=True).count()
+        if request.user.has_perm("chat.view_messagereport")
+        else 0
+    )
 
     focus_message_id = None
     raw_focus = request.GET.get("message")
@@ -148,6 +154,7 @@ def chat_page(request, room_slug):
             "public_rooms": [item for item in rooms if not item.is_private],
             "private_rooms": [item for item in rooms if item.is_private],
             "focus_message_id": focus_message_id,
+            "pending_report_count": pending_report_count,
         },
     )
 
@@ -355,6 +362,8 @@ def report_message(request, message_id):
         reporter=request.user,
         defaults={"reason": reason, "details": details},
     )
+    if created:
+        send_moderator_report_push()
     return JsonResponse({"reported": True, "created": created}, status=201 if created else 200)
 
 

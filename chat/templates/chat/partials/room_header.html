@@ -15,4 +15,9 @@
             {% endif %}
         </p>
     </div>
+    {% if pending_report_count %}
+        <a class="moderation-report-alert" href="{% url 'admin:chat_messagereport_changelist' %}">
+            Жалобы: <strong>{{ pending_report_count }}</strong>
+        </a>
+    {% endif %}
 </header>

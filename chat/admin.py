@@ -137,15 +137,35 @@ class MessageReactionAdmin(admin.ModelAdmin):
 class MessageReportAdmin(admin.ModelAdmin):
     """Очередь пользовательских жалоб без автоматического решения."""
 
-    list_display = ("reason", "message_author", "reporter", "created_at")
-    list_filter = ("reason", "created_at")
+    list_display = ("reason", "message_author", "reporter", "status", "created_at")
+    list_filter = ("reason", "resolved_at", "created_at")
     search_fields = ("message__user__username", "reporter__username", "details")
-    readonly_fields = ("message", "reporter", "reason", "details", "created_at")
-    list_select_related = ("message__user", "reporter")
+    readonly_fields = (
+        "message",
+        "reporter",
+        "reason",
+        "details",
+        "resolved_at",
+        "resolved_by",
+        "created_at",
+    )
+    list_select_related = ("message__user", "reporter", "resolved_by")
+    actions = ("mark_resolved",)
 
     @admin.display(description="Автор сообщения")
     def message_author(self, report):
         return report.message.user
+
+    @admin.display(description="Статус")
+    def status(self, report):
+        return "Рассмотрено" if report.resolved_at else "Новая"
+
+    @admin.action(description="Отметить выбранные жалобы рассмотренными", permissions=["view"])
+    def mark_resolved(self, request, queryset):
+        queryset.filter(resolved_at__isnull=True).update(
+            resolved_at=timezone.now(),
+            resolved_by=request.user,
+        )
 
     def has_add_permission(self, request):
         return False
