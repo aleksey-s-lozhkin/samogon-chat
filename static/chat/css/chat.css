@@ -146,6 +146,7 @@ a {
     min-height: 0;
     height: calc(100vh - 32px);
     height: calc(var(--app-height, 100dvh) - 32px);
+    padding-top: env(safe-area-inset-top, 0px);
 
     overflow: hidden;
 }
