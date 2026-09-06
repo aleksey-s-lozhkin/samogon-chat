@@ -146,6 +146,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if isinstance(data, dict) and data.get("type") == "typing":
             await self.handle_typing(data)
             return
+        if isinstance(data, dict) and data.get("type") == "presence_status":
+            await self.handle_presence_status(data)
+            return
 
         if not await self.is_rate_allowed(
             bucket="message",
@@ -485,6 +488,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
         for group_name in set(group_names):
             await self.channel_layer.group_send(group_name, event)
 
+    async def handle_presence_status(self, data):
+        """Сохраняет выбранный статус и сразу обновляет список гостей."""
+        status = data.get("status")
+        valid_statuses = {"", *(value for value, _label in User.PresenceStatus.choices)}
+        if not isinstance(status, str) or status not in valid_statuses:
+            await self.send_error("Такой статус недоступен.")
+            return
+        if not await self.is_rate_allowed(
+            bucket="presence-status",
+            limit=settings.PRESENCE_STATUS_RATE_LIMIT,
+        ):
+            await self.send_error("Статус меняется слишком часто.")
+            return
+
+        await self.update_presence_status(status)
+        self.user.presence_status = status
+        await self.broadcast_presence()
+
     async def is_rate_allowed(self, *, bucket, limit):
         """Не даёт одному гостю засорять чат или очередь Семёна."""
         return await sync_to_async(is_allowed)(
@@ -603,10 +624,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             {
                 "username": user.username,
                 "avatar_url": MessageService.get_avatar_url(user),
-                "glasses_poured": user.glasses_poured,
+                "status": user.get_presence_status_display(),
             }
             for user in users
         ]
+
+    @database_sync_to_async
+    def update_presence_status(self, status):
+        User.objects.filter(pk=self.user.id).update(presence_status=status)
 
     @database_sync_to_async
     def is_chat_restricted(self, user_id):

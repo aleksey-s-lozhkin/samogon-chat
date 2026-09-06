@@ -55,6 +55,18 @@ if (isAuthenticated) {
     connectWebSocket();
 }
 
+const presenceStatusSelect = document.getElementById("presence-status-select");
+presenceStatusSelect?.addEventListener("change", () => {
+    if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
+        showError("Нет связи с чатом. Попробуйте изменить статус ещё раз.");
+        return;
+    }
+    chatSocket.send(JSON.stringify({
+        type: "presence_status",
+        status: presenceStatusSelect.value,
+    }));
+});
+
 function connectWebSocket() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const focusQuery = focusMessageId ? `?focus=${encodeURIComponent(focusMessageId)}` : "";
@@ -193,13 +205,13 @@ function normalizeUsername(username) {
 
 function userDetails(user) {
     if (typeof user === "string") {
-        return { username: user, avatarUrl: null, glassesPoured: 0 };
+        return { username: user, avatarUrl: null, status: "" };
     }
 
     return {
         username: String(user?.username || ""),
         avatarUrl: user?.avatar_url || null,
-        glassesPoured: Number(user?.glasses_poured) || 0,
+        status: String(user?.status || ""),
     };
 }
 
@@ -268,14 +280,14 @@ function renderUserList(
             button.className = `online-user user-contact ${className}`;
             const name = document.createElement("span");
             const identity = document.createElement("span");
-            const glasses = document.createElement("span");
+            const status = document.createElement("span");
             identity.className = "user-contact-identity";
             name.className = "user-contact-name";
             name.textContent = details.username;
             name.title = details.username;
-            glasses.className = "user-contact-glasses";
-            glasses.textContent = `Стаканов налито: ${details.glassesPoured}`;
-            identity.append(name, glasses);
+            status.className = "user-contact-status";
+            status.textContent = details.status || "Без статуса";
+            identity.append(name, status);
             button.append(createUserAvatar(details), identity);
             button.addEventListener("click", () => setDirectRecipient(details.username));
             return button;

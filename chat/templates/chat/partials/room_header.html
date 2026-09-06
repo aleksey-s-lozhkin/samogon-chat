@@ -15,9 +15,22 @@
             {% endif %}
         </p>
     </div>
-    {% if pending_report_count %}
-        <a class="moderation-report-alert" href="{% url 'admin:chat_messagereport_changelist' %}">
-            Жалобы: <strong>{{ pending_report_count }}</strong>
-        </a>
-    {% endif %}
+    <div class="room-header-actions">
+        {% if user.is_authenticated %}
+            <label class="presence-status-control" for="presence-status-select">
+                <span>Мой статус</span>
+                <select id="presence-status-select" aria-label="Мой статус">
+                    <option value="" {% if not user.presence_status %}selected{% endif %}>Без статуса</option>
+                    {% for value, label in presence_status_choices %}
+                        <option value="{{ value }}" {% if user.presence_status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+        {% endif %}
+        {% if pending_report_count %}
+            <a class="moderation-report-alert" href="{% url 'admin:chat_messagereport_changelist' %}">
+                Жалобы: <strong>{{ pending_report_count }}</strong>
+            </a>
+        {% endif %}
+    </div>
 </header>

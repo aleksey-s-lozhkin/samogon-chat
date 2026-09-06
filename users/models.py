@@ -6,6 +6,14 @@ from django.utils import timezone
 class User(AbstractUser):
     """Модель пользователя."""
 
+    class PresenceStatus(models.TextChoices):
+        READING = "reading", "Читаю, но не отвечаю"
+        EATING = "eating", "Кушаю"
+        BEER = "beer", "Пью пиво"
+        THINKING = "thinking", "Думаю"
+        SMOKING = "smoking", "Ушёл курить"
+        BACK_SOON = "back_soon", "Скоро вернусь"
+
     avatar = models.ImageField(
         upload_to="avatars/%Y/%m",
         blank=True,
@@ -20,6 +28,12 @@ class User(AbstractUser):
             ("plum", "Сливовый"),
         ),
         default="amber",
+    )
+    presence_status = models.CharField(
+        "Статус в чате",
+        max_length=24,
+        choices=PresenceStatus.choices,
+        blank=True,
     )
     banned_at = models.DateTimeField(blank=True, null=True)
     banned_until = models.DateTimeField(blank=True, null=True)
