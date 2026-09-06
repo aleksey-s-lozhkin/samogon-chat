@@ -318,3 +318,47 @@ class ModerationEvent(models.Model):
 
     def __str__(self):
         return f"{self.get_action_display()}: {self.target_user.username}"
+
+
+class MessageReport(models.Model):
+    """Жалоба пользователя для ручного решения модератором."""
+
+    class Reason(models.TextChoices):
+        ABUSE = "abuse", "Оскорбление или травля"
+        SPAM = "spam", "Спам или реклама"
+        PRIVACY = "privacy", "Личные данные"
+        OTHER = "other", "Другое"
+
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name="reports",
+    )
+    reporter = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="message_reports",
+    )
+    reason = models.CharField(max_length=16, choices=Reason.choices)
+    details = models.CharField(blank=True, max_length=240)
+    resolved_at = models.DateTimeField(blank=True, null=True)
+    resolved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="resolved_message_reports",
+        blank=True,
+        null=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+        constraints = [
+            models.UniqueConstraint(
+                fields=("message", "reporter"),
+                name="unique_message_reporter",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Жалоба на сообщение {self.message_id}"

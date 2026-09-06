@@ -1,9 +1,55 @@
 <div class="chat-log-area">
-    <div id="chat-log" class="chat-log"></div>
+    <div id="chat-log" class="chat-log">
+        {% if user.is_authenticated %}
+            <div class="chat-history-skeleton" role="status" aria-label="Загружаем историю сообщений">
+                <span class="visually-hidden">Загружаем историю сообщений…</span>
+                {% for position in "12345" %}
+                    <div class="message-skeleton {% if position == '2' or position == '4' %}own{% endif %}" aria-hidden="true">
+                        <span class="message-skeleton-avatar"></span>
+                        <span class="message-skeleton-body">
+                            <span class="message-skeleton-line short"></span>
+                            <span class="message-skeleton-line"></span>
+                        </span>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </div>
 
     <button id="scroll-to-latest" class="scroll-to-latest hidden" type="button">
         У стойки появились новые реплики
     </button>
+</div>
+
+<div
+    id="report-message-modal"
+    class="message-dialog hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="report-message-title"
+>
+    <div class="message-dialog-card">
+        <span class="message-dialog-eyebrow">Сообщить модератору</span>
+        <h2 id="report-message-title">Что не так с репликой?</h2>
+        <p>Жалоба не удаляет сообщение автоматически. Решение примет модератор.</p>
+        <label class="message-report-field">
+            <span>Причина</span>
+            <select id="message-report-reason">
+                <option value="abuse">Оскорбление или травля</option>
+                <option value="spam">Спам или реклама</option>
+                <option value="privacy">Личные данные</option>
+                <option value="other">Другое</option>
+            </select>
+        </label>
+        <label class="message-report-field">
+            <span>Комментарий, необязательно</span>
+            <textarea id="message-report-details" maxlength="240" rows="3"></textarea>
+        </label>
+        <div class="message-dialog-actions">
+            <button id="cancel-message-report" type="button">Отмена</button>
+            <button id="confirm-message-report" type="button">Отправить жалобу</button>
+        </div>
+    </div>
 </div>
 
 <section class="chat-composer">

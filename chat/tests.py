@@ -9,7 +9,7 @@ from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
 from PIL import Image
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import AnonymousUser, Permission
+from django.contrib.auth.models import AnonymousUser, Group, Permission
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
@@ -21,6 +21,7 @@ from .models import (
     Attachment,
     Message,
     MessageReaction,
+    MessageReport,
     Note,
     NoteAttachment,
     Room,
@@ -377,6 +378,168 @@ class MessageDeleteViewTests(TestCase):
         broadcast.assert_called_once_with(self.message)
 
 
+class MessageReportViewTests(TestCase):
+    def setUp(self):
+        self.author = User.objects.create_user(username="author")
+        self.reporter = User.objects.create_user(username="reporter")
+        self.outsider = User.objects.create_user(username="outsider")
+        self.room = Room.objects.create(name="General", slug="general")
+        self.message = Message.objects.create(
+            user=self.author,
+            room=self.room,
+            text="Реплика для жалобы",
+        )
+        self.url = reverse("chat:report_message", args=[self.message.id])
+
+    def test_visible_message_can_be_reported_once(self):
+        self.client.force_login(self.reporter)
+        payload = {"reason": "abuse", "details": "Переход на личности"}
+
+        first = self.client.post(
+            self.url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+        second = self.client.post(
+            self.url,
+            data=json.dumps(payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(first.status_code, 201)
+        self.assertTrue(first.json()["created"])
+        self.assertEqual(second.status_code, 200)
+        self.assertFalse(second.json()["created"])
+        report = MessageReport.objects.get()
+        self.assertEqual(report.reporter, self.reporter)
+        self.assertEqual(report.reason, MessageReport.Reason.ABUSE)
+        self.assertEqual(report.details, "Переход на личности")
+        self.message.refresh_from_db()
+        self.assertIsNone(self.message.hidden_at)
+
+    @patch("chat.views.send_moderator_report_push")
+    def test_push_is_sent_only_for_new_report(self, send_push):
+        self.client.force_login(self.reporter)
+        payload = json.dumps({"reason": "spam"})
+
+        self.client.post(self.url, data=payload, content_type="application/json")
+        self.client.post(self.url, data=payload, content_type="application/json")
+
+        send_push.assert_called_once_with()
+
+    def test_user_cannot_report_own_message(self):
+        self.client.force_login(self.author)
+
+        response = self.client.post(
+            self.url,
+            data=json.dumps({"reason": "other"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(MessageReport.objects.exists())
+
+    def test_user_cannot_report_invisible_direct_message(self):
+        direct = Message.objects.create(
+            user=self.author,
+            recipient=self.outsider,
+            room=self.room,
+            text="Чужая личная реплика",
+        )
+        self.client.force_login(self.reporter)
+
+        response = self.client.post(
+            reverse("chat:report_message", args=[direct.id]),
+            data=json.dumps({"reason": "privacy"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(MessageReport.objects.exists())
+
+    def test_invalid_report_reason_is_rejected(self):
+        self.client.force_login(self.reporter)
+
+        response = self.client.post(
+            self.url,
+            data=json.dumps({"reason": "delete-it"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(MessageReport.objects.exists())
+
+    def test_non_object_report_payload_is_rejected(self):
+        self.client.force_login(self.reporter)
+
+        response = self.client.post(
+            self.url,
+            data=json.dumps(["spam"]),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(MessageReport.objects.exists())
+
+    @patch("chat.views.is_allowed", return_value=False)
+    def test_reports_are_rate_limited(self, mocked_is_allowed):
+        self.client.force_login(self.reporter)
+
+        response = self.client.post(
+            self.url,
+            data=json.dumps({"reason": "spam"}),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 429)
+        self.assertFalse(MessageReport.objects.exists())
+        mocked_is_allowed.assert_called_once()
+
+
+class ModeratorSetupCommandTests(TestCase):
+    def test_moderators_can_view_message_reports(self):
+        call_command("setup_moderators", stdout=StringIO())
+
+        moderators = Group.objects.get(name="Moderators")
+        self.assertTrue(
+            moderators.permissions.filter(
+                content_type__app_label="chat",
+                codename="view_messagereport",
+            ).exists()
+        )
+
+
+class MessageReportAdminTests(TestCase):
+    def test_superuser_can_mark_report_as_resolved(self):
+        admin_user = User.objects.create_superuser(
+            username="admin",
+            password="password",
+        )
+        author = User.objects.create_user(username="reported-user")
+        reporter = User.objects.create_user(username="reporter-user")
+        room = Room.objects.create(name="Admin reports", slug="admin-reports")
+        message = Message.objects.create(user=author, room=room, text="Проверить")
+        report = MessageReport.objects.create(
+            message=message,
+            reporter=reporter,
+            reason=MessageReport.Reason.OTHER,
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse("admin:chat_messagereport_changelist"),
+            {
+                "action": "mark_resolved",
+                "_selected_action": [report.id],
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        report.refresh_from_db()
+        self.assertIsNotNone(report.resolved_at)
+        self.assertEqual(report.resolved_by, admin_user)
+
+
 class NotesViewTests(TestCase):
     def setUp(self):
         self.media_directory = tempfile.TemporaryDirectory()
@@ -436,6 +599,15 @@ class NotesViewTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertRedirects(delete_response, reverse("chat:notes"))
         self.assertFalse(self.reader.chat_notes.exists())
+
+    def test_notes_localize_visible_datetime_in_browser(self):
+        self.client.force_login(self.reader)
+        Note.objects.create(user=self.reader, text="Проверить время")
+
+        response = self.client.get(reverse("chat:notes"))
+
+        self.assertContains(response, 'class="local-datetime"')
+        self.assertContains(response, "chat/js/local-datetime.js")
 
     def test_uninvited_guest_cannot_save_private_room_message(self):
         private_room = Room.objects.create(
@@ -661,6 +833,29 @@ class MessageServiceTests(TestCase):
             ["Message 1", "Message 2"],
         )
 
+    def test_get_room_messages_includes_visible_focus_outside_recent_limit(self):
+        focused = MessageService.create_message(
+            user_id=self.user.id,
+            room=self.room,
+            text="Старая найденная реплика",
+        )
+        for index in range(55):
+            MessageService.create_message(
+                user_id=self.user.id,
+                room=self.room,
+                text=f"Свежая реплика {index}",
+            )
+
+        messages = MessageService.get_room_messages(
+            self.room,
+            viewer_id=self.user.id,
+            limit=50,
+            focus_message_id=focused.id,
+        )
+
+        self.assertEqual(len(messages), 51)
+        self.assertEqual(messages[0]["id"], focused.id)
+
     def test_private_messages_are_visible_only_to_sender_and_recipient(self):
         recipient = User.objects.create_user(username="maria")
         outsider = User.objects.create_user(username="ivan")
@@ -870,6 +1065,40 @@ class ChatLayoutViewsTests(TestCase):
         self.assertContains(response, 'data-chat-action="bartender"')
         self.assertNotContains(response, 'id="bartender-trigger"')
 
+    def test_only_moderator_sees_pending_report_counter(self):
+        author = User.objects.create_user(username="reported-author")
+        reporter = User.objects.create_user(username="reporter")
+        message = Message.objects.create(
+            user=author,
+            room=self.room,
+            text="Реплика с жалобой",
+        )
+        report = MessageReport.objects.create(
+            message=message,
+            reporter=reporter,
+            reason=MessageReport.Reason.SPAM,
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+        self.assertNotContains(response, "Жалобы:")
+
+        self.user.user_permissions.add(
+            Permission.objects.get(
+                content_type__app_label="chat",
+                codename="view_messagereport",
+            )
+        )
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+        self.assertContains(response, "Жалобы:")
+        self.assertContains(response, "<strong>1</strong>", html=True)
+
+        report.resolved_at = timezone.now()
+        report.resolved_by = self.user
+        report.save(update_fields=("resolved_at", "resolved_by"))
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+        self.assertNotContains(response, "Жалобы:")
+
     @override_settings(TURNSTILE_SITE_KEY="production-site-key")
     def test_authenticated_chat_does_not_load_registration_or_turnstile(self):
         self.client.force_login(self.user)
@@ -915,12 +1144,170 @@ class ChatLayoutViewsTests(TestCase):
             source.index("renderMessageAttachments(content, data.attachments || []);"),
         )
 
+    def test_composer_uses_short_external_hint_set(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+        with open(
+            settings.BASE_DIR / "static/chat/js/composer-hints.js",
+            encoding="utf-8",
+        ) as script:
+            hints = script.read()
+
+        self.assertContains(response, "chat/js/composer-hints.js")
+        self.assertNotIn("Семён нальёт контекст", hints)
+        self.assertIn("Ваша реплика…", hints)
+
+    def test_scroll_waits_for_layout_and_loaded_images(self):
+        with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
+            source = script.read()
+
+        self.assertIn("scrollToLatestAfterLayout(chatLog, true)", source)
+        self.assertIn('image.addEventListener(', source)
+
     def test_chat_uses_a_custom_delete_dialog(self):
         with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
             source = script.read()
 
         self.assertIn("delete-message-modal", source)
         self.assertNotIn("window.confirm", source)
+
+    def test_authenticated_chat_shows_history_skeleton_until_history_arrives(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+
+        self.assertContains(response, 'class="chat-history-skeleton"')
+        self.assertContains(response, 'class="message-skeleton ', count=5)
+
+    def test_guest_chat_does_not_show_history_skeleton(self):
+        response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
+
+        self.assertNotContains(response, "chat-history-skeleton")
+
+    def test_history_event_removes_skeleton_before_rendering_messages(self):
+        with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
+            source = script.read()
+
+        history_handler = source.index('if (data.type === "history")')
+        skeleton_clear = source.index("clearHistorySkeleton();", history_handler)
+        message_render = source.index("data.messages.forEach(addMessage);", history_handler)
+        self.assertLess(skeleton_clear, message_render)
+
+    def test_message_hover_highlight_respects_pointer_and_motion_preferences(self):
+        with open(settings.BASE_DIR / "static/chat/css/chat.css", encoding="utf-8") as styles:
+            source = styles.read()
+
+        self.assertIn("@media (hover: hover) and (pointer: fine)", source)
+        self.assertIn(
+            ".message:not(.is-selected):not(.reply-highlight):hover .message-content",
+            source,
+        )
+        self.assertIn("border-color: rgba(198, 117, 58, 0.62)", source)
+        self.assertIn("@media (prefers-reduced-motion: reduce)", source)
+        self.assertIn("transition: none", source)
+
+    def test_message_code_renderer_uses_safe_dom_nodes(self):
+        with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
+            source = script.read()
+
+        self.assertIn("renderMessageText(text, data.message);", source)
+        self.assertIn('document.createElement("pre")', source)
+        self.assertIn('code.textContent = codeLines.join("\\n")', source)
+        self.assertNotIn("text.innerHTML = data.message", source)
+        self.assertIn('line.startsWith(">>>")', source)
+        self.assertIn("openingFence", source)
+
+
+class MessageSearchViewsTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="alex")
+        self.other = User.objects.create_user(username="maria")
+        self.outsider = User.objects.create_user(username="ivan")
+        self.public_room = Room.objects.create(name="Общий зал", slug="general")
+        self.private_room = Room.objects.create(
+            name="Свой столик",
+            slug="own-table",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.user,
+        )
+        RoomMembership.objects.create(room=self.private_room, user=self.user)
+        self.closed_room = Room.objects.create(
+            name="Чужой столик",
+            slug="closed-table",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.outsider,
+        )
+        RoomMembership.objects.create(room=self.closed_room, user=self.outsider)
+
+    def test_search_requires_authentication(self):
+        response = self.client.get(reverse("chat:message_search"), {"q": "секрет"})
+
+        self.assertEqual(response.status_code, 302)
+
+    def test_search_returns_only_messages_visible_to_current_user(self):
+        visible_public = Message.objects.create(
+            room=self.public_room,
+            user=self.other,
+            text="needle общий",
+        )
+        visible_direct = Message.objects.create(
+            room=self.public_room,
+            user=self.other,
+            recipient=self.user,
+            text="needle лично",
+        )
+        visible_private_room = Message.objects.create(
+            room=self.private_room,
+            user=self.user,
+            text="needle свой столик",
+        )
+        Message.objects.create(
+            room=self.public_room,
+            user=self.other,
+            recipient=self.outsider,
+            text="needle чужая личка",
+        )
+        Message.objects.create(
+            room=self.closed_room,
+            user=self.outsider,
+            text="needle чужой столик",
+        )
+        Message.objects.create(
+            room=self.public_room,
+            user=self.other,
+            text="needle скрыто",
+            hidden_at=timezone.now(),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("chat:message_search"), {"q": "needle"})
+
+        self.assertEqual(response.status_code, 200)
+        result_ids = [message.id for message in response.context["results"]]
+        self.assertCountEqual(
+            result_ids,
+            [visible_public.id, visible_direct.id, visible_private_room.id],
+        )
+        self.assertContains(response, f"?message={visible_public.id}")
+        self.assertNotContains(response, "needle чужая личка")
+        self.assertNotContains(response, "needle чужой столик")
+        self.assertNotContains(response, "needle скрыто")
+
+    def test_chat_ignores_focus_message_user_cannot_view(self):
+        private_message = Message.objects.create(
+            room=self.public_room,
+            user=self.other,
+            recipient=self.outsider,
+            text="Не для Алекса",
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(
+            reverse("chat:chat", args=[self.public_room.slug]),
+            {"message": private_message.id},
+        )
+
+        self.assertContains(response, "focusMessageId: null")
 
 
 class MessageValidationTests(TestCase):
@@ -1128,6 +1515,35 @@ class ChatConsumerTests(TransactionTestCase):
             Message.objects.filter(room=self.room, user=self.user, text="New message").exists(),
         )
 
+    def test_history_includes_requested_visible_message_outside_recent_limit(self):
+        focused = Message.objects.create(
+            room=self.room,
+            user=self.user,
+            text="Старая найденная реплика",
+        )
+        Message.objects.bulk_create(
+            [
+                Message(room=self.room, user=self.user, text=f"Свежая {index}")
+                for index in range(55)
+            ]
+        )
+
+        async_to_sync(self._assert_focused_history)(focused.id)
+
+    async def _assert_focused_history(self, focused_id):
+        communicator = WebsocketCommunicator(
+            self.application,
+            f"/ws/chat/general/?focus={focused_id}",
+        )
+        communicator.scope["user"] = self.user
+        connected, _ = await communicator.connect()
+        self.assertTrue(connected)
+
+        history = await communicator.receive_json_from()
+        self.assertEqual(history["type"], "history")
+        self.assertIn(focused_id, [message["id"] for message in history["messages"]])
+        await communicator.disconnect()
+
     def test_newcomer_receives_welcome_in_first_history_only(self):
         self.user.welcome_pending = True
         self.user.save(update_fields=("welcome_pending",))
@@ -1328,7 +1744,7 @@ class ChatConsumerTests(TransactionTestCase):
         self.assertEqual(presence_message["type"], "user_presence")
         self.assertEqual(
             presence_message["users"],
-            [{"username": "alex", "avatar_url": None}],
+            [{"username": "alex", "avatar_url": None, "glasses_poured": 1}],
         )
         self.assertEqual(presence_message["online"], ["alex"])
 

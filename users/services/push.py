@@ -3,13 +3,23 @@ import logging
 from dataclasses import dataclass
 
 from django.conf import settings
+from django.db.models import Q
 from django.urls import reverse
+from django.utils.crypto import salted_hmac
 from pywebpush import WebPushException, webpush
 
-from users.models import PushSubscription
+from users.models import PushSubscription, User
 
 
 logger = logging.getLogger(__name__)
+
+
+def device_id_for_subscription(subscription: PushSubscription) -> str:
+    """Возвращает стабильный непрозрачный ID без endpoint и push-ключей."""
+    return salted_hmac(
+        "samogon.push-device",
+        str(subscription.pk),
+    ).hexdigest()[:32]
 
 
 @dataclass(frozen=True)
@@ -91,5 +101,45 @@ def send_admin_push(
             "body": body,
             "url": url,
             "tag": "admin-announcement",
+        },
+    )
+
+
+def send_push_self_test(*, subscriptions, url: str) -> PushDeliveryResult:
+    """Отправляет нейтральную диагностическую проверку выбранному устройству."""
+    return send_push_payload(
+        subscriptions=subscriptions,
+        payload={
+            "title": "Проверка уведомлений",
+            "body": "Web Push в Самогоне работает.",
+            "url": url,
+            "tag": "push-self-test",
+        },
+    )
+
+
+def send_moderator_report_push() -> PushDeliveryResult:
+    """Нейтрально уведомляет все устройства модераторов и суперпользователей."""
+    moderators = User.objects.filter(
+        Q(is_superuser=True)
+        | Q(
+            user_permissions__content_type__app_label="chat",
+            user_permissions__codename="view_messagereport",
+        )
+        | Q(
+            groups__permissions__content_type__app_label="chat",
+            groups__permissions__codename="view_messagereport",
+        )
+    ).distinct()
+    return send_push_payload(
+        subscriptions=PushSubscription.objects.filter(
+            user__in=moderators,
+            enabled=True,
+        ),
+        payload={
+            "title": "Новая жалоба",
+            "body": "В Самогоне появилась новая жалоба.",
+            "url": reverse("admin:chat_messagereport_changelist"),
+            "tag": "moderation-report",
         },
     )

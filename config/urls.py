@@ -3,10 +3,11 @@ from django.contrib import admin
 from django.urls import include, path
 
 from config import settings
-from config.views import home, offline, pwa_manifest, robots, service_worker
+from config.views import home, offline, pwa_manifest, robots, service_rules, service_worker
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("api/v1/", include("users.api_urls")),
     path("accounts/", include("allauth.urls")),
     path("chat/", include("chat.urls")),
     path("users/", include("users.urls")),
@@ -14,6 +15,7 @@ urlpatterns = [
     path("manifest.webmanifest", pwa_manifest, name="pwa_manifest"),
     path("service-worker.js", service_worker, name="service_worker"),
     path("offline/", offline, name="offline"),
+    path("rules/", service_rules, name="service_rules"),
     path("", home, name="home"),
 ]
 

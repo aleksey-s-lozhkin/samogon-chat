@@ -69,6 +69,10 @@
 
         <div class="sidebar-section-title">Личное</div>
         <nav class="rooms-navigation" aria-label="Личные разделы">
+            <a href="{% url 'chat:message_search' %}" class="room-navigation-item sidebar-utility">
+                <span class="room-navigation-icon" aria-hidden="true">⌕</span>
+                <span>Поиск</span>
+            </a>
             <a href="{% url 'chat:notes' %}" class="room-navigation-item sidebar-utility">
                 <span class="room-navigation-icon" aria-hidden="true">✦</span>
                 <span>Заметки</span>

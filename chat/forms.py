@@ -46,3 +46,14 @@ class PrivateRoomForm(forms.Form):
                 "У тайного столика может быть только два приглашённых гостя."
             )
         return members
+
+
+class MessageSearchForm(forms.Form):
+    q = forms.CharField(
+        label="Поиск по сообщениям",
+        min_length=2,
+        max_length=100,
+        widget=forms.SearchInput(
+            attrs={"placeholder": "Текст сообщения…", "autofocus": True},
+        ),
+    )

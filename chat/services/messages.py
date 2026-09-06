@@ -182,6 +182,7 @@ class MessageService:
         *,
         viewer_id: int | None = None,
         limit: int | None = None,
+        focus_message_id: int | None = None,
     ) -> list[dict]:
         # Личные сообщения видят только отправитель и получатель.
         messages = (
@@ -201,8 +202,18 @@ class MessageService:
         )
 
         if limit is not None:
-            messages = messages.order_by("-created_at")[:limit]
-            messages = reversed(list(messages))
+            visible_messages = messages
+            selected_messages = list(messages.order_by("-created_at")[:limit])
+            if focus_message_id and all(
+                message.id != focus_message_id for message in selected_messages
+            ):
+                focus_message = visible_messages.filter(pk=focus_message_id).first()
+                if focus_message:
+                    selected_messages.append(focus_message)
+            messages = sorted(
+                selected_messages,
+                key=lambda message: message.created_at,
+            )
 
         return [
             {

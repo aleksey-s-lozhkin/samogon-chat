@@ -70,6 +70,7 @@
             </form>
 
             <a class="auth-secondary-link" href="{% url 'password_reset' %}">Забыли пароль?</a>
+            <a class="auth-secondary-link" href="{% url 'service_rules' %}">Правила сервиса</a>
 
             <div class="modal-footer">
                 Нет аккаунта?
@@ -163,6 +164,11 @@
                 <div id="register-error" class="form-error" role="alert" aria-live="polite"></div>
                 <button type="submit" class="primary-button" data-pending-text="Создаём…">Создать аккаунт</button>
             </form>
+
+            <p class="modal-footer auth-rules-note">
+                Создавая аккаунт, вы принимаете
+                <a href="{% url 'service_rules' %}">правила сервиса</a>.
+            </p>
 
             <div class="modal-footer">
                 Уже есть аккаунт?

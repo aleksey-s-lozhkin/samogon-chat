@@ -5,7 +5,9 @@ const {
     canModerateMessages,
     attachmentUploadTemplate,
     messageDeleteTemplate,
+    messageReportTemplate,
     noteCreateUrl,
+    focusMessageId,
 } = chatConfig;
 const MESSAGE_MAX_LENGTH = 1000;
 const BARTENDER_USERNAME = "Семён";
@@ -28,6 +30,7 @@ let pendingAttachmentUpload = null;
 let selectedMessageElement = null;
 let replyTarget = null;
 let pendingDeletionMessageId = null;
+let pendingReportMessageId = null;
 let bartenderTyping = false;
 let typingDebounceTimer = null;
 let typingIdleTimer = null;
@@ -44,12 +47,7 @@ const TAGLINES = [
     "Связь есть. Наливаю первую тему.",
     "У стойки спорят о табах и мирятся на пробелах.",
 ];
-const COMPOSER_HINTS = [
-    "Скажите что-нибудь у стойки…",
-    "Опишите баг — Семён нальёт контекст…",
-    "Есть идея? Ставьте её на стойку…",
-    "Код, вопрос или тост за удачный деплой…",
-];
+const COMPOSER_HINTS = window.SAMOGON_COMPOSER_HINTS || ["Ваша реплика…"];
 let taglineIndex = 0;
 let composerHintIndex = 0;
 
@@ -59,7 +57,8 @@ if (isAuthenticated) {
 
 function connectWebSocket() {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${protocol}//${window.location.host}/ws/chat/${encodeURIComponent(roomSlug)}/`;
+    const focusQuery = focusMessageId ? `?focus=${encodeURIComponent(focusMessageId)}` : "";
+    const url = `${protocol}//${window.location.host}/ws/chat/${encodeURIComponent(roomSlug)}/${focusQuery}`;
 
     chatSocket = new WebSocket(url);
     chatSocket.onmessage = ({ data }) => handleServerEvent(JSON.parse(data));
@@ -71,6 +70,7 @@ function handleServerEvent(data) {
     if (data.type === "history") {
         loadingHistory = true;
         lastMessageDay = null;
+        clearHistorySkeleton();
         data.messages.forEach(addMessage);
         loadingHistory = false;
         finishHistoryLoading();
@@ -120,7 +120,17 @@ function finishHistoryLoading() {
         renderEmptyState(chatLog);
         return;
     }
+    if (focusMessageId) {
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => scrollToMessage(focusMessageId));
+        });
+        return;
+    }
     chatLog.scrollTop = chatLog.scrollHeight;
+}
+
+function clearHistorySkeleton() {
+    document.querySelector("#chat-log .chat-history-skeleton")?.remove();
 }
 
 function increaseUnreadCount(data) {
@@ -183,12 +193,13 @@ function normalizeUsername(username) {
 
 function userDetails(user) {
     if (typeof user === "string") {
-        return { username: user, avatarUrl: null };
+        return { username: user, avatarUrl: null, glassesPoured: 0 };
     }
 
     return {
         username: String(user?.username || ""),
         avatarUrl: user?.avatar_url || null,
+        glassesPoured: Number(user?.glasses_poured) || 0,
     };
 }
 
@@ -256,8 +267,15 @@ function renderUserList(
             button.type = "button";
             button.className = `online-user user-contact ${className}`;
             const name = document.createElement("span");
+            const identity = document.createElement("span");
+            const glasses = document.createElement("span");
+            identity.className = "user-contact-identity";
+            name.className = "user-contact-name";
             name.textContent = details.username;
-            button.append(createUserAvatar(details), name);
+            glasses.className = "user-contact-glasses";
+            glasses.textContent = `Стаканов налито: ${details.glassesPoured}`;
+            identity.append(name, glasses);
+            button.append(createUserAvatar(details), identity);
             button.addEventListener("click", () => setDirectRecipient(details.username));
             return button;
         }),
@@ -398,6 +416,7 @@ function addMessage(data) {
     }
 
     const wasNearBottom = isNearBottom(chatLog);
+    clearHistorySkeleton();
     chatLog.querySelector(".chat-empty-state")?.remove();
     const timestamp = data.timestamp || data.created_at;
     appendDayDivider(chatLog, timestamp);
@@ -476,10 +495,22 @@ function addMessage(data) {
         save.addEventListener("click", () => saveNote(data.id));
         author.append(save);
     }
+    if (
+        data.id
+        && normalizeUsername(data.username) !== normalizeUsername(currentUsername)
+    ) {
+        const report = createMessageAction(
+            "message-report",
+            "Пожаловаться модератору",
+            "flag",
+        );
+        report.addEventListener("click", () => openReportMessageDialog(data.id));
+        author.append(report);
+    }
 
     const text = document.createElement("div");
     text.className = "message-text";
-    text.textContent = data.message;
+    renderMessageText(text, data.message);
     if (/^(?=.*\p{Extended_Pictographic})[\p{Extended_Pictographic}\p{Emoji_Component}\s]+$/u.test(data.message)) {
         text.classList.add("is-emoji-only");
     }
@@ -523,10 +554,75 @@ function addMessage(data) {
     if (loadingHistory) {
         scrollToLatest(chatLog, false);
     } else if (wasNearBottom) {
-        scrollToLatest(chatLog, true);
+        scrollToLatestAfterLayout(chatLog, true);
+        keepLatestAfterImages(content, chatLog);
     } else if (!message.classList.contains("own")) {
         document.getElementById("scroll-to-latest")?.classList.remove("hidden");
     }
+}
+
+function renderMessageText(container, source) {
+    const lines = String(source).split("\n");
+    let proseLines = [];
+    let fencedLines = null;
+    let fencedLanguage = "";
+
+    const appendProse = () => {
+        if (!proseLines.length) return;
+        const prose = document.createElement("span");
+        prose.className = "message-prose";
+        prose.textContent = proseLines.join("\n");
+        container.append(prose);
+        proseLines = [];
+    };
+
+    const appendCode = (codeLines, language = "") => {
+        const block = document.createElement("pre");
+        block.className = "message-code-block";
+        block.tabIndex = 0;
+        block.setAttribute("aria-label", "Блок кода");
+        const code = document.createElement("code");
+        code.textContent = codeLines.join("\n");
+        if (language) code.dataset.language = language;
+        block.append(code);
+        container.append(block);
+    };
+
+    for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index];
+        const openingFence = line.match(/^```([a-z0-9_+-]*)\s*$/i);
+        if (fencedLines !== null) {
+            if (/^```\s*$/.test(line)) {
+                appendCode(fencedLines, fencedLanguage);
+                fencedLines = null;
+                fencedLanguage = "";
+            } else {
+                fencedLines.push(line);
+            }
+            continue;
+        }
+        if (openingFence) {
+            appendProse();
+            fencedLines = [];
+            fencedLanguage = openingFence[1];
+            continue;
+        }
+        if (line.startsWith(">>>")) {
+            appendProse();
+            const quotedLines = [];
+            while (index < lines.length && lines[index].startsWith(">>>")) {
+                quotedLines.push(lines[index]);
+                index += 1;
+            }
+            appendCode(quotedLines);
+            index -= 1;
+            continue;
+        }
+        proseLines.push(line);
+    }
+
+    if (fencedLines !== null) appendCode(fencedLines, fencedLanguage);
+    appendProse();
 }
 
 function updateMessageAttachments(messageId, attachments) {
@@ -535,7 +631,13 @@ function updateMessageAttachments(messageId, attachments) {
     );
     const content = message?.querySelector(".message-content");
     if (content) {
+        const chatLog = document.getElementById("chat-log");
+        const shouldFollow = chatLog && isNearBottom(chatLog);
         renderMessageAttachments(content, attachments);
+        if (shouldFollow) {
+            scrollToLatestAfterLayout(chatLog, true);
+            keepLatestAfterImages(content, chatLog);
+        }
     }
 }
 
@@ -612,6 +714,45 @@ function openDeleteMessageDialog(messageId) {
 function closeDeleteMessageDialog() {
     pendingDeletionMessageId = null;
     document.getElementById("delete-message-modal")?.classList.add("hidden");
+}
+
+function openReportMessageDialog(messageId) {
+    pendingReportMessageId = messageId;
+    document.getElementById("message-report-details").value = "";
+    document.getElementById("report-message-modal")?.classList.remove("hidden");
+    document.getElementById("message-report-reason")?.focus();
+}
+
+function closeReportMessageDialog() {
+    pendingReportMessageId = null;
+    document.getElementById("report-message-modal")?.classList.add("hidden");
+}
+
+async function submitMessageReport() {
+    if (!pendingReportMessageId) return;
+    const messageId = pendingReportMessageId;
+    const reason = document.getElementById("message-report-reason")?.value;
+    const details = document.getElementById("message-report-details")?.value || "";
+    try {
+        const response = await fetch(
+            messageReportTemplate.replace("/0/", `/${messageId}/`),
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-CSRFToken": getCsrfToken(),
+                },
+                credentials: "same-origin",
+                body: JSON.stringify({reason, details}),
+            },
+        );
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Не удалось отправить жалобу.");
+        closeReportMessageDialog();
+        showSuccess(payload.created ? "Жалоба отправлена модератору." : "Жалоба уже отправлена.");
+    } catch (error) {
+        showError(error.message || "Не удалось отправить жалобу.");
+    }
 }
 
 async function deleteMessage(messageId) {
@@ -900,6 +1041,24 @@ function scrollToLatest(chatLog, smooth = true) {
         behavior: smooth && !window.matchMedia("(prefers-reduced-motion: reduce)").matches
             ? "smooth"
             : "auto",
+    });
+}
+
+function scrollToLatestAfterLayout(chatLog, smooth = true) {
+    window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => scrollToLatest(chatLog, smooth));
+    });
+}
+
+function keepLatestAfterImages(content, chatLog) {
+    content.querySelectorAll("img").forEach((image) => {
+        if (!image.complete) {
+            image.addEventListener(
+                "load",
+                () => scrollToLatestAfterLayout(chatLog, false),
+                {once: true},
+            );
+        }
     });
 }
 
@@ -1282,6 +1441,8 @@ function createMessageAction(className, title, icon) {
         ? '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6m4-6v6M9 7l1-3h4l1 3m-9 0 1 13h10l1-13" /></svg>'
         : icon === "reply"
             ? '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 8 4 12l5 4v-3h4c3 0 5 1 7 4-1-6-4-8-7-8H9V8Z" /></svg>'
+            : icon === "flag"
+                ? '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3v18m1-16h10l-2 4 2 4H7" /></svg>'
             : '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14 4 6 6-4 2-3 6-2-2-4 4-1-1 4-4-2-2 6-3 2-4Z" /></svg>';
     return action;
 }
@@ -1311,6 +1472,11 @@ document.getElementById("delete-message-modal")?.addEventListener("click", (even
         closeDeleteMessageDialog();
     }
 });
+document.getElementById("cancel-message-report")?.addEventListener("click", closeReportMessageDialog);
+document.getElementById("confirm-message-report")?.addEventListener("click", submitMessageReport);
+document.getElementById("report-message-modal")?.addEventListener("click", (event) => {
+    if (event.target.id === "report-message-modal") closeReportMessageDialog();
+});
 document.getElementById("bartender-public")?.addEventListener("click", () => setBartenderVisibility(false));
 document.getElementById("bartender-private")?.addEventListener("click", () => setBartenderVisibility(true));
 document.getElementById("cancel-bartender-message")?.addEventListener("click", clearBartenderMode);
@@ -1327,6 +1493,7 @@ chatInput?.addEventListener("keydown", (event) => {
     }
     if (event.key === "Escape") {
         closeDeleteMessageDialog();
+        closeReportMessageDialog();
         clearDirectRecipient(false);
         clearBartenderMode(false);
         clearNoteMode(false);
@@ -1336,7 +1503,7 @@ chatInput?.addEventListener("keydown", (event) => {
 document.getElementById("scroll-to-latest")?.addEventListener("click", () => {
     const chatLog = document.getElementById("chat-log");
     if (chatLog) {
-        scrollToLatest(chatLog, true);
+        scrollToLatestAfterLayout(chatLog, true);
     }
     document.getElementById("scroll-to-latest")?.classList.add("hidden");
 });

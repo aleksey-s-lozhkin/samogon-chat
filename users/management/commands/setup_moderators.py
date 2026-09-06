@@ -12,6 +12,7 @@ class Command(BaseCommand):
         ("chat", "change_message"),
         ("chat", "moderate_message"),
         ("chat", "view_moderationevent"),
+        ("chat", "view_messagereport"),
         ("users", "view_user"),
         ("users", "change_user"),
     )
