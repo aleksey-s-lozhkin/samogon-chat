@@ -1225,6 +1225,10 @@ class ChatLayoutViewsTests(TestCase):
         self.assertIn("safe-area-inset-bottom", css)
         self.assertIn("USE_VISUAL_VIEWPORT_HEIGHT", javascript)
         self.assertIn('/Android/i.test(navigator.userAgent)', javascript)
+        self.assertIn('/iPhone|iPod/i.test(navigator.userAgent)', javascript)
+        self.assertIn('window.navigator.standalone === true', javascript)
+        self.assertIn('"(display-mode: standalone)"', javascript)
+        self.assertIn("Math.max(window.screen.width, window.screen.height)", javascript)
         self.assertIn('style.removeProperty("--app-height")', javascript)
         self.assertIn('visualViewport?.addEventListener("resize"', javascript)
 

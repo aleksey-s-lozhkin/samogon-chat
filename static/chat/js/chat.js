@@ -44,6 +44,7 @@ const typingUsers = new Map();
 const expandedPresenceLists = new Set();
 const PRESENCE_PREVIEW_LIMIT = 6;
 const USE_VISUAL_VIEWPORT_HEIGHT = /Android/i.test(navigator.userAgent);
+const IS_IPHONE = /iPhone|iPod/i.test(navigator.userAgent);
 const SOCKET_RECONNECT_MAX_DELAY_MS = 30000;
 const SOCKET_FATAL_CLOSE_CODES = new Set([4401, 4403, 4404]);
 
@@ -66,6 +67,7 @@ updateAppHeight();
 window.visualViewport?.addEventListener("resize", updateAppHeight);
 window.visualViewport?.addEventListener("scroll", updateAppHeight);
 window.addEventListener("resize", updateAppHeight);
+window.addEventListener("orientationchange", updateAppHeight);
 window.addEventListener("online", reconnectWebSocketNow);
 window.addEventListener("pageshow", () => {
     updateAppHeight();
@@ -198,12 +200,26 @@ function showConnectionLost() {
 }
 
 function updateAppHeight() {
-    if (!USE_VISUAL_VIEWPORT_HEIGHT) {
+    let height = null;
+    if (USE_VISUAL_VIEWPORT_HEIGHT) {
+        height = window.visualViewport?.height || window.innerHeight;
+    } else if (IS_IPHONE && isStandalonePwa()) {
+        const portrait = window.matchMedia("(orientation: portrait)").matches;
+        height = portrait
+            ? Math.max(window.screen.width, window.screen.height)
+            : Math.min(window.screen.width, window.screen.height);
+    }
+
+    if (!height) {
         document.documentElement.style.removeProperty("--app-height");
         return;
     }
-    const height = window.visualViewport?.height || window.innerHeight;
     document.documentElement.style.setProperty("--app-height", `${Math.round(height)}px`);
+}
+
+function isStandalonePwa() {
+    return window.navigator.standalone === true
+        || window.matchMedia("(display-mode: standalone)").matches;
 }
 
 function handleServerEvent(data) {
