@@ -17,6 +17,10 @@ const TYPING_IDLE_MS = 1600;
 const TYPING_TTL_MS = 3500;
 
 let chatSocket = null;
+let reconnectTimer = null;
+let reconnectAttempts = 0;
+let socketWasConnected = false;
+let hiddenAt = null;
 let directRecipient = null;
 let bartenderMode = false;
 let bartenderPrivate = false;
@@ -39,6 +43,8 @@ let typingRecipient = null;
 const typingUsers = new Map();
 const expandedPresenceLists = new Set();
 const PRESENCE_PREVIEW_LIMIT = 6;
+const SOCKET_RECONNECT_MAX_DELAY_MS = 30000;
+const SOCKET_FATAL_CLOSE_CODES = new Set([4401, 4403, 4404]);
 
 const TAGLINES = [
     "Семён протирает стакан и слушает логи.",
@@ -55,6 +61,29 @@ if (isAuthenticated) {
     connectWebSocket();
 }
 
+updateAppHeight();
+window.visualViewport?.addEventListener("resize", updateAppHeight);
+window.visualViewport?.addEventListener("scroll", updateAppHeight);
+window.addEventListener("resize", updateAppHeight);
+window.addEventListener("online", reconnectWebSocketNow);
+window.addEventListener("pageshow", () => {
+    updateAppHeight();
+    ensureWebSocketConnection();
+});
+document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+        hiddenAt = Date.now();
+        return;
+    }
+
+    updateAppHeight();
+    const wasSuspended = hiddenAt !== null && Date.now() - hiddenAt > 2000;
+    hiddenAt = null;
+    if (wasSuspended || !chatSocket || chatSocket.readyState > WebSocket.OPEN) {
+        reconnectWebSocketNow();
+    }
+});
+
 const presenceStatusSelect = document.getElementById("presence-status-select");
 presenceStatusSelect?.addEventListener("change", () => {
     if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
@@ -68,14 +97,108 @@ presenceStatusSelect?.addEventListener("change", () => {
 });
 
 function connectWebSocket() {
+    if (!isAuthenticated || document.hidden) {
+        return;
+    }
+    if (
+        chatSocket
+        && (chatSocket.readyState === WebSocket.OPEN
+            || chatSocket.readyState === WebSocket.CONNECTING)
+    ) {
+        return;
+    }
+
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const focusQuery = focusMessageId ? `?focus=${encodeURIComponent(focusMessageId)}` : "";
     const url = `${protocol}//${window.location.host}/ws/chat/${encodeURIComponent(roomSlug)}/${focusQuery}`;
 
-    chatSocket = new WebSocket(url);
-    chatSocket.onmessage = ({ data }) => handleServerEvent(JSON.parse(data));
-    chatSocket.onclose = ({ code }) => console.log("WebSocket closed:", code);
-    chatSocket.onerror = (error) => console.error("WebSocket error:", error);
+    const socket = new WebSocket(url);
+    chatSocket = socket;
+    socket.onopen = () => {
+        if (socket !== chatSocket) {
+            return;
+        }
+        reconnectAttempts = 0;
+        if (socketWasConnected) {
+            showSuccess("Связь восстановлена.");
+        }
+        socketWasConnected = true;
+    };
+    socket.onmessage = ({ data }) => {
+        if (socket === chatSocket) {
+            handleServerEvent(JSON.parse(data));
+        }
+    };
+    socket.onclose = ({ code }) => {
+        if (socket !== chatSocket) {
+            return;
+        }
+        chatSocket = null;
+        stopTyping();
+        if (SOCKET_FATAL_CLOSE_CODES.has(code)) {
+            showError("Доступ к чату закрыт. Обновите страницу после входа.");
+            return;
+        }
+        showConnectionLost();
+        scheduleWebSocketReconnect();
+    };
+    socket.onerror = () => {
+        if (socket === chatSocket) {
+            socket.close();
+        }
+    };
+}
+
+function scheduleWebSocketReconnect() {
+    if (reconnectTimer || document.hidden || !navigator.onLine) {
+        return;
+    }
+    const delay = Math.min(
+        1000 * (2 ** reconnectAttempts),
+        SOCKET_RECONNECT_MAX_DELAY_MS,
+    );
+    reconnectAttempts += 1;
+    reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        connectWebSocket();
+    }, delay);
+}
+
+function reconnectWebSocketNow() {
+    if (!isAuthenticated || document.hidden || !navigator.onLine) {
+        return;
+    }
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+    if (chatSocket) {
+        const previousSocket = chatSocket;
+        chatSocket = null;
+        previousSocket.onclose = null;
+        previousSocket.close();
+    }
+    connectWebSocket();
+}
+
+function ensureWebSocketConnection() {
+    if (!chatSocket || chatSocket.readyState > WebSocket.OPEN) {
+        reconnectWebSocketNow();
+    }
+}
+
+function showConnectionLost() {
+    const errorElement = document.getElementById("error-message");
+    if (!errorElement) {
+        return;
+    }
+    errorElement.classList.remove("is-success");
+    errorElement.textContent = navigator.onLine
+        ? "Связь потеряна. Переподключаемся…"
+        : "Нет сети. Подключимся после её восстановления.";
+}
+
+function updateAppHeight() {
+    const height = window.visualViewport?.height || window.innerHeight;
+    document.documentElement.style.setProperty("--app-height", `${Math.round(height)}px`);
 }
 
 function handleServerEvent(data) {
@@ -83,6 +206,9 @@ function handleServerEvent(data) {
         loadingHistory = true;
         lastMessageDay = null;
         clearHistorySkeleton();
+        const chatLog = document.getElementById("chat-log");
+        chatLog?.querySelectorAll(".message, .day-divider, .chat-empty-state")
+            .forEach((element) => element.remove());
         data.messages.forEach(addMessage);
         loadingHistory = false;
         finishHistoryLoading();
