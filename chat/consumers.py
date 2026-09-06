@@ -597,7 +597,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     filter=Q(chat_messages__hidden_at__isnull=True),
                 )
             )
-            .order_by("username")
+            .order_by("-glasses_poured", "username")
         )
         return [
             {

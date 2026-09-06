@@ -17,6 +17,7 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from .consumers import ChatConsumer
 from .models import (
     Attachment,
     Message,
@@ -1457,6 +1458,16 @@ class ChatConsumerTests(TransactionTestCase):
         self.user.save(update_fields=("banned_at",))
 
         async_to_sync(self._assert_banned_user_is_rejected)()
+
+    def test_presence_orders_more_active_users_first(self):
+        active_user = User.objects.create_user(username="maria")
+        Message.objects.create(user=active_user, room=self.room, text="one")
+        Message.objects.create(user=active_user, room=self.room, text="two")
+
+        users = async_to_sync(ChatConsumer().get_all_users)()
+
+        self.assertEqual([item["username"] for item in users], ["maria", "alex"])
+        self.assertEqual([item["glasses_poured"] for item in users], [2, 0])
 
     def test_uninvited_user_cannot_connect_to_private_room(self):
         outsider = User.objects.create_user(username="maria")

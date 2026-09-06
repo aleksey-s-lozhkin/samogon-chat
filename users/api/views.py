@@ -1,16 +1,20 @@
-import json
-
 from django.conf import settings
 from django.http import JsonResponse
 from django.urls import reverse
 from django.views.decorators.csrf import ensure_csrf_cookie
-from django.views.decorators.http import require_GET, require_POST
+from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rest_framework.decorators import api_view
 
 from config.rate_limit import is_allowed
 from users.models import PushSubscription
-from users.services.push import (
-    device_id_for_subscription,
-    send_push_self_test,
+from users.services.push import device_id_for_subscription, send_push_self_test
+
+from .serializers import (
+    ErrorSerializer,
+    PushSelfTestRequestSerializer,
+    PushSelfTestResponseSerializer,
+    PushSubscriptionsResponseSerializer,
+    StatusSerializer,
 )
 
 
@@ -22,9 +26,14 @@ def api_auth_error(request):
     return None
 
 
-@require_GET
+@extend_schema(
+    tags=("system",),
+    responses={200: StatusSerializer},
+    auth=[],
+)
+@api_view(("GET",))
 def api_status(request):
-    """Минимальный health/status без секретов и персональных данных."""
+    """Return safe application state without secrets or personal data."""
     return JsonResponse(
         {
             "status": "ok",
@@ -35,10 +44,19 @@ def api_status(request):
     )
 
 
+@extend_schema(
+    tags=("web-push",),
+    auth=({"cookieAuth": []},),
+    responses={
+        200: PushSubscriptionsResponseSerializer,
+        401: ErrorSerializer,
+        403: ErrorSerializer,
+    },
+)
 @ensure_csrf_cookie
-@require_GET
+@api_view(("GET",))
 def api_push_subscriptions(request):
-    """Возвращает безопасное состояние устройств текущего пользователя."""
+    """Return opaque device state belonging to the current user."""
     auth_error = api_auth_error(request)
     if auth_error:
         return auth_error
@@ -54,9 +72,7 @@ def api_push_subscriptions(request):
                     {
                         "device_id": device_id_for_subscription(subscription),
                         "enabled": subscription.enabled,
-                        "direct_messages_enabled": (
-                            subscription.direct_messages_enabled
-                        ),
+                        "direct_messages_enabled": subscription.direct_messages_enabled,
                         "current_session": subscription.endpoint in session_endpoints,
                         "created_at": subscription.created_at.isoformat(),
                         "updated_at": subscription.updated_at.isoformat(),
@@ -68,9 +84,23 @@ def api_push_subscriptions(request):
     )
 
 
-@require_POST
+@extend_schema(
+    tags=("web-push",),
+    auth=({"cookieAuth": []},),
+    request=PushSelfTestRequestSerializer,
+    responses={
+        200: PushSelfTestResponseSerializer,
+        400: ErrorSerializer,
+        401: ErrorSerializer,
+        403: ErrorSerializer,
+        404: ErrorSerializer,
+        429: ErrorSerializer,
+        503: ErrorSerializer,
+    },
+)
+@api_view(("POST",))
 def api_push_self_test(request):
-    """Отправляет нейтральный тест на одно устройство текущего пользователя."""
+    """Send a neutral test notification to one device of the current user."""
     auth_error = api_auth_error(request)
     if auth_error:
         return auth_error
@@ -84,20 +114,15 @@ def api_push_self_test(request):
     ):
         return JsonResponse({"error": "rate_limited"}, status=429)
 
-    try:
-        device_id = json.loads(request.body)["device_id"]
-    except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+    serializer = PushSelfTestRequestSerializer(data=request.data)
+    if not serializer.is_valid():
         return JsonResponse({"error": "invalid_request"}, status=400)
-    if not isinstance(device_id, str) or not device_id:
-        return JsonResponse({"error": "invalid_request"}, status=400)
+    device_id = serializer.validated_data["device_id"]
 
     subscription = next(
         (
             item
-            for item in PushSubscription.objects.filter(
-                user=request.user,
-                enabled=True,
-            )
+            for item in PushSubscription.objects.filter(user=request.user, enabled=True)
             if device_id_for_subscription(item) == device_id
         ),
         None,
