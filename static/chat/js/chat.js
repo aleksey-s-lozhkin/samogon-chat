@@ -193,12 +193,13 @@ function normalizeUsername(username) {
 
 function userDetails(user) {
     if (typeof user === "string") {
-        return { username: user, avatarUrl: null };
+        return { username: user, avatarUrl: null, glassesPoured: 0 };
     }
 
     return {
         username: String(user?.username || ""),
         avatarUrl: user?.avatar_url || null,
+        glassesPoured: Number(user?.glasses_poured) || 0,
     };
 }
 
@@ -266,8 +267,15 @@ function renderUserList(
             button.type = "button";
             button.className = `online-user user-contact ${className}`;
             const name = document.createElement("span");
+            const identity = document.createElement("span");
+            const glasses = document.createElement("span");
+            identity.className = "user-contact-identity";
+            name.className = "user-contact-name";
             name.textContent = details.username;
-            button.append(createUserAvatar(details), name);
+            glasses.className = "user-contact-glasses";
+            glasses.textContent = `Стаканов налито: ${details.glassesPoured}`;
+            identity.append(name, glasses);
+            button.append(createUserAvatar(details), identity);
             button.addEventListener("click", () => setDirectRecipient(details.username));
             return button;
         }),

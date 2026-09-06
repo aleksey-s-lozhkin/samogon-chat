@@ -299,6 +299,9 @@ def profile(request):
             ),
             "web_push_enabled": settings.WEB_PUSH_ENABLED,
             "vapid_public_key": settings.VAPID_PUBLIC_KEY,
+            "glasses_poured": request.user.chat_messages.filter(
+                hidden_at__isnull=True,
+            ).count(),
         },
     )
 

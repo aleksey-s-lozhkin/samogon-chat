@@ -22,6 +22,7 @@ from allauth.socialaccount.models import SocialAccount, SocialLogin
 
 from users.adapters import SamogonSocialAccountAdapter
 from users.models import PushSubscription
+from chat.models import Message, Room
 from users.services.push import (
     PushDeliveryResult,
     device_id_for_subscription,
@@ -56,6 +57,22 @@ class ProfileViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'href="/chat/"')
         self.assertContains(response, "Вернуться к комнатам")
+
+    def test_profile_shows_only_visible_messages_as_glasses_poured(self):
+        room = Room.objects.create(name="Общий зал", slug="general")
+        Message.objects.create(user=self.user, room=room, text="Первый")
+        Message.objects.create(
+            user=self.user,
+            room=room,
+            text="Скрытый",
+            hidden_at=timezone.now(),
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get("/users/profile/")
+
+        self.assertContains(response, "Стаканов налито")
+        self.assertEqual(response.context["glasses_poured"], 1)
 
     @override_settings(
         VAPID_PUBLIC_KEY="public-key",

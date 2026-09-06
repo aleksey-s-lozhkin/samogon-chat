@@ -1744,7 +1744,7 @@ class ChatConsumerTests(TransactionTestCase):
         self.assertEqual(presence_message["type"], "user_presence")
         self.assertEqual(
             presence_message["users"],
-            [{"username": "alex", "avatar_url": None}],
+            [{"username": "alex", "avatar_url": None, "glasses_poured": 1}],
         )
         self.assertEqual(presence_message["online"], ["alex"])
 
