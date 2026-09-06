@@ -88,6 +88,19 @@ class ProfileViewTests(TestCase):
         self.assertContains(response, 'data-vapid-key="public-key"')
 
 
+class ServiceRulesTests(TestCase):
+    def test_rules_are_public_and_linked_from_authentication(self):
+        response = self.client.get("/rules/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Правила Самогона")
+        self.assertContains(response, "Личные сообщения остаются личными")
+
+        Room.objects.create(name="Общий зал", slug="general")
+        chat_response = self.client.get("/chat/general/")
+        self.assertContains(chat_response, 'href="/rules/"', count=2)
+
+
 class PushSubscriptionTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="push-user", password="password")

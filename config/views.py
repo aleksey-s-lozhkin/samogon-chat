@@ -12,6 +12,11 @@ def home(request):
     )
 
 
+def service_rules(request):
+    """Показывает публичные и понятные правила общения в сервисе."""
+    return render(request, "service-rules.html")
+
+
 def robots(request):
     """Не индексирует закрытую бета-версию и убирает лишнее предупреждение."""
     return HttpResponse(
