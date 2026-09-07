@@ -85,3 +85,34 @@ class AttachmentSerializer(serializers.Serializer):
 
 class AttachmentsResponseSerializer(serializers.Serializer):
     attachments = AttachmentSerializer(many=True)
+
+
+class NoteCreateSerializer(serializers.Serializer):
+    text = serializers.CharField(required=False, allow_blank=False, max_length=1000)
+    source_message_id = serializers.IntegerField(required=False, min_value=1)
+
+    def validate(self, attrs):
+        if ("text" in attrs) == ("source_message_id" in attrs):
+            raise serializers.ValidationError(
+                "Specify exactly one of text or source_message_id."
+            )
+        return attrs
+
+
+class NoteSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    text = serializers.CharField()
+    source_message_id = serializers.IntegerField(allow_null=True)
+    source_author = serializers.CharField(allow_blank=True)
+    created_at = serializers.DateTimeField()
+    attachments = AttachmentSerializer(many=True)
+
+
+class NotesResponseSerializer(serializers.Serializer):
+    api_version = serializers.CharField()
+    notes = NoteSerializer(many=True)
+
+
+class NoteMutationResponseSerializer(serializers.Serializer):
+    note = NoteSerializer()
+    created = serializers.BooleanField()

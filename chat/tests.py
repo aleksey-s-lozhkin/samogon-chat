@@ -1303,6 +1303,107 @@ class ChatApiTests(TestCase):
         self.assertEqual(wrong_content_type.json()["error"], "invalid_content_type")
         self.assertEqual(csrf_response.status_code, 403)
 
+    def test_api_creates_lists_and_deletes_own_text_note(self):
+        Note.objects.create(user=self.other, text="not mine")
+        self.client.force_login(self.user)
+
+        created = self.client.post(
+            "/api/v1/chat/notes/",
+            {"text": "Check logs"},
+            content_type="application/json",
+        )
+        note_id = created.json()["note"]["id"]
+        listed = self.client.get("/api/v1/chat/notes/")
+        deleted = self.client.delete(f"/api/v1/chat/notes/{note_id}/")
+
+        self.assertEqual(created.status_code, 201)
+        self.assertTrue(created.json()["created"])
+        self.assertEqual(
+            [note["text"] for note in listed.json()["notes"]],
+            ["Check logs"],
+        )
+        self.assertEqual(deleted.status_code, 204)
+        self.assertFalse(self.user.chat_notes.exists())
+        self.assertTrue(self.other.chat_notes.exists())
+
+    def test_api_saves_visible_message_once_with_private_attachment_copy(self):
+        message = Message.objects.create(user=self.other, room=self.room, text="source")
+        self.client.force_login(self.user)
+        with tempfile.TemporaryDirectory() as media_root, self.settings(MEDIA_ROOT=media_root):
+            create_attachment(
+                message=message,
+                uploaded_file=SimpleUploadedFile("plan.txt", b"ship it"),
+            )
+            first = self.client.post(
+                "/api/v1/chat/notes/",
+                {"source_message_id": message.id},
+                content_type="application/json",
+            )
+            second = self.client.post(
+                "/api/v1/chat/notes/",
+                {"source_message_id": message.id},
+                content_type="application/json",
+            )
+
+            attachment = first.json()["note"]["attachments"][0]
+            note_attachment = NoteAttachment.objects.get(note__user=self.user)
+            with note_attachment.file.open("rb") as copied_file:
+                copied_content = copied_file.read()
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertFalse(second.json()["created"])
+        self.assertEqual(self.user.chat_notes.count(), 1)
+        self.assertEqual(attachment["name"], "plan.txt")
+        self.assertIn("/chat/notes/attachments/", attachment["preview_url"])
+        self.assertEqual(copied_content, b"ship it")
+
+    def test_api_notes_reject_invalid_payload_and_invisible_source(self):
+        direct = Message.objects.create(
+            user=self.other,
+            recipient=self.outsider,
+            room=self.room,
+            text="secret",
+        )
+        self.client.force_login(self.user)
+
+        both = self.client.post(
+            "/api/v1/chat/notes/",
+            {"text": "duplicate", "source_message_id": direct.id},
+            content_type="application/json",
+        )
+        invisible = self.client.post(
+            "/api/v1/chat/notes/",
+            {"source_message_id": direct.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(both.status_code, 400)
+        self.assertEqual(both.json()["error"], "invalid_note")
+        self.assertEqual(invisible.status_code, 404)
+        self.assertFalse(self.user.chat_notes.exists())
+
+    def test_api_cannot_delete_foreign_note_and_mutations_require_csrf(self):
+        foreign_note = Note.objects.create(user=self.other, text="private")
+        self.client.force_login(self.user)
+        not_found = self.client.delete(f"/api/v1/chat/notes/{foreign_note.id}/")
+
+        csrf_client = self.client_class(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+        create_response = csrf_client.post(
+            "/api/v1/chat/notes/",
+            {"text": "Check logs"},
+            content_type="application/json",
+        )
+        own_note = Note.objects.create(user=self.user, text="mine")
+        delete_response = csrf_client.delete(f"/api/v1/chat/notes/{own_note.id}/")
+
+        self.assertEqual(not_found.status_code, 404)
+        self.assertEqual(create_response.status_code, 403)
+        self.assertEqual(delete_response.status_code, 403)
+        self.assertTrue(Note.objects.filter(pk=foreign_note.id).exists())
+        self.assertTrue(Note.objects.filter(pk=own_note.id).exists())
+
 
 class ChatLayoutViewsTests(TestCase):
     """Проверяет опорные элементы адаптивной раскладки чата."""
