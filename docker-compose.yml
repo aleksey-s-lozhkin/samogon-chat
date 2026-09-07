@@ -14,7 +14,7 @@ services:
     image: ${SAMOGON_IMAGE:?Set SAMOGON_IMAGE in .env.production}
     container_name: samogon-worker
     restart: unless-stopped
-    command: celery -A config worker --loglevel=INFO --concurrency=1
+    command: celery -A config worker --loglevel=INFO --concurrency=1 --uid=nobody --gid=nogroup
     env_file: ${SAMOGON_ENV_FILE:-.env.production}
     environment:
       SKIP_BOOTSTRAP: "1"
