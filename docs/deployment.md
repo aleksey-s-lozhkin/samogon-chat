@@ -307,6 +307,14 @@ docker compose logs -f samogon-worker
 Worker использует Redis как брокер и PostgreSQL для статусов задач. Параметр
 `SKIP_BOOTSTRAP=1` не даёт ему повторять миграции и `collectstatic`, а начальная
 concurrency равна одному, чтобы не перегружать локальную Ollama.
+Query-параметры общего `REDIS_URL`, предназначенные для Channels, не передаются
+в URL Celery. Таймауты брокера задаются отдельно переменными
+`CELERY_REDIS_SOCKET_TIMEOUT` и `CELERY_REDIS_CONNECT_TIMEOUT`.
+
+После пересоздания `samogon-web` его адрес во внутренней Docker-сети меняется.
+Workflow ждёт готовности Daphne на порту 8000, проверяет конфигурацию Nginx и
+делает graceful reload. Это обновляет адрес upstream без остановки остальных
+сервисов и предотвращает `502 Bad Gateway` после деплоя.
 
 ### Защищённые вложения
 

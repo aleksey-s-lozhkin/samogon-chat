@@ -48,7 +48,7 @@ services:
       REDIS_URL: redis://redis:6379/0?socket_timeout=10
       SKIP_BOOTSTRAP: "1"
     entrypoint: ["/bin/sh", "/app/deployment/docker/entrypoint.sh"]
-    command: celery -A config worker --loglevel=INFO --concurrency=1
+    command: celery -A config worker --loglevel=INFO --concurrency=1 --uid=nobody --gid=nogroup
     volumes:
       - .:/app
     depends_on:

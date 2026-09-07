@@ -118,5 +118,22 @@ jobs:
               SAMOGON_ENV_FILE="$env_file" \
               SAMOGON_DATA_DIR="$data_dir" \
               docker compose -f compose.yaml up -d --no-build samogon-web samogon-worker
+
+          web_ready=0
+          for attempt in $(seq 1 60); do
+            if docker exec samogon-web python -c \
+              "import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()"; then
+              web_ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$web_ready" -ne 1 ]; then
+            docker compose -f compose.yaml logs --tail=100 samogon-web
+            exit 1
+          fi
+
+          docker exec nginx nginx -t
+          docker exec nginx nginx -s reload
           docker compose -f compose.yaml ps
           REMOTE
