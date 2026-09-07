@@ -20,6 +20,7 @@ from django.utils import timezone
 from .consumers import ChatConsumer
 from .models import (
     Attachment,
+    BartenderJob,
     Message,
     MessageReaction,
     MessageReport,
@@ -38,7 +39,8 @@ from .services.attachments import (
 )
 from .services.welcome import WELCOME_TEXT, ensure_welcome_message
 from .services.messages import MessageService
-from .services.bartender import BARTENDER_LANGUAGE_FALLBACK, bartender
+from .services.bartender import BARTENDER_LANGUAGE_FALLBACK, BartenderReply, BartenderUnavailable, bartender
+from .tasks import process_bartender_job
 from .validators import validate_message
 
 
@@ -418,7 +420,7 @@ class MessageReportViewTests(TestCase):
         self.message.refresh_from_db()
         self.assertIsNone(self.message.hidden_at)
 
-    @patch("chat.views.send_moderator_report_push")
+    @patch("chat.services.reports.send_moderator_report_push")
     def test_push_is_sent_only_for_new_report(self, send_push):
         self.client.force_login(self.reporter)
         payload = json.dumps({"reason": "spam"})
@@ -1046,6 +1048,446 @@ class PrivateRoomViewsTests(TestCase):
         )
 
 
+class ChatApiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="alex")
+        self.other = User.objects.create_user(username="maria")
+        self.outsider = User.objects.create_user(username="ivan")
+        self.room = Room.objects.create(name="Общий зал", slug="general")
+        self.private_room = Room.objects.create(
+            name="Тайный столик",
+            slug="private",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.user,
+        )
+        RoomMembership.objects.create(room=self.private_room, user=self.user)
+
+    def test_rooms_require_authentication_and_hide_foreign_private_room(self):
+        self.assertEqual(self.client.get("/api/v1/chat/rooms/").status_code, 401)
+        self.client.force_login(self.outsider)
+        response = self.client.get("/api/v1/chat/rooms/")
+        self.assertEqual(response.status_code, 200)
+        room_slugs = [room["slug"] for room in response.json()["rooms"]]
+        self.assertIn("general", room_slugs)
+        self.assertNotIn("private", room_slugs)
+        self.assertEqual(
+            self.client.get("/api/v1/chat/rooms/private/messages/").status_code,
+            404,
+        )
+
+    def test_history_does_not_disclose_direct_message_to_outsider(self):
+        Message.objects.create(user=self.user, recipient=self.other, room=self.room, text="secret")
+        Message.objects.create(user=self.user, room=self.room, text="public")
+        self.client.force_login(self.outsider)
+
+        response = self.client.get("/api/v1/chat/rooms/general/messages/")
+
+        self.assertEqual([item["message"] for item in response.json()["messages"]], ["public"])
+
+    def test_api_creates_reply_and_inherits_direct_recipient(self):
+        source = Message.objects.create(
+            user=self.other,
+            recipient=self.user,
+            room=self.room,
+            text="private source",
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            "/api/v1/chat/rooms/general/messages/",
+            {"message": "answer", "reply_to": source.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        created = Message.objects.get(text="answer")
+        self.assertEqual(created.recipient, self.other)
+        self.assertEqual(created.reply_to, source)
+        self.assertTrue(response.json()["private"])
+
+    def test_api_rejects_invalid_limit_and_unknown_recipient(self):
+        self.client.force_login(self.user)
+        self.assertEqual(
+            self.client.get("/api/v1/chat/rooms/general/messages/?limit=101").status_code,
+            400,
+        )
+        response = self.client.post(
+            "/api/v1/chat/rooms/general/messages/",
+            {"message": "hello", "recipient": "missing"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_message_creation_requires_csrf_for_session_authentication(self):
+        csrf_client = self.client_class(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+
+        response = csrf_client.post(
+            "/api/v1/chat/rooms/general/messages/",
+            {"message": "hello"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_api_toggles_reaction_and_returns_participants(self):
+        message = Message.objects.create(user=self.other, room=self.room, text="hello")
+        self.client.force_login(self.user)
+        url = f"/api/v1/chat/rooms/general/messages/{message.id}/reactions/"
+
+        added = self.client.post(url, {"emoji": "🔥"}, content_type="application/json")
+        removed = self.client.post(url, {"emoji": "🔥"}, content_type="application/json")
+
+        self.assertEqual(added.status_code, 200)
+        self.assertEqual(
+            added.json(),
+            {
+                "message_id": message.id,
+                "emoji": "🔥",
+                "count": 1,
+                "active": True,
+                "users": ["alex"],
+            },
+        )
+        self.assertEqual(removed.json()["count"], 0)
+        self.assertFalse(removed.json()["active"])
+
+    def test_api_reaction_does_not_disclose_foreign_direct_message(self):
+        message = Message.objects.create(
+            user=self.other,
+            recipient=self.outsider,
+            room=self.room,
+            text="secret",
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/api/v1/chat/rooms/general/messages/{message.id}/reactions/",
+            {"emoji": "👍"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(MessageReaction.objects.exists())
+
+    @patch("chat.services.reports.send_moderator_report_push")
+    def test_api_creates_report_once_and_notifies_moderators_once(self, send_push):
+        message = Message.objects.create(user=self.other, room=self.room, text="spam")
+        self.client.force_login(self.user)
+        url = f"/api/v1/chat/rooms/general/messages/{message.id}/reports/"
+        payload = {"reason": "spam", "details": "Repeated links"}
+
+        created = self.client.post(url, payload, content_type="application/json")
+        duplicate = self.client.post(url, payload, content_type="application/json")
+
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.json(), {"reported": True, "created": True})
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertEqual(duplicate.json(), {"reported": True, "created": False})
+        self.assertEqual(MessageReport.objects.get().details, "Repeated links")
+        send_push.assert_called_once_with()
+
+    def test_api_rejects_own_report_and_invalid_action_payloads(self):
+        own_message = Message.objects.create(user=self.user, room=self.room, text="mine")
+        other_message = Message.objects.create(user=self.other, room=self.room, text="other")
+        self.client.force_login(self.user)
+
+        own_report = self.client.post(
+            f"/api/v1/chat/rooms/general/messages/{own_message.id}/reports/",
+            {"reason": "other"},
+            content_type="application/json",
+        )
+        invalid_report = self.client.post(
+            f"/api/v1/chat/rooms/general/messages/{other_message.id}/reports/",
+            {"reason": "unknown"},
+            content_type="application/json",
+        )
+        invalid_reaction = self.client.post(
+            f"/api/v1/chat/rooms/general/messages/{other_message.id}/reactions/",
+            {"emoji": "❌"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(own_report.status_code, 400)
+        self.assertEqual(own_report.json()["error"], "own_message")
+        self.assertEqual(invalid_report.status_code, 400)
+        self.assertEqual(invalid_reaction.status_code, 400)
+        self.assertFalse(MessageReport.objects.exists())
+
+    def test_api_actions_require_csrf_for_session_authentication(self):
+        message = Message.objects.create(user=self.other, room=self.room, text="hello")
+        csrf_client = self.client_class(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+
+        reaction = csrf_client.post(
+            f"/api/v1/chat/rooms/general/messages/{message.id}/reactions/",
+            {"emoji": "👍"},
+            content_type="application/json",
+        )
+        report = csrf_client.post(
+            f"/api/v1/chat/rooms/general/messages/{message.id}/reports/",
+            {"reason": "spam"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(reaction.status_code, 403)
+        self.assertEqual(report.status_code, 403)
+
+    @patch("chat.api.views.broadcast_attachment_update")
+    def test_api_uploads_checked_attachments_and_broadcasts_urls(self, broadcast):
+        message = Message.objects.create(user=self.user, room=self.room, text="files")
+        self.client.force_login(self.user)
+        url = f"/api/v1/chat/rooms/general/messages/{message.id}/attachments/"
+
+        with tempfile.TemporaryDirectory() as media_root, self.settings(MEDIA_ROOT=media_root):
+            response = self.client.post(
+                url,
+                {
+                    "files": [
+                        SimpleUploadedFile("notes.txt", b"content"),
+                        SimpleUploadedFile("guide.pdf", b"%PDF-1.7\ncontent"),
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(message.attachments.count(), 2)
+        payload = response.json()["attachments"]
+        self.assertEqual(payload[0]["name"], "notes.txt")
+        self.assertIn("/chat/attachments/", payload[0]["preview_url"])
+        self.assertNotIn("chat/attachments/", payload[0]["name"])
+        broadcast.assert_called_once_with(message, payload)
+
+    def test_api_attachment_upload_is_author_only_and_all_or_nothing(self):
+        message = Message.objects.create(user=self.user, room=self.room, text="files")
+        url = f"/api/v1/chat/rooms/general/messages/{message.id}/attachments/"
+        self.client.force_login(self.outsider)
+
+        forbidden = self.client.post(
+            url,
+            {"files": [SimpleUploadedFile("notes.txt", b"content")]},
+        )
+        self.client.force_login(self.user)
+        with tempfile.TemporaryDirectory() as media_root, self.settings(MEDIA_ROOT=media_root):
+            invalid = self.client.post(
+                url,
+                {
+                    "files": [
+                        SimpleUploadedFile("valid.txt", b"content"),
+                        SimpleUploadedFile("program.exe", b"binary"),
+                    ],
+                },
+            )
+
+        self.assertEqual(forbidden.status_code, 404)
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(invalid.json()["error"], "invalid_attachment")
+        self.assertFalse(message.attachments.exists())
+
+    def test_api_attachment_upload_requires_multipart_and_csrf(self):
+        message = Message.objects.create(user=self.user, room=self.room, text="files")
+        url = f"/api/v1/chat/rooms/general/messages/{message.id}/attachments/"
+        self.client.force_login(self.user)
+
+        wrong_content_type = self.client.post(
+            url,
+            {"files": []},
+            content_type="application/json",
+        )
+        csrf_client = self.client_class(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+        csrf_response = csrf_client.post(
+            url,
+            {"files": [SimpleUploadedFile("notes.txt", b"content")]},
+        )
+
+        self.assertEqual(wrong_content_type.status_code, 415)
+        self.assertEqual(wrong_content_type.json()["error"], "invalid_content_type")
+        self.assertEqual(csrf_response.status_code, 403)
+
+    def test_api_creates_lists_and_deletes_own_text_note(self):
+        Note.objects.create(user=self.other, text="not mine")
+        self.client.force_login(self.user)
+
+        created = self.client.post(
+            "/api/v1/chat/notes/",
+            {"text": "Check logs"},
+            content_type="application/json",
+        )
+        note_id = created.json()["note"]["id"]
+        listed = self.client.get("/api/v1/chat/notes/")
+        deleted = self.client.delete(f"/api/v1/chat/notes/{note_id}/")
+
+        self.assertEqual(created.status_code, 201)
+        self.assertTrue(created.json()["created"])
+        self.assertEqual(
+            [note["text"] for note in listed.json()["notes"]],
+            ["Check logs"],
+        )
+        self.assertEqual(deleted.status_code, 204)
+        self.assertFalse(self.user.chat_notes.exists())
+        self.assertTrue(self.other.chat_notes.exists())
+
+    def test_api_saves_visible_message_once_with_private_attachment_copy(self):
+        message = Message.objects.create(user=self.other, room=self.room, text="source")
+        self.client.force_login(self.user)
+        with tempfile.TemporaryDirectory() as media_root, self.settings(MEDIA_ROOT=media_root):
+            create_attachment(
+                message=message,
+                uploaded_file=SimpleUploadedFile("plan.txt", b"ship it"),
+            )
+            first = self.client.post(
+                "/api/v1/chat/notes/",
+                {"source_message_id": message.id},
+                content_type="application/json",
+            )
+            second = self.client.post(
+                "/api/v1/chat/notes/",
+                {"source_message_id": message.id},
+                content_type="application/json",
+            )
+
+            attachment = first.json()["note"]["attachments"][0]
+            note_attachment = NoteAttachment.objects.get(note__user=self.user)
+            with note_attachment.file.open("rb") as copied_file:
+                copied_content = copied_file.read()
+
+        self.assertEqual(first.status_code, 201)
+        self.assertEqual(second.status_code, 200)
+        self.assertFalse(second.json()["created"])
+        self.assertEqual(self.user.chat_notes.count(), 1)
+        self.assertEqual(attachment["name"], "plan.txt")
+        self.assertIn("/chat/notes/attachments/", attachment["preview_url"])
+        self.assertEqual(copied_content, b"ship it")
+
+    def test_api_notes_reject_invalid_payload_and_invisible_source(self):
+        direct = Message.objects.create(
+            user=self.other,
+            recipient=self.outsider,
+            room=self.room,
+            text="secret",
+        )
+        self.client.force_login(self.user)
+
+        both = self.client.post(
+            "/api/v1/chat/notes/",
+            {"text": "duplicate", "source_message_id": direct.id},
+            content_type="application/json",
+        )
+        invisible = self.client.post(
+            "/api/v1/chat/notes/",
+            {"source_message_id": direct.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(both.status_code, 400)
+        self.assertEqual(both.json()["error"], "invalid_note")
+        self.assertEqual(invisible.status_code, 404)
+        self.assertFalse(self.user.chat_notes.exists())
+
+    def test_api_cannot_delete_foreign_note_and_mutations_require_csrf(self):
+        foreign_note = Note.objects.create(user=self.other, text="private")
+        self.client.force_login(self.user)
+        not_found = self.client.delete(f"/api/v1/chat/notes/{foreign_note.id}/")
+
+        csrf_client = self.client_class(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+        create_response = csrf_client.post(
+            "/api/v1/chat/notes/",
+            {"text": "Check logs"},
+            content_type="application/json",
+        )
+        own_note = Note.objects.create(user=self.user, text="mine")
+        delete_response = csrf_client.delete(f"/api/v1/chat/notes/{own_note.id}/")
+
+        self.assertEqual(not_found.status_code, 404)
+        self.assertEqual(create_response.status_code, 403)
+        self.assertEqual(delete_response.status_code, 403)
+        self.assertTrue(Note.objects.filter(pk=foreign_note.id).exists())
+        self.assertTrue(Note.objects.filter(pk=own_note.id).exists())
+
+    @patch("chat.services.jobs.process_bartender_job.delay")
+    def test_api_queues_private_bartender_job_and_hides_foreign_status(self, delay):
+        self.client.force_login(self.user)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                "/api/v1/chat/rooms/general/bartender/jobs/",
+                {"message": "Помоги с логом", "private": True},
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 202)
+        job = BartenderJob.objects.get()
+        self.assertEqual(job.status, BartenderJob.Status.QUEUED)
+        self.assertEqual(job.question.text, "@Семён Помоги с логом")
+        self.assertEqual(job.question.recipient.username, settings.BARTENDER_USERNAME)
+        delay.assert_called_once_with(str(job.id))
+        self.client.force_login(self.outsider)
+        self.assertEqual(
+            self.client.get(f"/api/v1/chat/bartender/jobs/{job.id}/").status_code,
+            404,
+        )
+
+    @patch("chat.services.jobs.process_bartender_job.delay", side_effect=OSError)
+    def test_api_keeps_queued_job_when_broker_is_temporarily_down(self, delay):
+        self.client.force_login(self.user)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                "/api/v1/chat/rooms/general/bartender/jobs/",
+                {"message": "Помоги"},
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(BartenderJob.objects.get().status, BartenderJob.Status.QUEUED)
+
+
+class BartenderJobTaskTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="alex")
+        self.room = Room.objects.create(name="General", slug="general")
+        self.question = Message.objects.create(
+            user=self.user,
+            room=self.room,
+            text="@Семён помоги",
+        )
+
+    @patch("chat.tasks.broadcast_message")
+    @patch("chat.tasks.bartender.reply", return_value=BartenderReply(text="Смотрю логи."))
+    def test_worker_saves_and_broadcasts_reply_once(self, reply, broadcast):
+        job = BartenderJob.objects.create(
+            user=self.user,
+            room=self.room,
+            question=self.question,
+        )
+
+        process_bartender_job.run(str(job.id))
+        process_bartender_job.run(str(job.id))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, BartenderJob.Status.SUCCEEDED)
+        self.assertEqual(job.response.text, "Смотрю логи.")
+        self.assertEqual(job.response.user.username, settings.BARTENDER_USERNAME)
+        self.assertEqual(reply.call_count, 1)
+        broadcast.assert_called_once_with(job.response)
+
+    @patch("chat.tasks.bartender.reply", side_effect=BartenderUnavailable)
+    def test_worker_records_final_failure_without_private_data(self, reply):
+        job = BartenderJob.objects.create(
+            user=self.user,
+            room=self.room,
+            question=self.question,
+        )
+
+        with patch.object(process_bartender_job, "max_retries", 0):
+            process_bartender_job.run(str(job.id))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, BartenderJob.Status.FAILED)
+        self.assertEqual(job.error_code, "bartender_unavailable")
+        self.assertIsNone(job.response)
+
+
 class ChatLayoutViewsTests(TestCase):
     """Проверяет опорные элементы адаптивной раскладки чата."""
 
@@ -1525,6 +1967,15 @@ class ChatConsumerTests(TransactionTestCase):
         self.assertEqual([item["username"] for item in users], ["maria", "alex"])
         self.assertEqual([item["status"] for item in users], ["Думаю", ""])
 
+    @patch("chat.services.jobs.process_bartender_job.delay")
+    def test_websocket_queues_bartender_instead_of_waiting_for_model(self, delay):
+        async_to_sync(self._assert_bartender_job_is_queued)()
+
+        job = BartenderJob.objects.get()
+        self.assertEqual(job.user, self.user)
+        self.assertEqual(job.status, BartenderJob.Status.QUEUED)
+        delay.assert_called_once_with(str(job.id))
+
     def test_presence_status_is_saved_and_broadcast(self):
         consumer = ChatConsumer()
         consumer.user = self.user
@@ -1711,6 +2162,15 @@ class ChatConsumerTests(TransactionTestCase):
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
         return communicator
+
+    async def _assert_bartender_job_is_queued(self):
+        communicator = await self._connect_communicator(self.user)
+        await self._drain_communicator(communicator)
+        await communicator.send_json_to({"message": "@Семён помоги с логом"})
+        event = await communicator.receive_json_from()
+        self.assertEqual(event["type"], "message")
+        self.assertEqual(event["message"], "@Семён помоги с логом")
+        await communicator.disconnect()
 
     async def _drain_communicator(self, communicator):
         while not await communicator.receive_nothing(timeout=0.01):

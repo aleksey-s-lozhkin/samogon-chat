@@ -362,3 +362,47 @@ class MessageReport(models.Model):
 
     def __str__(self):
         return f"Жалоба на сообщение {self.message_id}"
+
+
+class BartenderJob(models.Model):
+    """Сохраняемое состояние фонового обращения к Семёну."""
+
+    class Status(models.TextChoices):
+        QUEUED = "queued", "В очереди"
+        STARTED = "started", "Выполняется"
+        SUCCEEDED = "succeeded", "Готово"
+        FAILED = "failed", "Ошибка"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="bartender_jobs",
+    )
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="bartender_jobs")
+    question = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name="bartender_question_jobs",
+    )
+    response = models.ForeignKey(
+        Message,
+        on_delete=models.SET_NULL,
+        related_name="bartender_response_jobs",
+        blank=True,
+        null=True,
+    )
+    private = models.BooleanField(default=False)
+    status = models.CharField(
+        max_length=12,
+        choices=Status.choices,
+        default=Status.QUEUED,
+        db_index=True,
+    )
+    error_code = models.CharField(max_length=32, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(blank=True, null=True)
+    finished_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        ordering = ("-created_at",)

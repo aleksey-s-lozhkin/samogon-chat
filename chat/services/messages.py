@@ -163,6 +163,35 @@ class MessageService:
         ]
 
     @staticmethod
+    def serialize_note_attachment(attachment) -> dict:
+        """Возвращает только защищённые URL личной копии вложения."""
+        return {
+            "id": str(attachment.id),
+            "name": attachment.original_name,
+            "size": attachment.size,
+            "kind": attachment.kind,
+            "preview_url": reverse("chat:note_attachment", args=[attachment.id]),
+            "download_url": reverse(
+                "chat:download_note_attachment",
+                args=[attachment.id],
+            ),
+        }
+
+    @staticmethod
+    def serialize_note(note: Note) -> dict:
+        return {
+            "id": note.id,
+            "text": note.text,
+            "source_message_id": note.source_message_id,
+            "source_author": note.source_author,
+            "created_at": note.created_at,
+            "attachments": [
+                MessageService.serialize_note_attachment(attachment)
+                for attachment in note.attachments.all()
+            ],
+        }
+
+    @staticmethod
     def can_view_message(*, message: Message, user) -> bool:
         """Не раскрывает личные реплики, тайные комнаты и скрытые сообщения."""
         if not user.is_authenticated or message.hidden_at is not None:

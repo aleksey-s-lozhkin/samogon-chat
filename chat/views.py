@@ -6,7 +6,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db.models import Case, IntegerField, Q, Value, When
+from django.db.models import Q
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -16,7 +16,6 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 
 from config.rate_limit import is_allowed
 from users.models import User
-from users.services.push import send_moderator_report_push
 
 from .forms import MessageSearchForm, PrivateRoomForm
 from .models import (
@@ -29,41 +28,11 @@ from .models import (
     RoomMembership,
 )
 from .services.attachments import AttachmentValidationError, create_attachments
+from .services.events import broadcast_attachment_update
 from .services.messages import MessageService
 from .services.navigation import get_last_room_url
-
-
-# Порядок повторяет маршрут гостя по бару, а не алфавитный список.
-PUBLIC_ROOM_ORDER = (
-    "u-stoyki",
-    "vozle-bilyarda",
-    "kurilka",
-    "podval",
-    "posle-zakrytiya",
-)
-
-
-def get_visible_rooms(user):
-    """Возвращает открытые комнаты и личные столики текущего гостя."""
-    rooms = Room.objects.filter(visibility=Room.Visibility.PUBLIC)
-    if user.is_authenticated:
-        rooms = Room.objects.filter(
-            Q(visibility=Room.Visibility.PUBLIC)
-            | Q(memberships__user=user),
-        ).distinct()
-    public_room_order = Case(
-        *[
-            When(slug=slug, then=Value(position))
-            for position, slug in enumerate(PUBLIC_ROOM_ORDER)
-        ],
-        default=Value(len(PUBLIC_ROOM_ORDER)),
-        output_field=IntegerField(),
-    )
-    return rooms.annotate(room_order=public_room_order).order_by(
-        "visibility",
-        "room_order",
-        "name",
-    )
+from .services.reports import create_message_report
+from .selectors import get_visible_rooms
 
 
 def add_unread_counts(rooms, user):
@@ -359,13 +328,12 @@ def report_message(request, message_id):
     if message.user_id == request.user.id:
         return JsonResponse({"error": "На свою реплику жалоба не нужна."}, status=400)
 
-    report, created = MessageReport.objects.get_or_create(
+    report, created = create_message_report(
         message=message,
         reporter=request.user,
-        defaults={"reason": reason, "details": details},
+        reason=reason,
+        details=details,
     )
-    if created:
-        send_moderator_report_push()
     return JsonResponse({"reported": True, "created": created}, status=201 if created else 200)
 
 
@@ -449,32 +417,6 @@ def delete_note(request, note_id):
     note = get_object_or_404(Note, id=note_id, user=request.user)
     note.delete()
     return redirect("chat:notes")
-
-
-def broadcast_attachment_update(message, attachments):
-    """Отправляет новые вложения только тем же людям, что видят сообщение."""
-    event = {
-        "type": "attachment_update",
-        "message_id": message.id,
-        "attachments": attachments,
-        "room_slug": message.room.slug,
-    }
-    channel_layer = get_channel_layer()
-    if message.recipient_id:
-        group_names = [
-            f"chat_user_{message.user_id}",
-            f"chat_user_{message.recipient_id}",
-        ]
-    elif message.room.is_private:
-        group_names = [
-            f"chat_user_{user_id}"
-            for user_id in message.room.memberships.values_list("user_id", flat=True)
-        ]
-    else:
-        group_names = [f"chat_{message.room.slug}"]
-
-    for group_name in group_names:
-        async_to_sync(channel_layer.group_send)(group_name, event)
 
 
 def broadcast_message_deleted(message):
