@@ -41,6 +41,22 @@ services:
       redis:
         condition: service_healthy
 
+  worker:
+    build: .
+    env_file: ${SAMOGON_LOCAL_ENV_FILE:-.env.docker}
+    environment:
+      REDIS_URL: redis://redis:6379/0?socket_timeout=10
+      SKIP_BOOTSTRAP: "1"
+    entrypoint: ["/bin/sh", "/app/deployment/docker/entrypoint.sh"]
+    command: celery -A config worker --loglevel=INFO --concurrency=1
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   samogon_postgres_data:
   samogon_staticfiles:

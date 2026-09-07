@@ -93,7 +93,7 @@ jobs:
           env SAMOGON_IMAGE="$image" \
               SAMOGON_ENV_FILE="$env_file" \
               SAMOGON_DATA_DIR="$data_dir" \
-              docker compose -f compose.yaml pull samogon-web
+              docker compose -f compose.yaml pull samogon-web samogon-worker
 
           if ! grep -q '^VAPID_PUBLIC_KEY=.' "$env_file" \
               || ! grep -q '^VAPID_PRIVATE_KEY=.' "$env_file"; then
@@ -117,6 +117,6 @@ jobs:
           env SAMOGON_IMAGE="$image" \
               SAMOGON_ENV_FILE="$env_file" \
               SAMOGON_DATA_DIR="$data_dir" \
-              docker compose -f compose.yaml up -d --no-build samogon-web
+              docker compose -f compose.yaml up -d --no-build samogon-web samogon-worker
           docker compose -f compose.yaml ps
           REMOTE

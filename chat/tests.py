@@ -20,6 +20,7 @@ from django.utils import timezone
 from .consumers import ChatConsumer
 from .models import (
     Attachment,
+    BartenderJob,
     Message,
     MessageReaction,
     MessageReport,
@@ -38,7 +39,8 @@ from .services.attachments import (
 )
 from .services.welcome import WELCOME_TEXT, ensure_welcome_message
 from .services.messages import MessageService
-from .services.bartender import BARTENDER_LANGUAGE_FALLBACK, bartender
+from .services.bartender import BARTENDER_LANGUAGE_FALLBACK, BartenderReply, BartenderUnavailable, bartender
+from .tasks import process_bartender_job
 from .validators import validate_message
 
 
@@ -1404,6 +1406,87 @@ class ChatApiTests(TestCase):
         self.assertTrue(Note.objects.filter(pk=foreign_note.id).exists())
         self.assertTrue(Note.objects.filter(pk=own_note.id).exists())
 
+    @patch("chat.services.jobs.process_bartender_job.delay")
+    def test_api_queues_private_bartender_job_and_hides_foreign_status(self, delay):
+        self.client.force_login(self.user)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                "/api/v1/chat/rooms/general/bartender/jobs/",
+                {"message": "Помоги с логом", "private": True},
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 202)
+        job = BartenderJob.objects.get()
+        self.assertEqual(job.status, BartenderJob.Status.QUEUED)
+        self.assertEqual(job.question.text, "@Семён Помоги с логом")
+        self.assertEqual(job.question.recipient.username, settings.BARTENDER_USERNAME)
+        delay.assert_called_once_with(str(job.id))
+        self.client.force_login(self.outsider)
+        self.assertEqual(
+            self.client.get(f"/api/v1/chat/bartender/jobs/{job.id}/").status_code,
+            404,
+        )
+
+    @patch("chat.services.jobs.process_bartender_job.delay", side_effect=OSError)
+    def test_api_keeps_queued_job_when_broker_is_temporarily_down(self, delay):
+        self.client.force_login(self.user)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(
+                "/api/v1/chat/rooms/general/bartender/jobs/",
+                {"message": "Помоги"},
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(BartenderJob.objects.get().status, BartenderJob.Status.QUEUED)
+
+
+class BartenderJobTaskTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="alex")
+        self.room = Room.objects.create(name="General", slug="general")
+        self.question = Message.objects.create(
+            user=self.user,
+            room=self.room,
+            text="@Семён помоги",
+        )
+
+    @patch("chat.tasks.broadcast_message")
+    @patch("chat.tasks.bartender.reply", return_value=BartenderReply(text="Смотрю логи."))
+    def test_worker_saves_and_broadcasts_reply_once(self, reply, broadcast):
+        job = BartenderJob.objects.create(
+            user=self.user,
+            room=self.room,
+            question=self.question,
+        )
+
+        process_bartender_job.run(str(job.id))
+        process_bartender_job.run(str(job.id))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, BartenderJob.Status.SUCCEEDED)
+        self.assertEqual(job.response.text, "Смотрю логи.")
+        self.assertEqual(job.response.user.username, settings.BARTENDER_USERNAME)
+        self.assertEqual(reply.call_count, 1)
+        broadcast.assert_called_once_with(job.response)
+
+    @patch("chat.tasks.bartender.reply", side_effect=BartenderUnavailable)
+    def test_worker_records_final_failure_without_private_data(self, reply):
+        job = BartenderJob.objects.create(
+            user=self.user,
+            room=self.room,
+            question=self.question,
+        )
+
+        with patch.object(process_bartender_job, "max_retries", 0):
+            process_bartender_job.run(str(job.id))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, BartenderJob.Status.FAILED)
+        self.assertEqual(job.error_code, "bartender_unavailable")
+        self.assertIsNone(job.response)
+
 
 class ChatLayoutViewsTests(TestCase):
     """Проверяет опорные элементы адаптивной раскладки чата."""
@@ -1884,6 +1967,15 @@ class ChatConsumerTests(TransactionTestCase):
         self.assertEqual([item["username"] for item in users], ["maria", "alex"])
         self.assertEqual([item["status"] for item in users], ["Думаю", ""])
 
+    @patch("chat.services.jobs.process_bartender_job.delay")
+    def test_websocket_queues_bartender_instead_of_waiting_for_model(self, delay):
+        async_to_sync(self._assert_bartender_job_is_queued)()
+
+        job = BartenderJob.objects.get()
+        self.assertEqual(job.user, self.user)
+        self.assertEqual(job.status, BartenderJob.Status.QUEUED)
+        delay.assert_called_once_with(str(job.id))
+
     def test_presence_status_is_saved_and_broadcast(self):
         consumer = ChatConsumer()
         consumer.user = self.user
@@ -2070,6 +2162,15 @@ class ChatConsumerTests(TransactionTestCase):
         connected, _ = await communicator.connect()
         self.assertTrue(connected)
         return communicator
+
+    async def _assert_bartender_job_is_queued(self):
+        communicator = await self._connect_communicator(self.user)
+        await self._drain_communicator(communicator)
+        await communicator.send_json_to({"message": "@Семён помоги с логом"})
+        event = await communicator.receive_json_from()
+        self.assertEqual(event["type"], "message")
+        self.assertEqual(event["message"], "@Семён помоги с логом")
+        await communicator.disconnect()
 
     async def _drain_communicator(self, communicator):
         while not await communicator.receive_nothing(timeout=0.01):

@@ -200,6 +200,12 @@ EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "0") == "1"
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost")
 
 REDIS_URL = os.getenv("REDIS_URL")
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL or "redis://127.0.0.1:6379/0")
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 
 if REDIS_URL:
     # Один Redis хранит Channels-события и общие для всех Daphne лимиты.

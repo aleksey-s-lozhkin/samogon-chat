@@ -295,6 +295,19 @@ docker compose logs -f samogon-web
 открывает ни одного порта на хосте: Nginx найдёт его по имени `samogon-web` в
 сети `infra`.
 
+Ответы Семёна выполняет отдельный сервис `samogon-worker` из того же образа.
+Перед первым деплоем версии с очередью обязательно обновите серверный
+`compose.yaml` из репозитория. Проверка worker:
+
+```bash
+docker compose ps
+docker compose logs -f samogon-worker
+```
+
+Worker использует Redis как брокер и PostgreSQL для статусов задач. Параметр
+`SKIP_BOOTSTRAP=1` не даёт ему повторять миграции и `collectstatic`, а начальная
+concurrency равна одному, чтобы не перегружать локальную Ollama.
+
 ### Защищённые вложения
 
 Вложения чата хранятся в уже смонтированном каталоге

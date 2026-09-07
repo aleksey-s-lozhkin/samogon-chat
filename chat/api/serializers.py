@@ -116,3 +116,20 @@ class NotesResponseSerializer(serializers.Serializer):
 class NoteMutationResponseSerializer(serializers.Serializer):
     note = NoteSerializer()
     created = serializers.BooleanField()
+
+
+class BartenderJobCreateSerializer(serializers.Serializer):
+    message = serializers.CharField(max_length=1000, trim_whitespace=True)
+    private = serializers.BooleanField(default=False)
+
+
+class BartenderJobSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    status = serializers.ChoiceField(choices=("queued", "started", "succeeded", "failed"))
+    private = serializers.BooleanField()
+    question_message_id = serializers.IntegerField(source="question_id")
+    response_message_id = serializers.IntegerField(source="response_id", allow_null=True)
+    error = serializers.CharField(source="error_code", allow_blank=True)
+    created_at = serializers.DateTimeField()
+    started_at = serializers.DateTimeField(allow_null=True)
+    finished_at = serializers.DateTimeField(allow_null=True)

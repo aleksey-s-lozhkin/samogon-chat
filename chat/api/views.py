@@ -6,10 +6,13 @@ from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework.decorators import api_view
 
-from chat.models import Message, Note, Room
+from chat.models import BartenderJob, Message, Note, Room
+from chat.services.bartender import bartender
 from chat.selectors import get_visible_rooms
 from chat.services.attachments import AttachmentValidationError, create_attachments
 from chat.services.events import broadcast_attachment_update, message_group_names
+from chat.services.events import broadcast_message
+from chat.services.jobs import enqueue_bartender_job
 from chat.services.messages import MessageService
 from chat.services.reports import create_message_report
 from chat.validators import MESSAGE_MAX_LENGTH
@@ -19,6 +22,8 @@ from users.services.push import send_direct_message_push
 from .serializers import (
     AttachmentsResponseSerializer,
     AttachmentUploadSerializer,
+    BartenderJobCreateSerializer,
+    BartenderJobSerializer,
     ChatApiErrorSerializer,
     MessageCreateSerializer,
     MessageReportCreateSerializer,
@@ -404,3 +409,82 @@ def api_note_detail(request, note_id):
         return JsonResponse({"error": "note_not_found"}, status=404)
     note.delete()
     return HttpResponse(status=204)
+
+
+@extend_schema(
+    tags=("chat",),
+    auth=({"cookieAuth": []},),
+    request={"application/json": BartenderJobCreateSerializer},
+    responses={
+        202: BartenderJobSerializer,
+        400: ChatApiErrorSerializer,
+        401: ChatApiErrorSerializer,
+        403: ChatApiErrorSerializer,
+        404: ChatApiErrorSerializer,
+        429: ChatApiErrorSerializer,
+    },
+)
+@api_view(("POST",))
+def api_bartender_jobs(request, room_slug):
+    if error := auth_error(request):
+        return error
+    room = accessible_room(request.user, room_slug)
+    if room is None:
+        return JsonResponse({"error": "room_not_found"}, status=404)
+    if not is_allowed(
+        identifier=f"user:{request.user.id}",
+        bucket="message",
+        limit=settings.MESSAGE_RATE_LIMIT,
+        window_seconds=settings.RATE_LIMIT_WINDOW_SECONDS,
+    ):
+        return JsonResponse({"error": "rate_limited"}, status=429)
+    if not is_allowed(
+        identifier=f"user:{request.user.id}",
+        bucket="bartender",
+        limit=settings.BARTENDER_RATE_LIMIT,
+        window_seconds=settings.RATE_LIMIT_WINDOW_SECONDS,
+    ):
+        return JsonResponse({"error": "rate_limited"}, status=429)
+    serializer = BartenderJobCreateSerializer(data=request.data)
+    if not serializer.is_valid():
+        return JsonResponse({"error": "invalid_request"}, status=400)
+    prompt = serializer.validated_data["message"].strip()
+    question_text = prompt if bartender.is_mentioned(prompt) else f"@Семён {prompt}"
+    if len(question_text) > MESSAGE_MAX_LENGTH:
+        return JsonResponse({"error": "invalid_message"}, status=400)
+    private = serializer.validated_data["private"]
+    recipient = bartender.get_bartender_user() if private else None
+    question = MessageService.create_message(
+        user_id=request.user.id,
+        room=room,
+        text=question_text,
+        recipient_id=recipient.id if recipient else None,
+    )
+    broadcast_message(question)
+    job = enqueue_bartender_job(
+        user=request.user,
+        room=room,
+        question=question,
+        private=private,
+    )
+    return JsonResponse(BartenderJobSerializer(job).data, status=202)
+
+
+@extend_schema(
+    tags=("chat",),
+    auth=({"cookieAuth": []},),
+    responses={
+        200: BartenderJobSerializer,
+        401: ChatApiErrorSerializer,
+        403: ChatApiErrorSerializer,
+        404: ChatApiErrorSerializer,
+    },
+)
+@api_view(("GET",))
+def api_bartender_job(request, job_id):
+    if error := auth_error(request):
+        return error
+    job = BartenderJob.objects.filter(pk=job_id, user=request.user).first()
+    if job is None:
+        return JsonResponse({"error": "job_not_found"}, status=404)
+    return JsonResponse(BartenderJobSerializer(job).data)
