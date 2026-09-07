@@ -6,7 +6,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.db.models import Case, IntegerField, Q, Value, When
+from django.db.models import Q
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -31,39 +31,7 @@ from .models import (
 from .services.attachments import AttachmentValidationError, create_attachments
 from .services.messages import MessageService
 from .services.navigation import get_last_room_url
-
-
-# Порядок повторяет маршрут гостя по бару, а не алфавитный список.
-PUBLIC_ROOM_ORDER = (
-    "u-stoyki",
-    "vozle-bilyarda",
-    "kurilka",
-    "podval",
-    "posle-zakrytiya",
-)
-
-
-def get_visible_rooms(user):
-    """Возвращает открытые комнаты и личные столики текущего гостя."""
-    rooms = Room.objects.filter(visibility=Room.Visibility.PUBLIC)
-    if user.is_authenticated:
-        rooms = Room.objects.filter(
-            Q(visibility=Room.Visibility.PUBLIC)
-            | Q(memberships__user=user),
-        ).distinct()
-    public_room_order = Case(
-        *[
-            When(slug=slug, then=Value(position))
-            for position, slug in enumerate(PUBLIC_ROOM_ORDER)
-        ],
-        default=Value(len(PUBLIC_ROOM_ORDER)),
-        output_field=IntegerField(),
-    )
-    return rooms.annotate(room_order=public_room_order).order_by(
-        "visibility",
-        "room_order",
-        "name",
-    )
+from .selectors import get_visible_rooms
 
 
 def add_unread_counts(rooms, user):

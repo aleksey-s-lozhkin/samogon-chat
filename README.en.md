@@ -15,7 +15,7 @@ rooms, direct messages, private tables, and a local AI bartender named Semyon.
 - registration, password recovery, GitHub and Google OAuth;
 - installable PWA and opt-in Web Push notifications;
 - light, dark, and system themes;
-- a versioned diagnostics API with OpenAPI and Swagger.
+- a versioned chat, profile, and Web Push API with OpenAPI and Swagger.
 
 ## Stack
 

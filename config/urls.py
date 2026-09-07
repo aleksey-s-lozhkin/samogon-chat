@@ -15,6 +15,7 @@ urlpatterns = [
         name="api_docs",
     ),
     path("api/v1/", include("users.api.urls")),
+    path("api/v1/chat/", include("chat.api.urls")),
     path("accounts/", include("allauth.urls")),
     path("chat/", include("chat.urls")),
     path("users/", include("users.urls")),

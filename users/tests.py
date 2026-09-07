@@ -371,6 +371,31 @@ class ModeratorReportPushTests(TestCase):
         self.assertNotIn("message", payload)
 
 
+class CurrentUserApiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="alex", message_color="sage")
+
+    def test_current_user_requires_authentication(self):
+        self.assertEqual(self.client.get("/api/v1/users/me/").status_code, 401)
+
+    def test_current_user_returns_profile_and_updates_status(self):
+        self.client.force_login(self.user)
+        response = self.client.get("/api/v1/users/me/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["username"], "alex")
+        self.assertEqual(response.json()["message_color"], "sage")
+
+        response = self.client.patch(
+            "/api/v1/users/me/",
+            {"presence_status": "thinking"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["presence_status_label"], "Думаю")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.presence_status, "thinking")
+
+
 class PushDiagnosticApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="api-user", password="password")

@@ -43,3 +43,18 @@ class PushSelfTestResponseSerializer(serializers.Serializer):
     accepted = serializers.IntegerField(min_value=0)
     failed = serializers.IntegerField(min_value=0)
     removed = serializers.IntegerField(min_value=0)
+
+
+class CurrentUserSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    avatar_url = serializers.CharField(allow_null=True)
+    message_color = serializers.CharField()
+    presence_status = serializers.CharField(allow_blank=True)
+    presence_status_label = serializers.CharField(allow_blank=True)
+
+
+class PresenceStatusUpdateSerializer(serializers.Serializer):
+    presence_status = serializers.ChoiceField(
+        choices=("", "reading", "eating", "beer", "thinking", "smoking", "back_soon"),
+        allow_blank=True,
+    )
