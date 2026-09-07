@@ -4,6 +4,8 @@ from .views import (
     api_message_attachments,
     api_message_reactions,
     api_message_report,
+    api_note_detail,
+    api_notes,
     api_room_messages,
     api_rooms,
 )
@@ -11,6 +13,8 @@ from .views import (
 
 urlpatterns = [
     path("rooms/", api_rooms, name="api_v1_chat_rooms"),
+    path("notes/", api_notes, name="api_v1_chat_notes"),
+    path("notes/<int:note_id>/", api_note_detail, name="api_v1_chat_note_detail"),
     path("rooms/<slug:room_slug>/messages/", api_room_messages, name="api_v1_chat_messages"),
     path(
         "rooms/<slug:room_slug>/messages/<int:message_id>/reactions/",

@@ -2,11 +2,11 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
 from django.contrib.auth import get_user_model
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework.decorators import api_view
 
-from chat.models import Message, Room
+from chat.models import Message, Note, Room
 from chat.selectors import get_visible_rooms
 from chat.services.attachments import AttachmentValidationError, create_attachments
 from chat.services.events import broadcast_attachment_update, message_group_names
@@ -25,6 +25,9 @@ from .serializers import (
     MessageReportSerializer,
     MessageSerializer,
     MessagesResponseSerializer,
+    NoteCreateSerializer,
+    NoteMutationResponseSerializer,
+    NotesResponseSerializer,
     ReactionSerializer,
     ReactionToggleSerializer,
     RoomsResponseSerializer,
@@ -308,3 +311,96 @@ def api_message_attachments(request, room_slug, message_id):
     payload = [MessageService.serialize_attachment(item) for item in attachments]
     broadcast_attachment_update(message, payload)
     return JsonResponse({"attachments": payload}, status=201)
+
+
+@extend_schema_view(
+    get=extend_schema(
+        tags=("chat",),
+        auth=({"cookieAuth": []},),
+        responses={
+            200: NotesResponseSerializer,
+            401: ChatApiErrorSerializer,
+            403: ChatApiErrorSerializer,
+        },
+    ),
+    post=extend_schema(
+        tags=("chat",),
+        auth=({"cookieAuth": []},),
+        request={"application/json": NoteCreateSerializer},
+        responses={
+            200: NoteMutationResponseSerializer,
+            201: NoteMutationResponseSerializer,
+            400: ChatApiErrorSerializer,
+            401: ChatApiErrorSerializer,
+            403: ChatApiErrorSerializer,
+            404: ChatApiErrorSerializer,
+        },
+    ),
+)
+@api_view(("GET", "POST"))
+def api_notes(request):
+    if error := auth_error(request):
+        return error
+    if request.method == "GET":
+        notes = request.user.chat_notes.prefetch_related("attachments")
+        return JsonResponse(
+            {
+                "api_version": "v1",
+                "notes": [MessageService.serialize_note(note) for note in notes],
+            }
+        )
+
+    serializer = NoteCreateSerializer(data=request.data)
+    if not serializer.is_valid():
+        return JsonResponse({"error": "invalid_note"}, status=400)
+    source_message_id = serializer.validated_data.get("source_message_id")
+    if source_message_id is not None:
+        source_message = Message.objects.select_related(
+            "room",
+            "recipient",
+            "user",
+        ).prefetch_related("attachments").filter(
+            pk=source_message_id,
+            hidden_at__isnull=True,
+        ).first()
+        if source_message is None or not MessageService.can_view_message(
+            message=source_message,
+            user=request.user,
+        ):
+            return JsonResponse({"error": "message_not_found"}, status=404)
+        note, created = MessageService.save_note(
+            user=request.user,
+            text="",
+            source_message=source_message,
+        )
+    else:
+        note, created = MessageService.save_note(
+            user=request.user,
+            text=serializer.validated_data["text"].strip(),
+        )
+    note = Note.objects.prefetch_related("attachments").get(pk=note.pk)
+    return JsonResponse(
+        {"note": MessageService.serialize_note(note), "created": created},
+        status=201 if created else 200,
+    )
+
+
+@extend_schema(
+    tags=("chat",),
+    auth=({"cookieAuth": []},),
+    responses={
+        204: None,
+        401: ChatApiErrorSerializer,
+        403: ChatApiErrorSerializer,
+        404: ChatApiErrorSerializer,
+    },
+)
+@api_view(("DELETE",))
+def api_note_detail(request, note_id):
+    if error := auth_error(request):
+        return error
+    note = Note.objects.filter(pk=note_id, user=request.user).first()
+    if note is None:
+        return JsonResponse({"error": "note_not_found"}, status=404)
+    note.delete()
+    return HttpResponse(status=204)
