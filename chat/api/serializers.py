@@ -64,3 +64,24 @@ class MessageReportCreateSerializer(serializers.Serializer):
 class MessageReportSerializer(serializers.Serializer):
     reported = serializers.BooleanField()
     created = serializers.BooleanField()
+
+
+class AttachmentUploadSerializer(serializers.Serializer):
+    files = serializers.ListField(
+        child=serializers.FileField(),
+        min_length=1,
+        max_length=3,
+    )
+
+
+class AttachmentSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    name = serializers.CharField()
+    size = serializers.IntegerField(min_value=1)
+    kind = serializers.ChoiceField(choices=("image", "file"))
+    preview_url = serializers.CharField()
+    download_url = serializers.CharField()
+
+
+class AttachmentsResponseSerializer(serializers.Serializer):
+    attachments = AttachmentSerializer(many=True)

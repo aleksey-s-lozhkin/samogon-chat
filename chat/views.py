@@ -28,6 +28,7 @@ from .models import (
     RoomMembership,
 )
 from .services.attachments import AttachmentValidationError, create_attachments
+from .services.events import broadcast_attachment_update
 from .services.messages import MessageService
 from .services.navigation import get_last_room_url
 from .services.reports import create_message_report
@@ -416,32 +417,6 @@ def delete_note(request, note_id):
     note = get_object_or_404(Note, id=note_id, user=request.user)
     note.delete()
     return redirect("chat:notes")
-
-
-def broadcast_attachment_update(message, attachments):
-    """Отправляет новые вложения только тем же людям, что видят сообщение."""
-    event = {
-        "type": "attachment_update",
-        "message_id": message.id,
-        "attachments": attachments,
-        "room_slug": message.room.slug,
-    }
-    channel_layer = get_channel_layer()
-    if message.recipient_id:
-        group_names = [
-            f"chat_user_{message.user_id}",
-            f"chat_user_{message.recipient_id}",
-        ]
-    elif message.room.is_private:
-        group_names = [
-            f"chat_user_{user_id}"
-            for user_id in message.room.memberships.values_list("user_id", flat=True)
-        ]
-    else:
-        group_names = [f"chat_{message.room.slug}"]
-
-    for group_name in group_names:
-        async_to_sync(channel_layer.group_send)(group_name, event)
 
 
 def broadcast_message_deleted(message):
