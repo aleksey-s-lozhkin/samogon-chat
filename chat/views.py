@@ -16,7 +16,6 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 
 from config.rate_limit import is_allowed
 from users.models import User
-from users.services.push import send_moderator_report_push
 
 from .forms import MessageSearchForm, PrivateRoomForm
 from .models import (
@@ -31,6 +30,7 @@ from .models import (
 from .services.attachments import AttachmentValidationError, create_attachments
 from .services.messages import MessageService
 from .services.navigation import get_last_room_url
+from .services.reports import create_message_report
 from .selectors import get_visible_rooms
 
 
@@ -327,13 +327,12 @@ def report_message(request, message_id):
     if message.user_id == request.user.id:
         return JsonResponse({"error": "На свою реплику жалоба не нужна."}, status=400)
 
-    report, created = MessageReport.objects.get_or_create(
+    report, created = create_message_report(
         message=message,
         reporter=request.user,
-        defaults={"reason": reason, "details": details},
+        reason=reason,
+        details=details,
     )
-    if created:
-        send_moderator_report_push()
     return JsonResponse({"reported": True, "created": created}, status=201 if created else 200)
 
 

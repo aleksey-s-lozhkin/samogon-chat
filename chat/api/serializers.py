@@ -42,3 +42,25 @@ class MessageCreateSerializer(serializers.Serializer):
     message = serializers.CharField(max_length=1000, trim_whitespace=True)
     recipient = serializers.CharField(required=False, allow_null=True, allow_blank=False)
     reply_to = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+
+
+class ReactionToggleSerializer(serializers.Serializer):
+    emoji = serializers.ChoiceField(choices=("👍", "❤️", "😂", "🔥", "🤝"))
+
+
+class ReactionSerializer(serializers.Serializer):
+    message_id = serializers.IntegerField()
+    emoji = serializers.CharField()
+    count = serializers.IntegerField(min_value=0)
+    active = serializers.BooleanField()
+    users = serializers.ListField(child=serializers.CharField())
+
+
+class MessageReportCreateSerializer(serializers.Serializer):
+    reason = serializers.ChoiceField(choices=("abuse", "spam", "privacy", "other"))
+    details = serializers.CharField(required=False, allow_blank=True, max_length=240)
+
+
+class MessageReportSerializer(serializers.Serializer):
+    reported = serializers.BooleanField()
+    created = serializers.BooleanField()
