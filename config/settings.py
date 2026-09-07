@@ -200,7 +200,13 @@ EMAIL_USE_SSL = os.getenv("EMAIL_USE_SSL", "0") == "1"
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@localhost")
 
 REDIS_URL = os.getenv("REDIS_URL")
-CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", REDIS_URL or "redis://127.0.0.1:6379/0")
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL") or (
+    REDIS_URL.split("?", 1)[0] if REDIS_URL else "redis://127.0.0.1:6379/0"
+)
+CELERY_BROKER_TRANSPORT_OPTIONS = {
+    "socket_timeout": int(os.getenv("CELERY_REDIS_SOCKET_TIMEOUT", "10")),
+    "socket_connect_timeout": int(os.getenv("CELERY_REDIS_CONNECT_TIMEOUT", "5")),
+}
 CELERY_TASK_IGNORE_RESULT = True
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_ACKS_LATE = True
