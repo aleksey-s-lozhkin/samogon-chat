@@ -25,3 +25,20 @@ def broadcast_attachment_update(message, attachments):
     channel_layer = get_channel_layer()
     for group_name in message_group_names(message):
         async_to_sync(channel_layer.group_send)(group_name, event)
+
+
+def broadcast_message(message):
+    """Публикует сохранённую реплику в тех же группах, что WebSocket."""
+    from chat.services.messages import MessageService
+
+    payload = MessageService.serialize_message(message, viewer_id=message.user_id)
+    event = {
+        "type": "direct_message" if message.recipient_id else "chat_message",
+        **payload,
+        "timestamp": payload["created_at"],
+        "room_slug": message.room.slug,
+        "room_private": message.room.is_private,
+    }
+    channel_layer = get_channel_layer()
+    for group_name in message_group_names(message):
+        async_to_sync(channel_layer.group_send)(group_name, event)

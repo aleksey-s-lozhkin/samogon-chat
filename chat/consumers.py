@@ -13,7 +13,8 @@ from django.utils import timezone
 from config.rate_limit import is_allowed
 
 from .models import Message, Room
-from .services.bartender import BartenderUnavailable, bartender
+from .services.bartender import bartender
+from .services.jobs import enqueue_bartender_job
 from .services.messages import MessageService
 from .services.presence import online_users
 from .services.welcome import ensure_welcome_message
@@ -270,7 +271,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     room_slug=self.room.slug,
                 )
             if bartender_question and bartender_private:
-                await self.reply_as_bartender(message_text, recipient=self.user)
+                await self.enqueue_bartender_job(message, private=True)
             return
 
         if self.room.is_private:
@@ -279,7 +280,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.channel_layer.group_send(self.room_group_name, event)
 
         if bartender_question:
-            await self.reply_as_bartender(message_text)
+            await self.enqueue_bartender_job(message, private=False)
 
     async def chat_message(self, event):
         await self.send_message(event)
@@ -515,49 +516,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             window_seconds=settings.RATE_LIMIT_WINDOW_SECONDS,
         )
 
-    async def reply_as_bartender(self, message_text, recipient=None):
-        try:
-            reply = await self.get_bartender_reply(message_text)
-        except BartenderUnavailable:
-            await self.send_error(
-                "Семён сейчас отошёл от стойки. Попробуйте чуть позже."
-            )
-            return
-
-        bartender_user = await self.get_bartender_user()
-        message = await self.create_message(
-            user=bartender_user,
-            text=reply,
-            recipient=recipient,
-        )
-        event = {
-            "type": "direct_message" if recipient else "chat_message",
-            "id": message.id,
-            "username": "Семён",
-            "avatar_url": MessageService.get_avatar_url(bartender_user),
-            "message": message.text,
-            "timestamp": message.created_at.isoformat(),
-            "recipient": recipient.username if recipient else None,
-            "private": recipient is not None,
-            "color": "amber",
-            "attachments": [],
-            "reactions": [],
-            "room_slug": self.room.slug,
-            "room_private": self.room.is_private,
-        }
-        if recipient:
-            await self.channel_layer.group_send(f"chat_user_{recipient.id}", event)
-            schedule_direct_message_push(
-                recipient_id=recipient.id,
-                room_slug=self.room.slug,
-            )
-            return
-
-        if self.room.is_private:
-            await self.send_to_private_room(event)
-        else:
-            await self.channel_layer.group_send(self.room_group_name, event)
-
     async def send_to_private_room(self, event):
         """Доставляет реплику всем участникам тайного столика."""
         for user_id in await self.get_room_member_ids():
@@ -640,16 +598,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return user is None or user.is_superuser or not user.is_active or user.is_banned
 
     @database_sync_to_async
-    def get_bartender_reply(self, message_text):
-        return bartender.reply(
-            room_name=self.room.name,
-            username=self.user.username,
-            text=message_text,
-        ).text
-
-    @database_sync_to_async
     def get_bartender_user(self):
         return bartender.get_bartender_user()
+
+    @database_sync_to_async
+    def enqueue_bartender_job(self, message, private):
+        return enqueue_bartender_job(
+            user=self.user,
+            room=self.room,
+            question=message,
+            private=private,
+        )
 
     @database_sync_to_async
     def ensure_welcome_message(self):
