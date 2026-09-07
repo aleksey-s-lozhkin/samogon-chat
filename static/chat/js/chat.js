@@ -1720,9 +1720,9 @@ document.getElementById("scroll-to-latest")?.addEventListener("click", () => {
     document.getElementById("scroll-to-latest")?.classList.add("hidden");
 });
 document.getElementById("chat-log")?.addEventListener("scroll", (event) => {
-    if (isNearBottom(event.currentTarget)) {
-        document.getElementById("scroll-to-latest")?.classList.add("hidden");
-    }
+    document
+        .getElementById("scroll-to-latest")
+        ?.classList.toggle("hidden", isNearBottom(event.currentTarget));
 });
 document.getElementById("toggle-online-users")?.addEventListener("click", () => {
     togglePresenceList("online-users-list");

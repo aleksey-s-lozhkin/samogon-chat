@@ -613,6 +613,24 @@ a {
     color: var(--primary-hover);
 }
 
+.room-navigation-icon svg,
+.room-title-icon svg,
+.room-icon svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.8;
+}
+
+.utility-navigation-icon svg {
+    width: 23px;
+    height: 23px;
+    stroke-width: 2;
+}
+
 .rooms-empty {
     padding: 20px 12px;
 
@@ -800,6 +818,12 @@ a {
     letter-spacing: -0.02em;
 }
 
+.room-title-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .room-header p {
     margin: 5px 0 0;
 
@@ -877,16 +901,18 @@ a {
 #online-users-list,
 #offline-users-list {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 7px;
 
     margin-top: 8px;
 }
 
 .online-user {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 5px;
+
+    width: 100%;
 
     padding: 4px 9px;
 
@@ -2090,9 +2116,24 @@ html[data-theme="light"] .message-skeleton-line::after {
     bottom: 18px;
     z-index: 2;
 
-    padding: 9px 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
 
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.scroll-to-latest svg {
+    width: 25px;
+    height: 25px;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2.2;
 }
 
 .scroll-to-latest:hover {
@@ -4599,6 +4640,29 @@ html[data-theme="light"] .direct-recipient button,
 html[data-theme="light"] .bartender-visibility button,
 html[data-theme="light"] .recipient-cancel {
     background: rgba(255, 255, 255, 0.66);
+}
+
+/* Спокойные навигационные контролы без постоянной рамки. Клавиатурный фокус
+   остаётся заметным и не зависит от hover-состояния. */
+.layout-toggle,
+.profile-link,
+.user-actions button,
+.presence-status-control select,
+.online-user,
+.room-navigation-item,
+.scroll-to-latest {
+    border-color: transparent;
+}
+
+.layout-toggle:focus-visible,
+.profile-link:focus-visible,
+.user-actions button:focus-visible,
+.presence-status-control select:focus-visible,
+.online-user:focus-visible,
+.room-navigation-item:focus-visible,
+.scroll-to-latest:focus-visible {
+    outline: 2px solid var(--primary-hover);
+    outline-offset: 2px;
 }
 
 @media (max-width: 700px) {
