@@ -9,6 +9,7 @@ from rest_framework.decorators import api_view
 from chat.models import Message, Room
 from chat.selectors import get_visible_rooms
 from chat.services.messages import MessageService
+from chat.services.reports import create_message_report
 from chat.validators import MESSAGE_MAX_LENGTH
 from config.rate_limit import is_allowed
 from users.services.push import send_direct_message_push
@@ -16,8 +17,12 @@ from users.services.push import send_direct_message_push
 from .serializers import (
     ChatApiErrorSerializer,
     MessageCreateSerializer,
+    MessageReportCreateSerializer,
+    MessageReportSerializer,
     MessageSerializer,
     MessagesResponseSerializer,
+    ReactionSerializer,
+    ReactionToggleSerializer,
     RoomsResponseSerializer,
 )
 
@@ -39,6 +44,28 @@ def visible_rooms(user):
 
 def accessible_room(user, slug):
     return visible_rooms(user).filter(slug=slug).first()
+
+
+def accessible_message(user, room, message_id):
+    message = Message.objects.select_related("room", "recipient", "user").filter(
+        pk=message_id,
+        room=room,
+        hidden_at__isnull=True,
+    ).first()
+    if message is None or not MessageService.can_view_message(message=message, user=user):
+        return None
+    return message
+
+
+def message_groups(message):
+    if message.recipient_id:
+        return {f"chat_user_{message.user_id}", f"chat_user_{message.recipient_id}"}
+    if message.room.is_private:
+        return {
+            f"chat_user_{user_id}"
+            for user_id in message.room.memberships.values_list("user_id", flat=True)
+        }
+    return {f"chat_{message.room.slug}"}
 
 
 def room_data(room, user):
@@ -131,3 +158,108 @@ def api_room_messages(request, room_slug):
     if recipient and recipient.username != settings.BARTENDER_USERNAME:
         send_direct_message_push(recipient_id=recipient.id, room_slug=room.slug)
     return JsonResponse(payload, status=201)
+
+
+@extend_schema(
+    tags=("chat",),
+    auth=({"cookieAuth": []},),
+    request=ReactionToggleSerializer,
+    responses={
+        200: ReactionSerializer,
+        400: ChatApiErrorSerializer,
+        401: ChatApiErrorSerializer,
+        403: ChatApiErrorSerializer,
+        404: ChatApiErrorSerializer,
+        429: ChatApiErrorSerializer,
+    },
+)
+@api_view(("POST",))
+def api_message_reactions(request, room_slug, message_id):
+    if error := auth_error(request):
+        return error
+    room = accessible_room(request.user, room_slug)
+    if room is None:
+        return JsonResponse({"error": "room_not_found"}, status=404)
+    message = accessible_message(request.user, room, message_id)
+    if message is None:
+        return JsonResponse({"error": "message_not_found"}, status=404)
+    if not is_allowed(
+        identifier=f"user:{request.user.id}",
+        bucket="reaction",
+        limit=settings.REACTION_RATE_LIMIT,
+        window_seconds=settings.RATE_LIMIT_WINDOW_SECONDS,
+    ):
+        return JsonResponse({"error": "rate_limited"}, status=429)
+    serializer = ReactionToggleSerializer(data=request.data)
+    if not serializer.is_valid():
+        return JsonResponse({"error": "invalid_reaction"}, status=400)
+
+    emoji = serializer.validated_data["emoji"]
+    count, active, users = MessageService.toggle_reaction(
+        message=message,
+        user=request.user,
+        emoji=emoji,
+    )
+    payload = {
+        "message_id": message.id,
+        "emoji": emoji,
+        "count": count,
+        "active": active,
+        "users": users,
+    }
+    event = {
+        "type": "reaction_update",
+        **payload,
+        "actor_username": request.user.username,
+        "room_slug": room.slug,
+    }
+    channel_layer = get_channel_layer()
+    for group in message_groups(message):
+        async_to_sync(channel_layer.group_send)(group, event)
+    return JsonResponse(payload)
+
+
+@extend_schema(
+    tags=("chat",),
+    auth=({"cookieAuth": []},),
+    request=MessageReportCreateSerializer,
+    responses={
+        200: MessageReportSerializer,
+        201: MessageReportSerializer,
+        400: ChatApiErrorSerializer,
+        401: ChatApiErrorSerializer,
+        403: ChatApiErrorSerializer,
+        404: ChatApiErrorSerializer,
+        429: ChatApiErrorSerializer,
+    },
+)
+@api_view(("POST",))
+def api_message_report(request, room_slug, message_id):
+    if error := auth_error(request):
+        return error
+    room = accessible_room(request.user, room_slug)
+    if room is None:
+        return JsonResponse({"error": "room_not_found"}, status=404)
+    message = accessible_message(request.user, room, message_id)
+    if message is None:
+        return JsonResponse({"error": "message_not_found"}, status=404)
+    if message.user_id == request.user.id:
+        return JsonResponse({"error": "own_message"}, status=400)
+    if not is_allowed(
+        identifier=f"user:{request.user.id}",
+        bucket="message-report",
+        limit=settings.MESSAGE_REPORT_RATE_LIMIT,
+        window_seconds=settings.RATE_LIMIT_WINDOW_SECONDS,
+    ):
+        return JsonResponse({"error": "rate_limited"}, status=429)
+    serializer = MessageReportCreateSerializer(data=request.data)
+    if not serializer.is_valid():
+        return JsonResponse({"error": "invalid_report"}, status=400)
+
+    report, created = create_message_report(
+        message=message,
+        reporter=request.user,
+        reason=serializer.validated_data["reason"],
+        details=serializer.validated_data.get("details", "").strip(),
+    )
+    return JsonResponse({"reported": True, "created": created}, status=201 if created else 200)

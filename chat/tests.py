@@ -418,7 +418,7 @@ class MessageReportViewTests(TestCase):
         self.message.refresh_from_db()
         self.assertIsNone(self.message.hidden_at)
 
-    @patch("chat.views.send_moderator_report_push")
+    @patch("chat.services.reports.send_moderator_report_push")
     def test_push_is_sent_only_for_new_report(self, send_push):
         self.client.force_login(self.reporter)
         payload = json.dumps({"reason": "spam"})
@@ -1127,6 +1127,109 @@ class ChatApiTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+    def test_api_toggles_reaction_and_returns_participants(self):
+        message = Message.objects.create(user=self.other, room=self.room, text="hello")
+        self.client.force_login(self.user)
+        url = f"/api/v1/chat/rooms/general/messages/{message.id}/reactions/"
+
+        added = self.client.post(url, {"emoji": "🔥"}, content_type="application/json")
+        removed = self.client.post(url, {"emoji": "🔥"}, content_type="application/json")
+
+        self.assertEqual(added.status_code, 200)
+        self.assertEqual(
+            added.json(),
+            {
+                "message_id": message.id,
+                "emoji": "🔥",
+                "count": 1,
+                "active": True,
+                "users": ["alex"],
+            },
+        )
+        self.assertEqual(removed.json()["count"], 0)
+        self.assertFalse(removed.json()["active"])
+
+    def test_api_reaction_does_not_disclose_foreign_direct_message(self):
+        message = Message.objects.create(
+            user=self.other,
+            recipient=self.outsider,
+            room=self.room,
+            text="secret",
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            f"/api/v1/chat/rooms/general/messages/{message.id}/reactions/",
+            {"emoji": "👍"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(MessageReaction.objects.exists())
+
+    @patch("chat.services.reports.send_moderator_report_push")
+    def test_api_creates_report_once_and_notifies_moderators_once(self, send_push):
+        message = Message.objects.create(user=self.other, room=self.room, text="spam")
+        self.client.force_login(self.user)
+        url = f"/api/v1/chat/rooms/general/messages/{message.id}/reports/"
+        payload = {"reason": "spam", "details": "Repeated links"}
+
+        created = self.client.post(url, payload, content_type="application/json")
+        duplicate = self.client.post(url, payload, content_type="application/json")
+
+        self.assertEqual(created.status_code, 201)
+        self.assertEqual(created.json(), {"reported": True, "created": True})
+        self.assertEqual(duplicate.status_code, 200)
+        self.assertEqual(duplicate.json(), {"reported": True, "created": False})
+        self.assertEqual(MessageReport.objects.get().details, "Repeated links")
+        send_push.assert_called_once_with()
+
+    def test_api_rejects_own_report_and_invalid_action_payloads(self):
+        own_message = Message.objects.create(user=self.user, room=self.room, text="mine")
+        other_message = Message.objects.create(user=self.other, room=self.room, text="other")
+        self.client.force_login(self.user)
+
+        own_report = self.client.post(
+            f"/api/v1/chat/rooms/general/messages/{own_message.id}/reports/",
+            {"reason": "other"},
+            content_type="application/json",
+        )
+        invalid_report = self.client.post(
+            f"/api/v1/chat/rooms/general/messages/{other_message.id}/reports/",
+            {"reason": "unknown"},
+            content_type="application/json",
+        )
+        invalid_reaction = self.client.post(
+            f"/api/v1/chat/rooms/general/messages/{other_message.id}/reactions/",
+            {"emoji": "❌"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(own_report.status_code, 400)
+        self.assertEqual(own_report.json()["error"], "own_message")
+        self.assertEqual(invalid_report.status_code, 400)
+        self.assertEqual(invalid_reaction.status_code, 400)
+        self.assertFalse(MessageReport.objects.exists())
+
+    def test_api_actions_require_csrf_for_session_authentication(self):
+        message = Message.objects.create(user=self.other, room=self.room, text="hello")
+        csrf_client = self.client_class(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+
+        reaction = csrf_client.post(
+            f"/api/v1/chat/rooms/general/messages/{message.id}/reactions/",
+            {"emoji": "👍"},
+            content_type="application/json",
+        )
+        report = csrf_client.post(
+            f"/api/v1/chat/rooms/general/messages/{message.id}/reports/",
+            {"reason": "spam"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(reaction.status_code, 403)
+        self.assertEqual(report.status_code, 403)
 
 
 class ChatLayoutViewsTests(TestCase):
