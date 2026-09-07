@@ -1,6 +1,12 @@
 from django.urls import path
 
-from .views import api_message_reactions, api_message_report, api_room_messages, api_rooms
+from .views import (
+    api_message_attachments,
+    api_message_reactions,
+    api_message_report,
+    api_room_messages,
+    api_rooms,
+)
 
 
 urlpatterns = [
@@ -15,5 +21,10 @@ urlpatterns = [
         "rooms/<slug:room_slug>/messages/<int:message_id>/reports/",
         api_message_report,
         name="api_v1_chat_message_report",
+    ),
+    path(
+        "rooms/<slug:room_slug>/messages/<int:message_id>/attachments/",
+        api_message_attachments,
+        name="api_v1_chat_message_attachments",
     ),
 ]

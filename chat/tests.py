@@ -1231,6 +1231,78 @@ class ChatApiTests(TestCase):
         self.assertEqual(reaction.status_code, 403)
         self.assertEqual(report.status_code, 403)
 
+    @patch("chat.api.views.broadcast_attachment_update")
+    def test_api_uploads_checked_attachments_and_broadcasts_urls(self, broadcast):
+        message = Message.objects.create(user=self.user, room=self.room, text="files")
+        self.client.force_login(self.user)
+        url = f"/api/v1/chat/rooms/general/messages/{message.id}/attachments/"
+
+        with tempfile.TemporaryDirectory() as media_root, self.settings(MEDIA_ROOT=media_root):
+            response = self.client.post(
+                url,
+                {
+                    "files": [
+                        SimpleUploadedFile("notes.txt", b"content"),
+                        SimpleUploadedFile("guide.pdf", b"%PDF-1.7\ncontent"),
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(message.attachments.count(), 2)
+        payload = response.json()["attachments"]
+        self.assertEqual(payload[0]["name"], "notes.txt")
+        self.assertIn("/chat/attachments/", payload[0]["preview_url"])
+        self.assertNotIn("chat/attachments/", payload[0]["name"])
+        broadcast.assert_called_once_with(message, payload)
+
+    def test_api_attachment_upload_is_author_only_and_all_or_nothing(self):
+        message = Message.objects.create(user=self.user, room=self.room, text="files")
+        url = f"/api/v1/chat/rooms/general/messages/{message.id}/attachments/"
+        self.client.force_login(self.outsider)
+
+        forbidden = self.client.post(
+            url,
+            {"files": [SimpleUploadedFile("notes.txt", b"content")]},
+        )
+        self.client.force_login(self.user)
+        with tempfile.TemporaryDirectory() as media_root, self.settings(MEDIA_ROOT=media_root):
+            invalid = self.client.post(
+                url,
+                {
+                    "files": [
+                        SimpleUploadedFile("valid.txt", b"content"),
+                        SimpleUploadedFile("program.exe", b"binary"),
+                    ],
+                },
+            )
+
+        self.assertEqual(forbidden.status_code, 404)
+        self.assertEqual(invalid.status_code, 400)
+        self.assertEqual(invalid.json()["error"], "invalid_attachment")
+        self.assertFalse(message.attachments.exists())
+
+    def test_api_attachment_upload_requires_multipart_and_csrf(self):
+        message = Message.objects.create(user=self.user, room=self.room, text="files")
+        url = f"/api/v1/chat/rooms/general/messages/{message.id}/attachments/"
+        self.client.force_login(self.user)
+
+        wrong_content_type = self.client.post(
+            url,
+            {"files": []},
+            content_type="application/json",
+        )
+        csrf_client = self.client_class(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+        csrf_response = csrf_client.post(
+            url,
+            {"files": [SimpleUploadedFile("notes.txt", b"content")]},
+        )
+
+        self.assertEqual(wrong_content_type.status_code, 415)
+        self.assertEqual(wrong_content_type.json()["error"], "invalid_content_type")
+        self.assertEqual(csrf_response.status_code, 403)
+
 
 class ChatLayoutViewsTests(TestCase):
     """Проверяет опорные элементы адаптивной раскладки чата."""

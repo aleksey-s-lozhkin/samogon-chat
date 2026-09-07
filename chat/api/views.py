@@ -8,6 +8,8 @@ from rest_framework.decorators import api_view
 
 from chat.models import Message, Room
 from chat.selectors import get_visible_rooms
+from chat.services.attachments import AttachmentValidationError, create_attachments
+from chat.services.events import broadcast_attachment_update, message_group_names
 from chat.services.messages import MessageService
 from chat.services.reports import create_message_report
 from chat.validators import MESSAGE_MAX_LENGTH
@@ -15,6 +17,8 @@ from config.rate_limit import is_allowed
 from users.services.push import send_direct_message_push
 
 from .serializers import (
+    AttachmentsResponseSerializer,
+    AttachmentUploadSerializer,
     ChatApiErrorSerializer,
     MessageCreateSerializer,
     MessageReportCreateSerializer,
@@ -57,17 +61,6 @@ def accessible_message(user, room, message_id):
     return message
 
 
-def message_groups(message):
-    if message.recipient_id:
-        return {f"chat_user_{message.user_id}", f"chat_user_{message.recipient_id}"}
-    if message.room.is_private:
-        return {
-            f"chat_user_{user_id}"
-            for user_id in message.room.memberships.values_list("user_id", flat=True)
-        }
-    return {f"chat_{message.room.slug}"}
-
-
 def room_data(room, user):
     return {
         "slug": room.slug,
@@ -97,7 +90,7 @@ def api_rooms(request):
     post=extend_schema(
         tags=("chat",),
         auth=({"cookieAuth": []},),
-        request=MessageCreateSerializer,
+        request={"application/json": MessageCreateSerializer},
         responses={201: MessageSerializer, 400: ChatApiErrorSerializer, 401: ChatApiErrorSerializer, 403: ChatApiErrorSerializer, 404: ChatApiErrorSerializer, 429: ChatApiErrorSerializer},
     ),
 )
@@ -163,7 +156,7 @@ def api_room_messages(request, room_slug):
 @extend_schema(
     tags=("chat",),
     auth=({"cookieAuth": []},),
-    request=ReactionToggleSerializer,
+    request={"application/json": ReactionToggleSerializer},
     responses={
         200: ReactionSerializer,
         400: ChatApiErrorSerializer,
@@ -214,7 +207,7 @@ def api_message_reactions(request, room_slug, message_id):
         "room_slug": room.slug,
     }
     channel_layer = get_channel_layer()
-    for group in message_groups(message):
+    for group in message_group_names(message):
         async_to_sync(channel_layer.group_send)(group, event)
     return JsonResponse(payload)
 
@@ -222,7 +215,7 @@ def api_message_reactions(request, room_slug, message_id):
 @extend_schema(
     tags=("chat",),
     auth=({"cookieAuth": []},),
-    request=MessageReportCreateSerializer,
+    request={"application/json": MessageReportCreateSerializer},
     responses={
         200: MessageReportSerializer,
         201: MessageReportSerializer,
@@ -263,3 +256,55 @@ def api_message_report(request, room_slug, message_id):
         details=serializer.validated_data.get("details", "").strip(),
     )
     return JsonResponse({"reported": True, "created": created}, status=201 if created else 200)
+
+
+@extend_schema(
+    tags=("chat",),
+    auth=({"cookieAuth": []},),
+    request={"multipart/form-data": AttachmentUploadSerializer},
+    responses={
+        201: AttachmentsResponseSerializer,
+        400: ChatApiErrorSerializer,
+        401: ChatApiErrorSerializer,
+        403: ChatApiErrorSerializer,
+        404: ChatApiErrorSerializer,
+        429: ChatApiErrorSerializer,
+        415: ChatApiErrorSerializer,
+    },
+)
+@api_view(("POST",))
+def api_message_attachments(request, room_slug, message_id):
+    if error := auth_error(request):
+        return error
+    room = accessible_room(request.user, room_slug)
+    if room is None:
+        return JsonResponse({"error": "room_not_found"}, status=404)
+    message = accessible_message(request.user, room, message_id)
+    if message is None or message.user_id != request.user.id:
+        return JsonResponse({"error": "message_not_found"}, status=404)
+    if not is_allowed(
+        identifier=f"user:{request.user.id}",
+        bucket="attachment",
+        limit=settings.ATTACHMENT_RATE_LIMIT,
+        window_seconds=settings.RATE_LIMIT_WINDOW_SECONDS,
+    ):
+        return JsonResponse({"error": "rate_limited"}, status=429)
+    if not (request.content_type or "").startswith("multipart/form-data"):
+        return JsonResponse({"error": "invalid_content_type"}, status=415)
+
+    serializer = AttachmentUploadSerializer(data=request.data)
+    if not serializer.is_valid():
+        return JsonResponse({"error": "invalid_attachment"}, status=400)
+    try:
+        attachments = create_attachments(
+            message=message,
+            uploaded_files=serializer.validated_data["files"],
+        )
+    except AttachmentValidationError as error:
+        return JsonResponse(
+            {"error": "invalid_attachment", "detail": str(error)},
+            status=400,
+        )
+    payload = [MessageService.serialize_attachment(item) for item in attachments]
+    broadcast_attachment_update(message, payload)
+    return JsonResponse({"attachments": payload}, status=201)
