@@ -17,7 +17,7 @@
 
     <link
         rel="stylesheet"
-        href="{% static 'chat/css/chat.css' %}?v=20"
+        href="{% static 'chat/css/chat.css' %}?v=32"
     >
 
     <script
@@ -75,8 +75,8 @@
                     class="room-card"
                 >
 
-                    <div class="room-icon">
-                        #
+                    <div class="room-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false"><path d="M5 5h14v11H9l-4 3V5Z"/></svg>
                     </div>
 
                     <div class="room-info">
@@ -136,7 +136,7 @@
                             href="{% url 'chat:chat' room_slug=room.slug %}"
                             class="room-card private-room-card"
                         >
-                            <div class="room-icon">◌</div>
+                            <div class="room-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 10V8a5 5 0 0 1 10 0v2m-9 0h8a2 2 0 0 1 2 2v7H6v-7a2 2 0 0 1 2-2Z"/></svg></div>
                             <div class="room-info">
                                 <h3>{{ room.name }}</h3>
                                 <p>{{ room.description }}</p>

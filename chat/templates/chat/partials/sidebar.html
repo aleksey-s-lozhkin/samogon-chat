@@ -20,7 +20,7 @@
                 data-room-slug="{{ chat_room.slug }}"
                 @click="roomsOpen = false"
             >
-                <span class="room-navigation-icon" aria-hidden="true">&lt;/&gt;</span>
+                <span class="room-navigation-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M5 5h14v11H9l-4 3V5Z"/></svg></span>
                 <span>{{ chat_room.name }}</span>
                 {% if chat_room.unread_count %}
                     <span class="room-unread-count">{{ chat_room.unread_count }}</span>
@@ -42,7 +42,7 @@
                         data-room-slug="{{ chat_room.slug }}"
                         @click="roomsOpen = false"
                     >
-                        <span class="room-navigation-icon" aria-hidden="true">&lt;/&gt;</span>
+                        <span class="room-navigation-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 10V8a5 5 0 0 1 10 0v2m-9 0h8a2 2 0 0 1 2 2v7H6v-7a2 2 0 0 1 2-2Z"/></svg></span>
                         <span>{{ chat_room.name }}</span>
                         {% if chat_room.unread_count %}
                             <span class="room-unread-count">{{ chat_room.unread_count }}</span>
@@ -70,11 +70,11 @@
         <div class="sidebar-section-title">Личное</div>
         <nav class="rooms-navigation" aria-label="Личные разделы">
             <a href="{% url 'chat:message_search' %}" class="room-navigation-item sidebar-utility">
-                <span class="room-navigation-icon" aria-hidden="true">⌕</span>
+                <span class="room-navigation-icon utility-navigation-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 4 4"/></svg></span>
                 <span>Поиск</span>
             </a>
             <a href="{% url 'chat:notes' %}" class="room-navigation-item sidebar-utility">
-                <span class="room-navigation-icon" aria-hidden="true">✦</span>
+                <span class="room-navigation-icon utility-navigation-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4"/></svg></span>
                 <span>Заметки</span>
             </a>
             <a href="{% url 'profile' %}" class="room-navigation-item sidebar-utility">
