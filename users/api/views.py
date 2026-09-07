@@ -2,12 +2,16 @@ from django.conf import settings
 from django.http import JsonResponse
 from django.urls import reverse
 from django.views.decorators.csrf import ensure_csrf_cookie
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.decorators import api_view
 
 from config.rate_limit import is_allowed
 from users.models import PushSubscription
 from users.services.push import device_id_for_subscription, send_push_self_test
+from chat.consumers import ChatConsumer, PRESENCE_GROUP_NAME
+from chat.services.presence import online_users
 
 from .serializers import (
     ErrorSerializer,
@@ -15,6 +19,8 @@ from .serializers import (
     PushSelfTestResponseSerializer,
     PushSubscriptionsResponseSerializer,
     StatusSerializer,
+    CurrentUserSerializer,
+    PresenceStatusUpdateSerializer,
 )
 
 
@@ -42,6 +48,43 @@ def api_status(request):
             "web_push": {"configured": settings.WEB_PUSH_ENABLED},
         }
     )
+
+
+def current_user_data(user):
+    return {
+        "username": user.username,
+        "avatar_url": user.avatar.url if user.avatar else None,
+        "message_color": user.message_color,
+        "presence_status": user.presence_status,
+        "presence_status_label": user.get_presence_status_display(),
+    }
+
+
+@extend_schema(
+    tags=("users",),
+    auth=({"cookieAuth": []},),
+    request=PresenceStatusUpdateSerializer,
+    responses={200: CurrentUserSerializer, 400: ErrorSerializer, 401: ErrorSerializer, 403: ErrorSerializer},
+)
+@api_view(("GET", "PATCH"))
+def api_current_user(request):
+    if error := api_auth_error(request):
+        return error
+    if request.method == "PATCH":
+        serializer = PresenceStatusUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return JsonResponse({"error": "invalid_request"}, status=400)
+        request.user.presence_status = serializer.validated_data["presence_status"]
+        request.user.save(update_fields=("presence_status",))
+        async_to_sync(get_channel_layer().group_send)(
+            PRESENCE_GROUP_NAME,
+            {
+                "type": "presence_update",
+                "users": async_to_sync(ChatConsumer().get_all_users)(),
+                "online": async_to_sync(online_users.get_all_users)(),
+            },
+        )
+    return JsonResponse(current_user_data(request.user))
 
 
 @extend_schema(

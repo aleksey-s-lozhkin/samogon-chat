@@ -1046,6 +1046,89 @@ class PrivateRoomViewsTests(TestCase):
         )
 
 
+class ChatApiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="alex")
+        self.other = User.objects.create_user(username="maria")
+        self.outsider = User.objects.create_user(username="ivan")
+        self.room = Room.objects.create(name="Общий зал", slug="general")
+        self.private_room = Room.objects.create(
+            name="Тайный столик",
+            slug="private",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.user,
+        )
+        RoomMembership.objects.create(room=self.private_room, user=self.user)
+
+    def test_rooms_require_authentication_and_hide_foreign_private_room(self):
+        self.assertEqual(self.client.get("/api/v1/chat/rooms/").status_code, 401)
+        self.client.force_login(self.outsider)
+        response = self.client.get("/api/v1/chat/rooms/")
+        self.assertEqual(response.status_code, 200)
+        room_slugs = [room["slug"] for room in response.json()["rooms"]]
+        self.assertIn("general", room_slugs)
+        self.assertNotIn("private", room_slugs)
+        self.assertEqual(
+            self.client.get("/api/v1/chat/rooms/private/messages/").status_code,
+            404,
+        )
+
+    def test_history_does_not_disclose_direct_message_to_outsider(self):
+        Message.objects.create(user=self.user, recipient=self.other, room=self.room, text="secret")
+        Message.objects.create(user=self.user, room=self.room, text="public")
+        self.client.force_login(self.outsider)
+
+        response = self.client.get("/api/v1/chat/rooms/general/messages/")
+
+        self.assertEqual([item["message"] for item in response.json()["messages"]], ["public"])
+
+    def test_api_creates_reply_and_inherits_direct_recipient(self):
+        source = Message.objects.create(
+            user=self.other,
+            recipient=self.user,
+            room=self.room,
+            text="private source",
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            "/api/v1/chat/rooms/general/messages/",
+            {"message": "answer", "reply_to": source.id},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201)
+        created = Message.objects.get(text="answer")
+        self.assertEqual(created.recipient, self.other)
+        self.assertEqual(created.reply_to, source)
+        self.assertTrue(response.json()["private"])
+
+    def test_api_rejects_invalid_limit_and_unknown_recipient(self):
+        self.client.force_login(self.user)
+        self.assertEqual(
+            self.client.get("/api/v1/chat/rooms/general/messages/?limit=101").status_code,
+            400,
+        )
+        response = self.client.post(
+            "/api/v1/chat/rooms/general/messages/",
+            {"message": "hello", "recipient": "missing"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_message_creation_requires_csrf_for_session_authentication(self):
+        csrf_client = self.client_class(enforce_csrf_checks=True)
+        csrf_client.force_login(self.user)
+
+        response = csrf_client.post(
+            "/api/v1/chat/rooms/general/messages/",
+            {"message": "hello"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+
 class ChatLayoutViewsTests(TestCase):
     """Проверяет опорные элементы адаптивной раскладки чата."""
 
