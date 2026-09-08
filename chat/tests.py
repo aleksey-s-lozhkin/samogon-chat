@@ -1693,7 +1693,10 @@ class ChatLayoutViewsTests(TestCase):
             source.index("function initializeViewportDiagnostics"):
             source.index("function handleServerEvent")
         ]
-        self.assertIn('params.get("viewport_debug") !== "1"', source)
+        self.assertIn('params.get("viewport_debug") === "1"', source)
+        self.assertIn('document.querySelector(".brand h1")', source)
+        self.assertIn("tapCount >= 7", source)
+        self.assertIn("openViewportDiagnostics", source)
         self.assertIn("collectViewportDiagnostics", source)
         self.assertIn("window.innerWidth", source)
         self.assertIn("visualViewport.offsetTop", source)

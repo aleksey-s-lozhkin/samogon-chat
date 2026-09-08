@@ -226,8 +226,28 @@ function isStandalonePwa() {
 }
 
 function initializeViewportDiagnostics() {
+    let tapCount = 0;
+    let resetTimer = null;
+    document.querySelector(".brand h1")?.addEventListener("click", () => {
+        tapCount += 1;
+        window.clearTimeout(resetTimer);
+        resetTimer = window.setTimeout(() => {
+            tapCount = 0;
+        }, 2500);
+        if (tapCount >= 7) {
+            tapCount = 0;
+            openViewportDiagnostics();
+        }
+    });
+
     const params = new URLSearchParams(window.location.search);
-    if (params.get("viewport_debug") !== "1") {
+    if (params.get("viewport_debug") === "1") {
+        openViewportDiagnostics();
+    }
+}
+
+function openViewportDiagnostics() {
+    if (document.querySelector(".viewport-diagnostics")) {
         return;
     }
 
