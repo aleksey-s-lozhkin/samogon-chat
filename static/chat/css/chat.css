@@ -2211,7 +2211,12 @@ html[data-theme="light"] .message-skeleton-line::after {
 
 .chat-composer {
     position: relative;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    /* .chat-hint already provides 10px below the controls. Count that space
+       as part of the iPhone home-indicator safe area instead of adding it twice. */
+    padding-bottom: max(
+        0px,
+        calc(env(safe-area-inset-bottom, 0px) - 10px)
+    );
 
     border: 1px solid var(--border);
     border-radius: var(--radius);
