@@ -66,6 +66,7 @@ if (isAuthenticated) {
 }
 
 updateAppHeight();
+initializeViewportDiagnostics();
 window.visualViewport?.addEventListener("resize", updateAppHeight);
 window.visualViewport?.addEventListener("scroll", updateAppHeight);
 window.addEventListener("resize", updateAppHeight);
@@ -222,6 +223,104 @@ function updateAppHeight() {
 function isStandalonePwa() {
     return window.navigator.standalone === true
         || window.matchMedia("(display-mode: standalone)").matches;
+}
+
+function initializeViewportDiagnostics() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("viewport_debug") !== "1") {
+        return;
+    }
+
+    const panel = document.createElement("aside");
+    panel.className = "viewport-diagnostics";
+    panel.setAttribute("aria-label", "Диагностика экрана");
+    panel.innerHTML = `
+        <div class="viewport-diagnostics__header">
+            <strong>Viewport debug</strong>
+            <div>
+                <button type="button" data-viewport-copy>Копировать</button>
+                <button type="button" data-viewport-close aria-label="Закрыть">×</button>
+            </div>
+        </div>
+        <pre data-viewport-output></pre>
+        <div class="viewport-safe-area-probe" aria-hidden="true"></div>
+    `;
+    document.body.append(panel);
+
+    const output = panel.querySelector("[data-viewport-output]");
+    const update = () => {
+        if (!panel.isConnected) {
+            return;
+        }
+        output.textContent = collectViewportDiagnostics(panel);
+    };
+    const scheduleUpdate = () => window.requestAnimationFrame(update);
+
+    panel.querySelector("[data-viewport-close]")?.addEventListener("click", () => {
+        panel.remove();
+    });
+    panel.querySelector("[data-viewport-copy]")?.addEventListener("click", async (event) => {
+        try {
+            await navigator.clipboard.writeText(output.textContent);
+            event.currentTarget.textContent = "Скопировано";
+        } catch (error) {
+            output.focus();
+            window.getSelection()?.selectAllChildren(output);
+            event.currentTarget.textContent = "Выделено";
+        }
+    });
+
+    update();
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("orientationchange", scheduleUpdate);
+    window.addEventListener("pageshow", scheduleUpdate);
+    window.visualViewport?.addEventListener("resize", scheduleUpdate);
+    window.visualViewport?.addEventListener("scroll", scheduleUpdate);
+    document.addEventListener("visibilitychange", scheduleUpdate);
+}
+
+function collectViewportDiagnostics(panel) {
+    const visualViewport = window.visualViewport;
+    const rootStyles = getComputedStyle(document.documentElement);
+    const probeStyles = getComputedStyle(
+        panel.querySelector(".viewport-safe-area-probe"),
+    );
+    const orientation = window.matchMedia("(orientation: portrait)").matches
+        ? "portrait"
+        : "landscape";
+    const rect = (selector) => {
+        const element = document.querySelector(selector);
+        if (!element) {
+            return "missing";
+        }
+        const bounds = element.getBoundingClientRect();
+        return ["top", "bottom", "height"]
+            .map((key) => `${key}=${Math.round(bounds[key] * 10) / 10}`)
+            .join(" ");
+    };
+
+    return [
+        `time=${new Date().toISOString()}`,
+        `platform=${navigator.platform || "unknown"}`,
+        `orientation=${orientation}`,
+        `standalone.navigator=${window.navigator.standalone === true}`,
+        `standalone.media=${window.matchMedia("(display-mode: standalone)").matches}`,
+        `window.inner=${window.innerWidth}x${window.innerHeight}`,
+        `document.client=${document.documentElement.clientWidth}x${document.documentElement.clientHeight}`,
+        `screen=${window.screen.width}x${window.screen.height}`,
+        `devicePixelRatio=${window.devicePixelRatio}`,
+        `visualViewport=${visualViewport
+            ? `${visualViewport.width}x${visualViewport.height} offset=${visualViewport.offsetLeft},${visualViewport.offsetTop} scale=${visualViewport.scale}`
+            : "unavailable"}`,
+        `--app-height=${rootStyles.getPropertyValue("--app-height").trim() || "unset"}`,
+        `safeArea=top:${probeStyles.paddingTop} right:${probeStyles.paddingRight} bottom:${probeStyles.paddingBottom} left:${probeStyles.paddingLeft}`,
+        `.chat-page ${rect(".chat-page")}`,
+        `.chat-header ${rect(".chat-page > .chat-header")}`,
+        `.chat-layout ${rect(".chat-layout")}`,
+        `.chat-main ${rect(".chat-main")}`,
+        `.chat-log ${rect(".chat-log")}`,
+        `.chat-composer ${rect(".chat-composer")}`,
+    ].join("\n");
 }
 
 function handleServerEvent(data) {
