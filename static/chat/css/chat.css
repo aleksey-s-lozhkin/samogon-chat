@@ -550,6 +550,16 @@ a {
     text-align: left;
 }
 
+.message-sound-toggle[aria-pressed="true"] {
+    background: rgba(198, 117, 58, 0.1);
+    color: var(--text);
+}
+
+.message-sound-toggle[aria-pressed="true"] .room-navigation-icon {
+    background: rgba(198, 117, 58, 0.18);
+    color: var(--primary-hover);
+}
+
 .bartender-nav-icon {
     background: rgba(198, 117, 58, 0.18);
     color: var(--amber-light);
