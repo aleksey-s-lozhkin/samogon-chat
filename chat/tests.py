@@ -1683,6 +1683,23 @@ class ChatLayoutViewsTests(TestCase):
         self.assertIn('window.addEventListener("pageshow"', source)
         self.assertIn("scheduleWebSocketReconnect()", source)
         self.assertIn("SOCKET_FATAL_CLOSE_CODES", source)
+
+    def test_viewport_diagnostics_are_opt_in_and_contain_no_chat_data(self):
+        with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
+            source = script.read()
+
+        diagnostics = source[
+            source.index("function initializeViewportDiagnostics"):
+            source.index("function handleServerEvent")
+        ]
+        self.assertIn('params.get("viewport_debug") !== "1"', source)
+        self.assertIn("collectViewportDiagnostics", source)
+        self.assertIn("window.innerWidth", source)
+        self.assertIn("visualViewport.offsetTop", source)
+        self.assertIn('rect(".chat-composer")', source)
+        self.assertNotIn("document.cookie", diagnostics)
+        self.assertNotIn("currentUsername", diagnostics)
+        self.assertNotIn("roomSlug", diagnostics)
         self.assertIn("SOCKET_RECONNECT_MAX_DELAY_MS", source)
         self.assertIn(
             'querySelectorAll(".message, .day-divider, .chat-empty-state")',
