@@ -1666,6 +1666,7 @@ class ChatLayoutViewsTests(TestCase):
         self.assertIn(".chat-page {\n        min-height: 0;", css)
         self.assertIn("safe-area-inset-top", css)
         self.assertIn("safe-area-inset-bottom", css)
+        self.assertIn("calc(env(safe-area-inset-bottom, 0px) - 10px)", css)
         self.assertIn("USE_VISUAL_VIEWPORT_HEIGHT", javascript)
         self.assertIn('/Android/i.test(navigator.userAgent)', javascript)
         self.assertIn('/iPhone|iPod/i.test(navigator.userAgent)', javascript)
