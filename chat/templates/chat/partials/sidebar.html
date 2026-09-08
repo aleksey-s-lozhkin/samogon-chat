@@ -77,6 +77,20 @@
                 <span class="room-navigation-icon utility-navigation-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M6 4h12v16H6zM9 8h6M9 12h6M9 16h4"/></svg></span>
                 <span>Заметки</span>
             </a>
+            {% if user.is_authenticated %}
+                <button
+                    id="message-sound-toggle"
+                    class="room-navigation-item sidebar-utility message-sound-toggle"
+                    type="button"
+                    aria-pressed="false"
+                    title="Включить или выключить звук новых сообщений"
+                >
+                    <span class="room-navigation-icon utility-navigation-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false"><path d="M5 10h4l5-4v12l-5-4H5zM17 9c1.3 1.7 1.3 4.3 0 6M19.5 6.5c3 3 3 8 0 11"/></svg>
+                    </span>
+                    <span id="message-sound-label">Звук выключен</span>
+                </button>
+            {% endif %}
             <a href="{% url 'profile' %}" class="room-navigation-item sidebar-utility">
                 <span class="room-navigation-icon" aria-hidden="true">◉</span>
                 <span>Профиль</span>

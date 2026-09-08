@@ -11,6 +11,7 @@ const {
 } = chatConfig;
 const MESSAGE_MAX_LENGTH = 1000;
 const BARTENDER_USERNAME = "Семён";
+const MESSAGE_SOUND_STORAGE_KEY = "samogon-message-sound-enabled";
 const REACTION_EMOJI = ["👍", "❤️", "😂", "🔥", "🤝"];
 const TYPING_DEBOUNCE_MS = 250;
 const TYPING_IDLE_MS = 1600;
@@ -40,6 +41,7 @@ let typingDebounceTimer = null;
 let typingIdleTimer = null;
 let typingActive = false;
 let typingRecipient = null;
+let messageSoundContext = null;
 const typingUsers = new Map();
 const expandedPresenceLists = new Set();
 const PRESENCE_PREVIEW_LIMIT = 6;
@@ -236,6 +238,7 @@ function handleServerEvent(data) {
     }
 
     if (data.type === "message") {
+        playIncomingMessageSound(data);
         if (!data.room_slug || data.room_slug === roomSlug) {
             addMessage(data);
         } else {
@@ -267,6 +270,81 @@ function handleServerEvent(data) {
         setBartenderTyping(false);
         showError(data.message);
     }
+}
+
+function isMessageSoundEnabled() {
+    try {
+        return window.localStorage.getItem(MESSAGE_SOUND_STORAGE_KEY) === "true";
+    } catch (_error) {
+        return false;
+    }
+}
+
+function setMessageSoundEnabled(enabled) {
+    try {
+        window.localStorage.setItem(MESSAGE_SOUND_STORAGE_KEY, String(enabled));
+    } catch (_error) {
+        // Чат продолжает работать, даже если браузер запретил localStorage.
+    }
+    updateMessageSoundControl(enabled);
+}
+
+function updateMessageSoundControl(enabled = isMessageSoundEnabled()) {
+    const toggle = document.getElementById("message-sound-toggle");
+    const label = document.getElementById("message-sound-label");
+    if (!toggle || !label) {
+        return;
+    }
+    toggle.setAttribute("aria-pressed", String(enabled));
+    label.textContent = enabled ? "Звук включён" : "Звук выключен";
+}
+
+function getMessageSoundContext() {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+        return null;
+    }
+    messageSoundContext ||= new AudioContextClass();
+    return messageSoundContext;
+}
+
+async function playMessageSound() {
+    const context = getMessageSoundContext();
+    if (!context) {
+        return false;
+    }
+    if (context.state === "suspended") {
+        await context.resume();
+    }
+
+    const startedAt = context.currentTime;
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(0.0001, startedAt);
+    gain.gain.exponentialRampToValueAtTime(0.075, startedAt + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startedAt + 0.24);
+    gain.connect(context.destination);
+
+    [660, 880].forEach((frequency, index) => {
+        const oscillator = context.createOscillator();
+        const offset = index * 0.07;
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(frequency, startedAt + offset);
+        oscillator.connect(gain);
+        oscillator.start(startedAt + offset);
+        oscillator.stop(startedAt + offset + 0.15);
+    });
+    return true;
+}
+
+function playIncomingMessageSound(data) {
+    if (
+        !isMessageSoundEnabled()
+        || document.visibilityState !== "visible"
+        || normalizeUsername(data.username) === normalizeUsername(currentUsername)
+    ) {
+        return;
+    }
+    playMessageSound().catch(() => undefined);
 }
 
 function finishHistoryLoading() {
@@ -1730,6 +1808,14 @@ document.getElementById("toggle-online-users")?.addEventListener("click", () => 
 document.getElementById("toggle-offline-users")?.addEventListener("click", () => {
     togglePresenceList("offline-users-list");
 });
+document.getElementById("message-sound-toggle")?.addEventListener("click", async () => {
+    const enabled = !isMessageSoundEnabled();
+    setMessageSoundEnabled(enabled);
+    if (enabled) {
+        await playMessageSound().catch(() => false);
+    }
+});
+updateMessageSoundControl();
 document.addEventListener("click", (event) => {
     if (!event.target.closest("#emoji-picker, #emoji-trigger")) {
         document.getElementById("emoji-picker")?.classList.add("hidden");
