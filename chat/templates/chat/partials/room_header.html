@@ -1,7 +1,13 @@
 <header class="room-header">
     <div>
         <div class="room-title">
-            <span>{% if room.is_private %}◌{% else %}#{% endif %}</span>
+            <span class="room-title-icon" aria-hidden="true">
+                {% if room.is_private %}
+                    <svg viewBox="0 0 24 24" focusable="false"><path d="M7 10V8a5 5 0 0 1 10 0v2m-9 0h8a2 2 0 0 1 2 2v7H6v-7a2 2 0 0 1 2-2Z"/></svg>
+                {% else %}
+                    <svg viewBox="0 0 24 24" focusable="false"><path d="M5 5h14v11H9l-4 3V5Z"/></svg>
+                {% endif %}
+            </span>
             <h2>{{ room.name }}</h2>
         </div>
 

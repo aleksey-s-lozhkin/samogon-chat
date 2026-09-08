@@ -1,6 +1,6 @@
 {% load static %}
 
-const CACHE_NAME = "samogon-public-v2";
+const CACHE_NAME = "samogon-public-v3";
 const APP_SHELL = [
     "/offline/",
     "{% static 'pwa/icon-192.png' %}",
