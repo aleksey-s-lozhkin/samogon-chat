@@ -1651,7 +1651,7 @@ class ChatLayoutViewsTests(TestCase):
         message_render = source.index("data.messages.forEach(addMessage);", history_handler)
         self.assertLess(skeleton_clear, message_render)
 
-    def test_chat_adapts_to_mobile_pwa_viewport(self):
+    def test_chat_adapts_to_android_keyboard_viewport(self):
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
@@ -1665,14 +1665,12 @@ class ChatLayoutViewsTests(TestCase):
         self.assertIn("--app-height", css)
         self.assertIn("safe-area-inset-top", css)
         self.assertIn("safe-area-inset-bottom", css)
-        self.assertIn("IS_ANDROID", javascript)
+        self.assertIn("USE_VISUAL_VIEWPORT_HEIGHT", javascript)
         self.assertIn('/Android/i.test(navigator.userAgent)', javascript)
         self.assertIn('/iPhone|iPod/i.test(navigator.userAgent)', javascript)
         self.assertIn('window.navigator.standalone === true', javascript)
         self.assertIn('"(display-mode: standalone)"', javascript)
-        self.assertIn("IS_ANDROID || (IS_IPHONE && isStandalonePwa())", javascript)
-        self.assertIn("window.visualViewport?.height || window.innerHeight", javascript)
-        self.assertIn("scheduleAppHeightUpdate", javascript)
+        self.assertIn("Math.max(window.screen.width, window.screen.height)", javascript)
         self.assertIn('style.removeProperty("--app-height")', javascript)
         self.assertIn('visualViewport?.addEventListener("resize"', javascript)
 
