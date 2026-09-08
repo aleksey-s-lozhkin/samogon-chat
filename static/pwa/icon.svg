@@ -1,6 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#252525"/>
-  <path d="M200 80h112v80l64 80v160a64 64 0 0 1-64 64H200a64 64 0 0 1-64-64V240l64-80z" fill="#c6753a"/>
-  <path d="M168 280h176" stroke="#1a1a1a" stroke-width="32" stroke-linecap="round"/>
-  <circle cx="256" cy="360" r="40" fill="#f0bd74"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title description">
+  <title id="title">Самогон</title>
+  <desc id="description">Знак SAM между угловыми скобками</desc>
+  <rect width="512" height="512" fill="#252525"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m137 153-65 103 65 103" stroke="#f2e5d4" stroke-width="30"/>
+    <path d="m375 153 65 103-65 103" stroke="#f2e5d4" stroke-width="30"/>
+    <g stroke="#c6753a" stroke-width="22">
+      <path d="M216 199c-15-14-45-14-53 7-8 23 9 36 31 44 24 8 34 26 26 48-9 26-42 31-62 13"/>
+      <path d="m235 322 25-132 25 132M244 274h32"/>
+      <path d="M307 322V190l27 72 27-72v132"/>
+    </g>
+  </g>
 </svg>
