@@ -45,7 +45,7 @@ let messageSoundContext = null;
 const typingUsers = new Map();
 const expandedPresenceLists = new Set();
 const PRESENCE_PREVIEW_LIMIT = 6;
-const IS_ANDROID = /Android/i.test(navigator.userAgent);
+const USE_VISUAL_VIEWPORT_HEIGHT = /Android/i.test(navigator.userAgent);
 const IS_IPHONE = /iPhone|iPod/i.test(navigator.userAgent);
 const SOCKET_RECONNECT_MAX_DELAY_MS = 30000;
 const SOCKET_FATAL_CLOSE_CODES = new Set([4401, 4403, 4404]);
@@ -69,10 +69,10 @@ updateAppHeight();
 window.visualViewport?.addEventListener("resize", updateAppHeight);
 window.visualViewport?.addEventListener("scroll", updateAppHeight);
 window.addEventListener("resize", updateAppHeight);
-window.addEventListener("orientationchange", scheduleAppHeightUpdate);
+window.addEventListener("orientationchange", updateAppHeight);
 window.addEventListener("online", reconnectWebSocketNow);
 window.addEventListener("pageshow", () => {
-    scheduleAppHeightUpdate();
+    updateAppHeight();
     ensureWebSocketConnection();
 });
 document.addEventListener("visibilitychange", () => {
@@ -81,7 +81,7 @@ document.addEventListener("visibilitychange", () => {
         return;
     }
 
-    scheduleAppHeightUpdate();
+    updateAppHeight();
     const wasSuspended = hiddenAt !== null && Date.now() - hiddenAt > 2000;
     hiddenAt = null;
     if (wasSuspended || !chatSocket || chatSocket.readyState > WebSocket.OPEN) {
@@ -203,8 +203,13 @@ function showConnectionLost() {
 
 function updateAppHeight() {
     let height = null;
-    if (IS_ANDROID || (IS_IPHONE && isStandalonePwa())) {
+    if (USE_VISUAL_VIEWPORT_HEIGHT) {
         height = window.visualViewport?.height || window.innerHeight;
+    } else if (IS_IPHONE && isStandalonePwa()) {
+        const portrait = window.matchMedia("(orientation: portrait)").matches;
+        height = portrait
+            ? Math.max(window.screen.width, window.screen.height)
+            : Math.min(window.screen.width, window.screen.height);
     }
 
     if (!height) {
@@ -212,14 +217,6 @@ function updateAppHeight() {
         return;
     }
     document.documentElement.style.setProperty("--app-height", `${Math.round(height)}px`);
-}
-
-function scheduleAppHeightUpdate() {
-    updateAppHeight();
-    window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(updateAppHeight);
-    });
-    window.setTimeout(updateAppHeight, 250);
 }
 
 function isStandalonePwa() {
