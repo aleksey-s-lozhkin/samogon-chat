@@ -1663,6 +1663,7 @@ class ChatLayoutViewsTests(TestCase):
         self.assertContains(response, "interactive-widget=resizes-content")
         self.assertContains(response, "viewport-fit=cover")
         self.assertIn("--app-height", css)
+        self.assertIn(".chat-page {\n        min-height: 0;", css)
         self.assertIn("safe-area-inset-top", css)
         self.assertIn("safe-area-inset-bottom", css)
         self.assertIn("USE_VISUAL_VIEWPORT_HEIGHT", javascript)
