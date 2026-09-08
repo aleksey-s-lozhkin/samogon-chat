@@ -3156,6 +3156,7 @@ html[data-theme="light"] .message-skeleton-line::after {
     }
 
     .chat-page {
+        min-height: 0;
         height: 100vh;
         height: var(--app-height, 100dvh);
     }
