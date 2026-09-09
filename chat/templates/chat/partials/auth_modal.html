@@ -47,7 +47,8 @@
                         autocomplete="username"
                         autocapitalize="none"
                         spellcheck="false"
-                        maxlength="32"
+                        maxlength="254"
+                        aria-describedby="login-error"
                         required
                     >
                 </div>
@@ -60,6 +61,7 @@
                             type="password"
                             placeholder="Введите пароль"
                             autocomplete="current-password"
+                            aria-describedby="login-error"
                             required
                         >
                         <button class="password-toggle" type="button" data-password-toggle="login-password" aria-label="Показать пароль" aria-pressed="false">Показать</button>
@@ -105,6 +107,8 @@
                         autocomplete="username"
                         autocapitalize="none"
                         spellcheck="false"
+                        maxlength="32"
+                        aria-describedby="register-error-username"
                         required
                     >
                     <span id="register-error-username" class="field-error" aria-live="polite"></span>
@@ -117,6 +121,8 @@
                         type="email"
                         placeholder="Введите email"
                         autocomplete="email"
+                        maxlength="254"
+                        aria-describedby="register-error-email"
                         required
                     >
                     <span id="register-error-email" class="field-error" aria-live="polite"></span>
@@ -129,6 +135,7 @@
                         type="password"
                         placeholder="Его выдаёт хозяин стойки"
                         autocomplete="off"
+                        aria-describedby="register-error-invite_code"
                     >
                     <span id="register-error-invite_code" class="field-error" aria-live="polite"></span>
                 </div>
@@ -141,7 +148,7 @@
                             type="password"
                             placeholder="Придумайте пароль"
                             autocomplete="new-password"
-                            aria-describedby="password-requirements"
+                            aria-describedby="password-requirements register-error-password"
                             required
                         >
                         <button class="password-toggle" type="button" data-password-toggle="register-password" aria-label="Показать пароль" aria-pressed="false">Показать</button>

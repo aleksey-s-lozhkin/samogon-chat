@@ -11,6 +11,15 @@ if (avatarInput && avatarFileName) {
     });
 }
 
+document.querySelectorAll("[data-oauth-disconnect]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+        const provider = form.dataset.oauthDisconnect;
+        if (!window.confirm(`Отключить вход через ${provider}?`)) {
+            event.preventDefault();
+        }
+    });
+});
+
 const pushSettings = document.querySelector("[data-push-settings]");
 
 if (pushSettings) {

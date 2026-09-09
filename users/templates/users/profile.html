@@ -122,7 +122,7 @@
                     <div class="connection-row">
                         <span>GitHub</span>
                         {% if "github" in connected_provider_ids %}
-                            <form method="post" action="{% url 'disconnect_social_account' 'github' %}">
+                            <form method="post" action="{% url 'disconnect_social_account' 'github' %}" data-oauth-disconnect="GitHub">
                                 {% csrf_token %}
                                 <button class="connection-disconnect" type="submit">Отключить</button>
                             </form>
@@ -139,7 +139,7 @@
                     <div class="connection-row">
                         <span>Google</span>
                         {% if "google" in connected_provider_ids %}
-                            <form method="post" action="{% url 'disconnect_social_account' 'google' %}">
+                            <form method="post" action="{% url 'disconnect_social_account' 'google' %}" data-oauth-disconnect="Google">
                                 {% csrf_token %}
                                 <button class="connection-disconnect" type="submit">Отключить</button>
                             </form>
@@ -277,7 +277,7 @@
 
     </div>
 
-<script src="{% static 'users/js/profile.js' %}?v=5"></script>
+<script src="{% static 'users/js/profile.js' %}?v=6"></script>
 <script src="{% static 'chat/js/theme.js' %}?v=1"></script>
 
 </div>

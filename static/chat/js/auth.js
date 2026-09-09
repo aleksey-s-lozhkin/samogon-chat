@@ -73,6 +73,12 @@ document.querySelectorAll("#login-form, #register-form").forEach((form) => {
         }
         const button = form.querySelector('button[type="submit"]');
         if (!button) return;
+        form.querySelectorAll(".field-error, .form-error").forEach((error) => {
+            error.textContent = "";
+        });
+        form.querySelectorAll("[aria-invalid]").forEach((field) => {
+            field.removeAttribute("aria-invalid");
+        });
         form.dataset.submitting = "true";
         button.dataset.defaultText = button.textContent;
         button.textContent = button.dataset.pendingText;
@@ -97,15 +103,57 @@ document.body.addEventListener("htmx:afterSwap", (event) => {
     if (!event.detail.target?.matches?.("#login-error, #register-error")) return;
     if (!event.detail.target.textContent.trim()) return;
     const form = event.detail.target.closest("form");
+    if (event.detail.target.id === "login-error") {
+        form?.querySelectorAll('input[name="identifier"], input[name="password"]')
+            .forEach((field) => field.setAttribute("aria-invalid", "true"));
+        form?.elements.namedItem("identifier")?.focus({ preventScroll: true });
+        return;
+    }
     const fieldError = Array.from(form?.querySelectorAll(".field-error") || [])
         .find((element) => element.textContent.trim());
     if (fieldError) {
         const fieldName = fieldError.id.replace("register-error-", "");
-        form.elements.namedItem(fieldName)?.focus({ preventScroll: true });
+        const field = form.elements.namedItem(fieldName);
+        field?.setAttribute("aria-invalid", "true");
+        field?.focus({ preventScroll: true });
+        window.requestAnimationFrame(() => syncRegistrationFieldErrors(form));
         return;
     }
     event.detail.target.setAttribute("tabindex", "-1");
     event.detail.target.focus({ preventScroll: true });
+});
+
+function syncRegistrationFieldErrors(form) {
+    form?.querySelectorAll(".field-error[id]").forEach((error) => {
+        const fieldName = error.id.replace("register-error-", "");
+        const field = form.elements.namedItem(fieldName);
+        if (!field) return;
+        if (error.textContent.trim()) {
+            field.setAttribute("aria-invalid", "true");
+        } else {
+            field.removeAttribute("aria-invalid");
+        }
+    });
+}
+
+document.querySelectorAll("#login-form input, #register-form input").forEach((field) => {
+    field.addEventListener("input", () => {
+        field.removeAttribute("aria-invalid");
+        const describedIds = (field.getAttribute("aria-describedby") || "").split(/\s+/);
+        describedIds.forEach((id) => {
+            const error = document.getElementById(id);
+            if (error?.matches(".field-error, .form-error")) {
+                error.textContent = "";
+                if (error.matches(".form-error")) {
+                    error.closest("form")
+                        ?.querySelectorAll(`[aria-describedby~="${id}"]`)
+                        .forEach((relatedField) => {
+                            relatedField.removeAttribute("aria-invalid");
+                        });
+                }
+            }
+        });
+    });
 });
 
 document.querySelectorAll("[data-open-auth]").forEach((button) => {
