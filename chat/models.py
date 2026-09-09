@@ -151,10 +151,15 @@ class MessageReaction(models.Model):
 
     class Emoji(models.TextChoices):
         LIKE = "👍", "Нравится"
+        DISLIKE = "👎", "Не нравится"
         HEART = "❤️", "Любовь"
         LAUGH = "😂", "Смешно"
         FIRE = "🔥", "Огонь"
+        SURPRISED = "😮", "Удивлён"
+        SAD = "😢", "Грустно"
+        THINKING = "🤔", "Задумался"
         HANDSHAKE = "🤝", "Согласен"
+        CELEBRATE = "🎉", "Праздную"
 
     message = models.ForeignKey(
         Message,

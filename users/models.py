@@ -35,6 +35,11 @@ class User(AbstractUser):
         choices=PresenceStatus.choices,
         blank=True,
     )
+    last_seen_at = models.DateTimeField(
+        "Последняя активность в чате",
+        blank=True,
+        null=True,
+    )
     banned_at = models.DateTimeField(blank=True, null=True)
     banned_until = models.DateTimeField(blank=True, null=True)
     ban_reason = models.CharField(blank=True, max_length=240)

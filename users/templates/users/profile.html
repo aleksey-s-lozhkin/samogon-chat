@@ -12,7 +12,7 @@
     {% include "pwa/head.html" %}
     <link
         rel="stylesheet"
-        href="{% static 'users/css/profile.css' %}?v=5"
+        href="{% static 'users/css/profile.css' %}?v=6"
     >
 
 </head>
@@ -122,7 +122,7 @@
                     <div class="connection-row">
                         <span>GitHub</span>
                         {% if "github" in connected_provider_ids %}
-                            <form method="post" action="{% url 'disconnect_social_account' 'github' %}">
+                            <form method="post" action="{% url 'disconnect_social_account' 'github' %}" data-oauth-disconnect="GitHub">
                                 {% csrf_token %}
                                 <button class="connection-disconnect" type="submit">Отключить</button>
                             </form>
@@ -139,7 +139,7 @@
                     <div class="connection-row">
                         <span>Google</span>
                         {% if "google" in connected_provider_ids %}
-                            <form method="post" action="{% url 'disconnect_social_account' 'google' %}">
+                            <form method="post" action="{% url 'disconnect_social_account' 'google' %}" data-oauth-disconnect="Google">
                                 {% csrf_token %}
                                 <button class="connection-disconnect" type="submit">Отключить</button>
                             </form>
@@ -230,13 +230,12 @@
 
                 {% if user.avatar %}
                     <div class="current-avatar">
-                        Текущий файл:
-                        <a
-                            href="{{ user.avatar.url }}"
-                            target="_blank"
-                        >
-                            {{ user.avatar.name|cut:"avatars/" }}
-                        </a>
+                        <img src="{{ user.avatar.url }}" alt="Текущий аватар">
+                        <span>Текущий аватар</span>
+                        <label class="avatar-remove">
+                            <input type="checkbox" name="avatar-clear" id="avatar-clear_id">
+                            Удалить
+                        </label>
                     </div>
                 {% endif %}
 
@@ -246,7 +245,7 @@
                         for="id_avatar"
                         class="avatar-upload-button"
                     >
-                        Выбрать изображение
+                        Заменить изображение
                     </label>
 
                     <input
@@ -277,7 +276,7 @@
 
     </div>
 
-<script src="{% static 'users/js/profile.js' %}?v=5"></script>
+<script src="{% static 'users/js/profile.js' %}?v=6"></script>
 <script src="{% static 'chat/js/theme.js' %}?v=1"></script>
 
 </div>
