@@ -40,8 +40,8 @@
 
     {% if private_rooms %}
         <section class="private-rooms">
-            <div class="sidebar-section-title">Тайные столики</div>
-            <nav class="rooms-navigation" aria-label="Тайные комнаты">
+            <div class="sidebar-section-title">Закрытые беседы</div>
+            <nav class="rooms-navigation" aria-label="Закрытые беседы">
                 {% for chat_room in private_rooms %}
                     <a
                         href="{% url 'chat:chat' room_slug=chat_room.slug %}"
@@ -50,12 +50,35 @@
                         @click="roomsOpen = false"
                     >
                         <span class="room-navigation-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 10V8a5 5 0 0 1 10 0v2m-9 0h8a2 2 0 0 1 2 2v7H6v-7a2 2 0 0 1 2-2Z"/></svg></span>
-                        <span>{{ chat_room.name }}</span>
+                        <span class="room-navigation-copy">
+                            <span>{{ chat_room.name }}</span>
+                            <small>
+                                {% if chat_room.owner_id == user.id %}Вы создатель{% else %}Создал(а) {{ chat_room.owner.username }}{% endif %}
+                            </small>
+                        </span>
                         {% if chat_room.unread_count %}
                             <span class="room-unread-count">{{ chat_room.unread_count }}</span>
                         {% endif %}
                     </a>
                 {% endfor %}
+                <a href="{% url 'chat:rooms' %}#closed-conversations" class="room-navigation-item sidebar-utility">
+                    <span class="room-navigation-icon utility-navigation-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false"><path d="M12 5v14M5 12h14"/></svg>
+                    </span>
+                    <span>{% if owned_private_room %}Управление{% else %}Новая закрытая беседа{% endif %}</span>
+                </a>
+            </nav>
+        </section>
+    {% elif user.is_authenticated %}
+        <section class="private-rooms">
+            <div class="sidebar-section-title">Закрытые беседы</div>
+            <nav class="rooms-navigation" aria-label="Закрытые беседы">
+                <a href="{% url 'chat:rooms' %}#closed-conversations" class="room-navigation-item sidebar-utility">
+                    <span class="room-navigation-icon utility-navigation-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" focusable="false"><path d="M12 5v14M5 12h14"/></svg>
+                    </span>
+                    <span>Новая закрытая беседа</span>
+                </a>
             </nav>
         </section>
     {% endif %}

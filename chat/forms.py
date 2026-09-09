@@ -9,23 +9,24 @@ User = get_user_model()
 
 
 class PrivateRoomForm(forms.Form):
-    """Создаёт личный столик владельца и одного или двух гостей."""
+    """Создаёт или изменяет закрытую беседу владельца."""
 
     name = forms.CharField(
         label="Название",
         max_length=100,
-        help_text="Например: «Сообразим на троих».",
+        help_text="Например: «Обсудим релиз».",
     )
     members = forms.ModelMultipleChoiceField(
-        label="Кого позвать",
+        label="Кого добавить",
         queryset=User.objects.none(),
         required=False,
         widget=forms.CheckboxSelectMultiple,
-        help_text="Выберите одного или двух гостей.",
+        help_text="Выберите одного или двух участников.",
     )
 
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(self, *args, user=None, room=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.room = room
         if user and user.is_authenticated:
             self.fields["members"].queryset = User.objects.filter(
                 is_active=True,
@@ -33,17 +34,22 @@ class PrivateRoomForm(forms.Form):
                 id=user.id,
             ).exclude(
                 username=settings.BARTENDER_USERNAME,
+            ).exclude(
+                is_superuser=True,
             ).order_by("username")
+        if room and not self.is_bound:
+            self.initial["name"] = room.name
+            self.initial["members"] = room.members.exclude(id=user.id)
 
     def clean_members(self):
         members = self.cleaned_data["members"]
         if not members:
             raise forms.ValidationError(
-                "Позовите хотя бы одного гостя за тайный столик."
+                "Добавьте хотя бы одного участника в закрытую беседу."
             )
         if members.count() > 2:
             raise forms.ValidationError(
-                "У тайного столика может быть только два приглашённых гостя."
+                "В закрытой беседе может быть только два приглашённых участника."
             )
         return members
 

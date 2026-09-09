@@ -42,10 +42,12 @@ let typingIdleTimer = null;
 let typingActive = false;
 let typingRecipient = null;
 let messageSoundContext = null;
+let presenceHeartbeatTimer = null;
 const typingUsers = new Map();
 const USE_VISUAL_VIEWPORT_HEIGHT = /Android/i.test(navigator.userAgent);
 const IS_IPHONE = /iPhone|iPod/i.test(navigator.userAgent);
 const SOCKET_RECONNECT_MAX_DELAY_MS = 30000;
+const PRESENCE_HEARTBEAT_INTERVAL_MS = 25000;
 const SOCKET_FATAL_CLOSE_CODES = new Set([4401, 4403, 4404]);
 
 const TAGLINES = [
@@ -127,6 +129,7 @@ function connectWebSocket() {
             showSuccess("Связь восстановлена.");
         }
         socketWasConnected = true;
+        startPresenceHeartbeat(socket);
     };
     socket.onmessage = ({ data }) => {
         if (socket === chatSocket) {
@@ -138,6 +141,7 @@ function connectWebSocket() {
             return;
         }
         chatSocket = null;
+        stopPresenceHeartbeat();
         stopTyping();
         if (SOCKET_FATAL_CLOSE_CODES.has(code)) {
             showError("Доступ к чату закрыт. Обновите страницу после входа.");
@@ -151,6 +155,20 @@ function connectWebSocket() {
             socket.close();
         }
     };
+}
+
+function startPresenceHeartbeat(socket) {
+    stopPresenceHeartbeat();
+    presenceHeartbeatTimer = window.setInterval(() => {
+        if (socket === chatSocket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({type: "presence_ping"}));
+        }
+    }, PRESENCE_HEARTBEAT_INTERVAL_MS);
+}
+
+function stopPresenceHeartbeat() {
+    window.clearInterval(presenceHeartbeatTimer);
+    presenceHeartbeatTimer = null;
 }
 
 function scheduleWebSocketReconnect() {
