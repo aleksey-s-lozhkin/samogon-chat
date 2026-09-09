@@ -12,7 +12,7 @@ const {
 const MESSAGE_MAX_LENGTH = 1000;
 const BARTENDER_USERNAME = "Семён";
 const MESSAGE_SOUND_STORAGE_KEY = "samogon-message-sound-enabled";
-const REACTION_EMOJI = ["👍", "❤️", "😂", "🔥", "🤝"];
+const REACTION_EMOJI = ["👍", "👎", "❤️", "😂", "🔥", "😮", "😢", "🤔", "🤝", "🎉"];
 const TYPING_DEBOUNCE_MS = 250;
 const TYPING_IDLE_MS = 1600;
 const TYPING_TTL_MS = 3500;
@@ -43,8 +43,6 @@ let typingActive = false;
 let typingRecipient = null;
 let messageSoundContext = null;
 const typingUsers = new Map();
-const expandedPresenceLists = new Set();
-const PRESENCE_PREVIEW_LIMIT = 6;
 const USE_VISUAL_VIEWPORT_HEIGHT = /Android/i.test(navigator.userAgent);
 const IS_IPHONE = /iPhone|iPod/i.test(navigator.userAgent);
 const SOCKET_RECONNECT_MAX_DELAY_MS = 30000;
@@ -549,14 +547,47 @@ function normalizeUsername(username) {
 
 function userDetails(user) {
     if (typeof user === "string") {
-        return { username: user, avatarUrl: null, status: "" };
+        return { username: user, avatarUrl: null, status: "", lastSeenAt: null };
     }
 
     return {
         username: String(user?.username || ""),
         avatarUrl: user?.avatar_url || null,
         status: String(user?.status || ""),
+        lastSeenAt: user?.last_seen_at || null,
     };
+}
+
+function formatLastSeen(value) {
+    const seenAt = value ? new Date(value) : null;
+    if (!seenAt || Number.isNaN(seenAt.getTime())) {
+        return "Давно не заходил(а)";
+    }
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfSeenDay = new Date(
+        seenAt.getFullYear(),
+        seenAt.getMonth(),
+        seenAt.getDate(),
+    );
+    const daysAgo = Math.round((startOfToday - startOfSeenDay) / 86400000);
+    const time = seenAt.toLocaleTimeString("ru-RU", {
+        hour: "2-digit",
+        minute: "2-digit",
+    });
+    if (daysAgo === 0) {
+        return `Был(а) в ${time}`;
+    }
+    if (daysAgo === 1) {
+        return `Был(а) вчера в ${time}`;
+    }
+    const date = seenAt.toLocaleDateString("ru-RU", {
+        day: "numeric",
+        month: "short",
+        ...(seenAt.getFullYear() === now.getFullYear() ? {} : {year: "numeric"}),
+    });
+    return `Был(а) ${date}`;
 }
 
 function userInitials(username) {
@@ -612,12 +643,8 @@ function renderUserList(
         return;
     }
 
-    const isExpanded = expandedPresenceLists.has(containerId);
-    const visibleUsers = isExpanded
-        ? usernames
-        : usernames.slice(0, PRESENCE_PREVIEW_LIMIT);
     container.replaceChildren(
-        ...visibleUsers.map((user) => {
+        ...usernames.map((user) => {
             const details = userDetails(user);
             const button = document.createElement("button");
             button.type = "button";
@@ -630,7 +657,9 @@ function renderUserList(
             name.textContent = details.username;
             name.title = details.username;
             status.className = "user-contact-status";
-            status.textContent = details.status || "Без статуса";
+            status.textContent = className === "online-user"
+                ? (details.status || "Сейчас в беседе")
+                : formatLastSeen(details.lastSeenAt);
             identity.append(name, status);
             button.append(createUserAvatar(details), identity);
             button.addEventListener("click", () => setDirectRecipient(details.username));
@@ -641,19 +670,7 @@ function renderUserList(
     if (!toggle) {
         return;
     }
-    toggle.classList.toggle("hidden", usernames.length <= PRESENCE_PREVIEW_LIMIT);
-    toggle.textContent = isExpanded
-        ? "Свернуть список"
-        : `Показать всех (${usernames.length})`;
-}
-
-function togglePresenceList(containerId) {
-    if (expandedPresenceLists.has(containerId)) {
-        expandedPresenceLists.delete(containerId);
-    } else {
-        expandedPresenceLists.add(containerId);
-    }
-    updateUserPresence(presenceUsers, presenceOnlineUsers);
+    toggle.classList.add("hidden");
 }
 
 function setDirectRecipient(username) {
@@ -1920,12 +1937,6 @@ document.getElementById("chat-log")?.addEventListener("scroll", (event) => {
     document
         .getElementById("scroll-to-latest")
         ?.classList.toggle("hidden", isNearBottom(event.currentTarget));
-});
-document.getElementById("toggle-online-users")?.addEventListener("click", () => {
-    togglePresenceList("online-users-list");
-});
-document.getElementById("toggle-offline-users")?.addEventListener("click", () => {
-    togglePresenceList("offline-users-list");
 });
 document.getElementById("message-sound-toggle")?.addEventListener("click", async () => {
     const enabled = !isMessageSoundEnabled();

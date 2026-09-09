@@ -45,7 +45,9 @@ class MessageCreateSerializer(serializers.Serializer):
 
 
 class ReactionToggleSerializer(serializers.Serializer):
-    emoji = serializers.ChoiceField(choices=("👍", "❤️", "😂", "🔥", "🤝"))
+    emoji = serializers.ChoiceField(
+        choices=("👍", "👎", "❤️", "😂", "🔥", "😮", "😢", "🤔", "🤝", "🎉")
+    )
 
 
 class ReactionSerializer(serializers.Serializer):

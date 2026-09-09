@@ -12,7 +12,7 @@
     {% include "pwa/head.html" %}
     <link
         rel="stylesheet"
-        href="{% static 'users/css/profile.css' %}?v=5"
+        href="{% static 'users/css/profile.css' %}?v=6"
     >
 
 </head>
@@ -230,13 +230,12 @@
 
                 {% if user.avatar %}
                     <div class="current-avatar">
-                        Текущий файл:
-                        <a
-                            href="{{ user.avatar.url }}"
-                            target="_blank"
-                        >
-                            {{ user.avatar.name|cut:"avatars/" }}
-                        </a>
+                        <img src="{{ user.avatar.url }}" alt="Текущий аватар">
+                        <span>Текущий аватар</span>
+                        <label class="avatar-remove">
+                            <input type="checkbox" name="avatar-clear" id="avatar-clear_id">
+                            Удалить
+                        </label>
                     </div>
                 {% endif %}
 
@@ -246,7 +245,7 @@
                         for="id_avatar"
                         class="avatar-upload-button"
                     >
-                        Выбрать изображение
+                        Заменить изображение
                     </label>
 
                     <input

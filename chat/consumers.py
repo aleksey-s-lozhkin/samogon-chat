@@ -78,6 +78,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_add(self.user_group_name, self.channel_name)
         await self.channel_layer.group_add(PRESENCE_GROUP_NAME, self.channel_name)
         await self.accept()
+        await self.touch_last_seen()
 
         await self.ensure_welcome_message()
         focus_values = parse_qs(
@@ -112,6 +113,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             room_slug=self.room.slug,
             channel_name=self.channel_name,
         )
+        await self.touch_last_seen()
         await self.channel_layer.group_discard(
             self.room_group_name,
             self.channel_name,
@@ -583,6 +585,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "username": user.username,
                 "avatar_url": MessageService.get_avatar_url(user),
                 "status": user.get_presence_status_display(),
+                "last_seen_at": (
+                    user.last_seen_at.isoformat() if user.last_seen_at else None
+                ),
             }
             for user in users
         ]
@@ -590,6 +595,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def update_presence_status(self, status):
         User.objects.filter(pk=self.user.id).update(presence_status=status)
+
+    @database_sync_to_async
+    def touch_last_seen(self):
+        User.objects.filter(pk=self.user.id).update(last_seen_at=timezone.now())
 
     @database_sync_to_async
     def is_chat_restricted(self, user_id):

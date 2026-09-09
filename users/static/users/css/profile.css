@@ -178,3 +178,33 @@ body {
         width: 100%;
     }
 }
+
+.current-avatar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: -2px 0 10px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.current-avatar img {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.avatar-remove {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: auto;
+    color: var(--soft);
+    cursor: pointer;
+}
+
+.avatar-remove input {
+    width: 16px;
+    min-height: 16px;
+}
