@@ -47,8 +47,8 @@ def add_unread_counts(rooms, user):
 
 
 def private_room_slug(name):
-    """Создаёт уникальный URL для тайного столика."""
-    base_slug = slugify(name) or "taynyy-stolik"
+    """Создаёт уникальный URL для закрытой беседы."""
+    base_slug = slugify(name) or "zakrytaya-beseda"
     slug = base_slug
     number = 2
     while Room.objects.filter(slug=slug).exists():
@@ -57,15 +57,29 @@ def private_room_slug(name):
     return slug
 
 
+def revoke_private_room_access(*, room_slug, user_ids):
+    """Закрывает активные WebSocket-вкладки бывших участников беседы."""
+    channel_layer = get_channel_layer()
+    for user_id in user_ids:
+        async_to_sync(channel_layer.group_send)(
+            f"chat_user_{user_id}",
+            {"type": "room_access_revoked", "room_slug": room_slug},
+        )
+
+
 def rooms_page(request):
     rooms = list(get_visible_rooms(request.user))
     add_unread_counts(rooms, request.user)
     public_rooms = [room for room in rooms if not room.is_private]
     private_rooms = [room for room in rooms if room.is_private]
-    owned_private_room = next(
-        (room for room in private_rooms if room.owner_id == request.user.id),
-        None,
-    ) if request.user.is_authenticated else None
+    owned_private_room = (
+        next(
+            (room for room in private_rooms if room.owner_id == request.user.id),
+            None,
+        )
+        if request.user.is_authenticated
+        else None
+    )
 
     return render(
         request,
@@ -74,7 +88,10 @@ def rooms_page(request):
             "rooms": public_rooms,
             "private_rooms": private_rooms,
             "owned_private_room": owned_private_room,
-            "private_room_form": PrivateRoomForm(user=request.user),
+            "private_room_form": PrivateRoomForm(
+                user=request.user,
+                room=owned_private_room,
+            ),
         },
     )
 
@@ -90,13 +107,14 @@ def chat_page(request, room_slug):
         not request.user.is_authenticated
         or not room.memberships.filter(user=request.user).exists()
     ):
-        raise Http404("Тайный столик не найден")
+        raise Http404("Закрытая беседа не найдена")
 
     if request.user.is_authenticated:
         MessageService.mark_room_as_read(room=room, user_id=request.user.id)
         request.session["last_chat_room_slug"] = room.slug
     rooms = list(get_visible_rooms(request.user))
     add_unread_counts(rooms, request.user)
+    private_rooms = [item for item in rooms if item.is_private]
     pending_report_count = (
         MessageReport.objects.filter(resolved_at__isnull=True).count()
         if request.user.has_perm("chat.view_messagereport")
@@ -122,7 +140,19 @@ def chat_page(request, room_slug):
             "room": room,
             "rooms": rooms,
             "public_rooms": [item for item in rooms if not item.is_private],
-            "private_rooms": [item for item in rooms if item.is_private],
+            "private_rooms": private_rooms,
+            "owned_private_room": (
+                next(
+                    (
+                        item
+                        for item in private_rooms
+                        if item.owner_id == request.user.id
+                    ),
+                    None,
+                )
+                if request.user.is_authenticated
+                else None
+            ),
             "focus_message_id": focus_message_id,
             "pending_report_count": pending_report_count,
             "presence_status_choices": User.PresenceStatus.choices,
@@ -446,7 +476,7 @@ def broadcast_message_deleted(message):
 
 @login_required
 def create_private_room(request):
-    """Создаёт один личный столик владельца и приглашает до двух гостей."""
+    """Создаёт одну закрытую беседу владельца с приглашёнными участниками."""
     if request.method != "POST":
         return redirect("chat:rooms")
 
@@ -454,7 +484,7 @@ def create_private_room(request):
         owner=request.user,
         visibility=Room.Visibility.PRIVATE,
     ).exists():
-        messages.error(request, "У вас уже есть свой тайный столик.")
+        messages.error(request, "У вас уже есть собственная закрытая беседа.")
         return redirect("chat:rooms")
 
     form = PrivateRoomForm(request.POST, user=request.user)
@@ -477,7 +507,7 @@ def create_private_room(request):
         room = Room.objects.create(
             name=form.cleaned_data["name"],
             slug=private_room_slug(form.cleaned_data["name"]),
-            description="Тайный столик: разговор остаётся между своими.",
+            description="Закрытая беседа доступна только её участникам.",
             visibility=Room.Visibility.PRIVATE,
             owner=request.user,
         )
@@ -488,5 +518,90 @@ def create_private_room(request):
             ]
         )
 
-    messages.success(request, "Тайный столик готов. Гости уже в списке.")
+    messages.success(request, "Закрытая беседа создана. Участники уже добавлены.")
     return redirect("chat:chat", room_slug=room.slug)
+
+
+@login_required
+def update_private_room(request, room_id):
+    """Изменяет название и приглашённых участников собственной беседы."""
+    if request.method != "POST":
+        return redirect("chat:rooms")
+    room = get_object_or_404(
+        Room,
+        id=room_id,
+        owner=request.user,
+        visibility=Room.Visibility.PRIVATE,
+    )
+    form = PrivateRoomForm(request.POST, user=request.user, room=room)
+    if not form.is_valid():
+        rooms = list(get_visible_rooms(request.user))
+        add_unread_counts(rooms, request.user)
+        return render(
+            request,
+            "chat/rooms.html",
+            {
+                "rooms": [item for item in rooms if not item.is_private],
+                "private_rooms": [item for item in rooms if item.is_private],
+                "owned_private_room": room,
+                "private_room_form": form,
+            },
+            status=400,
+        )
+
+    with transaction.atomic():
+        previous_member_ids = set(room.members.values_list("id", flat=True))
+        room.name = form.cleaned_data["name"]
+        room.save(update_fields=("name",))
+        new_members = (request.user, *form.cleaned_data["members"])
+        room.members.set(new_members)
+        new_member_ids = {member.id for member in new_members}
+
+    revoke_private_room_access(
+        room_slug=room.slug,
+        user_ids=previous_member_ids - new_member_ids,
+    )
+
+    messages.success(request, "Настройки закрытой беседы сохранены.")
+    return redirect(f"{reverse('chat:rooms')}#closed-conversations")
+
+
+@login_required
+def delete_private_room(request, room_id):
+    """Закрывает и удаляет собственную закрытую беседу."""
+    if request.method != "POST":
+        return redirect("chat:rooms")
+    room = get_object_or_404(
+        Room,
+        id=room_id,
+        owner=request.user,
+        visibility=Room.Visibility.PRIVATE,
+    )
+    room_slug = room.slug
+    member_ids = list(room.members.values_list("id", flat=True))
+    room.delete()
+    revoke_private_room_access(room_slug=room_slug, user_ids=member_ids)
+    if request.session.get("last_chat_room_slug") == room_slug:
+        request.session.pop("last_chat_room_slug", None)
+    messages.success(request, "Закрытая беседа удалена.")
+    return redirect(f"{reverse('chat:rooms')}#closed-conversations")
+
+
+@login_required
+def leave_private_room(request, room_id):
+    """Позволяет приглашённому участнику покинуть закрытую беседу."""
+    if request.method != "POST":
+        return redirect("chat:rooms")
+    room = get_object_or_404(
+        Room.objects.filter(memberships__user=request.user),
+        id=room_id,
+        visibility=Room.Visibility.PRIVATE,
+    )
+    if room.owner_id == request.user.id:
+        messages.error(request, "Создатель может только удалить свою беседу.")
+        return redirect(f"{reverse('chat:rooms')}#closed-conversations")
+
+    RoomMembership.objects.filter(room=room, user=request.user).delete()
+    revoke_private_room_access(room_slug=room.slug, user_ids=(request.user.id,))
+    messages.success(request, "Вы покинули закрытую беседу.")
+    return redirect(f"{reverse('chat:rooms')}#closed-conversations")

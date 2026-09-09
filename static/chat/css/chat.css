@@ -3385,6 +3385,80 @@ html[data-theme="light"] .message-skeleton-line::after {
     }
 }
 
+.private-room-main-link {
+    display: flex;
+    min-width: 0;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 15px;
+    color: inherit;
+    text-decoration: none;
+}
+
+.private-room-inline-action {
+    flex: 0 0 auto;
+}
+
+.private-room-inline-action button,
+.private-room-danger-zone button {
+    min-height: 40px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 9px;
+    background: rgba(180, 68, 68, 0.12);
+    color: var(--danger, #d96565);
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.private-room-controls {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 14px;
+}
+
+.private-room-controls .private-room-danger-zone {
+    margin-top: 0;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.private-room-controls .private-room-danger-zone button {
+    background: rgba(180, 68, 68, 0.16);
+    box-shadow: none;
+}
+
+.room-navigation-copy {
+    display: grid;
+    min-width: 0;
+    flex: 1 1 auto;
+    gap: 2px;
+}
+
+.room-navigation-copy > span,
+.room-navigation-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.room-navigation-copy small {
+    color: var(--text-muted);
+    font-size: 10px;
+}
+
+@media (max-width: 700px) {
+    .private-room-card {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .private-room-inline-action button {
+        width: 100%;
+    }
+}
+
 /* Визуальные правила темы. */
 body {
     background-color: var(--bg);

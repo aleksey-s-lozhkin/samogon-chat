@@ -15,6 +15,7 @@ SECRET_KEY = os.getenv(
     "django-insecure-local-development-only",
 )
 DEBUG = os.getenv("DEBUG", "1") == "1"
+PRESENCE_TTL_SECONDS = int(os.getenv("PRESENCE_TTL_SECONDS", "75"))
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.getenv("ALLOWED_HOSTS", "").split(",")

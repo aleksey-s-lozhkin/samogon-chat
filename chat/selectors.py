@@ -27,8 +27,13 @@ def get_visible_rooms(user):
         default=Value(len(PUBLIC_ROOM_ORDER)),
         output_field=IntegerField(),
     )
-    return rooms.annotate(room_order=public_room_order).order_by(
-        "visibility",
-        "room_order",
-        "name",
+    return (
+        rooms.select_related("owner")
+        .prefetch_related("members")
+        .annotate(room_order=public_room_order)
+        .order_by(
+            "visibility",
+            "room_order",
+            "name",
+        )
     )

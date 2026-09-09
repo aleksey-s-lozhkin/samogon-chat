@@ -39,6 +39,7 @@ from .services.attachments import (
 )
 from .services.welcome import WELCOME_TEXT, ensure_welcome_message
 from .services.messages import MessageService
+from .services.presence import OnlineUsersService
 from .services.bartender import BARTENDER_LANGUAGE_FALLBACK, BartenderReply, BartenderUnavailable, bartender
 from .tasks import process_bartender_job
 from .validators import validate_message
@@ -1056,9 +1057,203 @@ class PrivateRoomViewsTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertContains(
             response,
-            "Позовите хотя бы одного гостя",
+            "Добавьте хотя бы одного участника",
             status_code=400,
         )
+
+    def test_owner_cannot_create_second_private_room(self):
+        room = Room.objects.create(
+            name="Первая беседа",
+            slug="pervaya-beseda",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.owner,
+        )
+        room.members.set((self.owner, self.first_guest))
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("chat:create_private_room"),
+            {"name": "Вторая беседа", "members": [self.second_guest.id]},
+        )
+
+        self.assertRedirects(response, reverse("chat:rooms"))
+        self.assertEqual(
+            Room.objects.filter(
+                owner=self.owner,
+                visibility=Room.Visibility.PRIVATE,
+            ).count(),
+            1,
+        )
+
+    def test_owner_can_update_private_room_name_and_members(self):
+        room = Room.objects.create(
+            name="Старая беседа",
+            slug="staraya-beseda",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.owner,
+        )
+        room.members.set((self.owner, self.first_guest))
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("chat:update_private_room", args=[room.id]),
+            {"name": "Новая беседа", "members": [self.second_guest.id]},
+        )
+
+        self.assertRedirects(response, "/chat/#closed-conversations")
+        room.refresh_from_db()
+        self.assertEqual(room.name, "Новая беседа")
+        self.assertEqual(
+            set(room.members.values_list("username", flat=True)),
+            {"alex", "ivan"},
+        )
+
+    def test_guest_cannot_update_or_delete_private_room(self):
+        room = Room.objects.create(
+            name="Закрытая беседа",
+            slug="zakrytaya-beseda",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.owner,
+        )
+        room.members.set((self.owner, self.first_guest))
+        self.client.force_login(self.first_guest)
+
+        update_response = self.client.post(
+            reverse("chat:update_private_room", args=[room.id]),
+            {"name": "Чужое имя", "members": [self.second_guest.id]},
+        )
+        delete_response = self.client.post(
+            reverse("chat:delete_private_room", args=[room.id]),
+        )
+
+        self.assertEqual(update_response.status_code, 404)
+        self.assertEqual(delete_response.status_code, 404)
+        self.assertTrue(Room.objects.filter(id=room.id).exists())
+
+    def test_invited_guest_can_leave_private_room(self):
+        room = Room.objects.create(
+            name="Закрытая беседа",
+            slug="zakrytaya-beseda",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.owner,
+        )
+        room.members.set((self.owner, self.first_guest))
+        self.client.force_login(self.first_guest)
+
+        response = self.client.post(
+            reverse("chat:leave_private_room", args=[room.id]),
+        )
+
+        self.assertRedirects(response, "/chat/#closed-conversations")
+        self.assertFalse(room.members.filter(id=self.first_guest.id).exists())
+        self.assertTrue(room.members.filter(id=self.owner.id).exists())
+
+    def test_owner_cannot_leave_own_private_room(self):
+        room = Room.objects.create(
+            name="Закрытая беседа",
+            slug="zakrytaya-beseda",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.owner,
+        )
+        room.members.set((self.owner, self.first_guest))
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("chat:leave_private_room", args=[room.id]),
+        )
+
+        self.assertRedirects(response, "/chat/#closed-conversations")
+        self.assertTrue(room.members.filter(id=self.owner.id).exists())
+
+    def test_invited_user_sees_all_closed_conversations_and_leave_controls(self):
+        rooms = []
+        for index, owner in enumerate((self.owner, self.second_guest), start=1):
+            room = Room.objects.create(
+                name=f"Закрытая беседа {index}",
+                slug=f"zakrytaya-beseda-{index}",
+                visibility=Room.Visibility.PRIVATE,
+                owner=owner,
+            )
+            room.members.set((owner, self.first_guest))
+            rooms.append(room)
+        self.client.force_login(self.first_guest)
+
+        response = self.client.get(reverse("chat:rooms"))
+
+        self.assertContains(response, "Закрытые беседы")
+        for room in rooms:
+            self.assertContains(response, room.name)
+            self.assertContains(
+                response,
+                reverse("chat:leave_private_room", args=[room.id]),
+            )
+
+    def test_owner_can_delete_private_room_and_create_another(self):
+        room = Room.objects.create(
+            name="Закрытая беседа",
+            slug="zakrytaya-beseda",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.owner,
+        )
+        room.members.set((self.owner, self.first_guest))
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("chat:delete_private_room", args=[room.id]),
+        )
+
+        self.assertRedirects(response, "/chat/#closed-conversations")
+        self.assertFalse(Room.objects.filter(id=room.id).exists())
+
+
+@override_settings(REDIS_URL="", PRESENCE_TTL_SECONDS=75)
+class PresenceServiceTests(TestCase):
+    def test_stale_local_connection_expires_without_disconnect(self):
+        service = OnlineUsersService()
+        with patch("chat.services.presence.time.time", return_value=100):
+            users = async_to_sync(service.connect)(
+                room_slug="general",
+                channel_name="channel-one",
+                username="alex",
+            )
+        self.assertEqual(users, ["alex"])
+
+        with patch("chat.services.presence.time.time", return_value=176):
+            users = async_to_sync(service.get_all_users)()
+
+        self.assertEqual(users, [])
+
+    def test_heartbeat_extends_local_connection(self):
+        service = OnlineUsersService()
+        with patch("chat.services.presence.time.time", return_value=100):
+            async_to_sync(service.connect)(
+                room_slug="general",
+                channel_name="channel-one",
+                username="alex",
+            )
+        with patch("chat.services.presence.time.time", return_value=160):
+            async_to_sync(service.touch)(
+                room_slug="general",
+                channel_name="channel-one",
+                username="alex",
+            )
+        with patch("chat.services.presence.time.time", return_value=200):
+            users = async_to_sync(service.get_all_users)()
+
+        self.assertEqual(users, ["alex"])
+
+    def test_room_users_prunes_stale_connections(self):
+        service = OnlineUsersService()
+        with patch("chat.services.presence.time.time", return_value=100):
+            async_to_sync(service.connect)(
+                room_slug="general",
+                channel_name="channel-one",
+                username="alex",
+            )
+        with patch("chat.services.presence.time.time", return_value=176):
+            users = async_to_sync(service.get_room_users)("general")
+
+        self.assertEqual(users, [])
 
 
 class ChatApiTests(TestCase):
@@ -2044,6 +2239,28 @@ class ChatConsumerTests(TransactionTestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.presence_status, "")
         consumer.send_error.assert_awaited_once_with("Такой статус недоступен.")
+
+    def test_revoked_room_access_closes_matching_connection(self):
+        consumer = ChatConsumer()
+        consumer.room = self.room
+        consumer.close = AsyncMock()
+
+        async_to_sync(consumer.room_access_revoked)(
+            {"room_slug": self.room.slug},
+        )
+
+        consumer.close.assert_awaited_once_with(code=4403)
+
+    def test_revoked_room_access_ignores_another_room(self):
+        consumer = ChatConsumer()
+        consumer.room = self.room
+        consumer.close = AsyncMock()
+
+        async_to_sync(consumer.room_access_revoked)(
+            {"room_slug": "another-room"},
+        )
+
+        consumer.close.assert_not_awaited()
 
     def test_uninvited_user_cannot_connect_to_private_room(self):
         outsider = User.objects.create_user(username="maria")

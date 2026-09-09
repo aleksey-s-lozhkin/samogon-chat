@@ -9,7 +9,7 @@ from django.db import models
 class Room(models.Model):
     class Visibility(models.TextChoices):
         PUBLIC = "public", "Открытая"
-        PRIVATE = "private", "Тайная"
+        PRIVATE = "private", "Закрытая"
 
     name = models.CharField(max_length=100)
     slug = models.SlugField(max_length=100, unique=True)
@@ -36,6 +36,13 @@ class Room(models.Model):
 
     class Meta:
         ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=("owner",),
+                condition=models.Q(visibility="private"),
+                name="one_owned_private_room_per_user",
+            ),
+        ]
 
     def __str__(self):
         return self.name
@@ -46,13 +53,13 @@ class Room(models.Model):
 
     def clean(self):
         if self.is_private and not self.owner_id:
-            raise ValidationError("У тайной комнаты должен быть владелец.")
+            raise ValidationError("У закрытой беседы должен быть владелец.")
         if not self.is_private and self.owner_id:
             raise ValidationError("У открытой комнаты не может быть владельца.")
 
 
 class RoomMembership(models.Model):
-    """Хранит состав тайной комнаты, включая её владельца."""
+    """Хранит состав закрытой беседы, включая её владельца."""
 
     room = models.ForeignKey(
         Room,
@@ -76,7 +83,7 @@ class RoomMembership(models.Model):
 
     def clean(self):
         if not self.room.is_private:
-            raise ValidationError("Участники доступны только тайным комнатам.")
+            raise ValidationError("Участники доступны только закрытым беседам.")
 
 
 class RoomReadState(models.Model):
