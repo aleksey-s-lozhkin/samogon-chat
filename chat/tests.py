@@ -219,6 +219,19 @@ class AttachmentDownloadTests(TestCase):
             response["X-Accel-Redirect"].startswith("/media/chat/attachments/")
         )
 
+    def test_nginx_keeps_all_chat_media_behind_internal_redirect(self):
+        nginx_config = (
+            settings.BASE_DIR / "deployment/nginx/samogon-site.conf"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("location ^~ /media/chat/ {", nginx_config)
+        protected_location = nginx_config.split(
+            "location ^~ /media/chat/ {",
+            maxsplit=1,
+        )[1].split("}", maxsplit=1)[0]
+        self.assertIn("internal;", protected_location)
+        self.assertIn("alias /var/www/samogon/media/chat/;", protected_location)
+
     def test_outsider_cannot_download_personal_attachment(self):
         self.client.force_login(self.outsider)
 
