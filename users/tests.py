@@ -128,6 +128,38 @@ class ProfileViewTests(TestCase):
         self.assertContains(response, "Уведомления на этом устройстве")
         self.assertContains(response, 'data-vapid-key="public-key"')
 
+    def test_profile_does_not_expose_avatar_storage_path(self):
+        self.user.avatar = "avatars/2026/09/private-generated-name.jpg"
+        self.user.save(update_fields=("avatar",))
+        self.client.force_login(self.user)
+
+        response = self.client.get("/users/profile/")
+
+        self.assertContains(response, "Текущий аватар")
+        self.assertContains(response, "Удалить")
+        self.assertNotContains(response, ">private-generated-name.jpg<")
+        self.assertNotContains(response, "Текущий файл")
+
+    def test_profile_can_clear_existing_avatar(self):
+        self.user.avatar = "avatars/2026/09/avatar.jpg"
+        self.user.save(update_fields=("avatar",))
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            "/users/profile/",
+            {
+                "username": self.user.username,
+                "email": self.user.email,
+                "message_color": "amber",
+                "presence_status": "",
+                "avatar-clear": "on",
+            },
+        )
+
+        self.assertRedirects(response, "/users/profile/")
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.avatar)
+
 
 class ServiceRulesTests(TestCase):
     def test_rules_are_public_and_linked_from_authentication(self):

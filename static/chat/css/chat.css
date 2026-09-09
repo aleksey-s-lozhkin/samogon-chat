@@ -4743,3 +4743,53 @@ html[data-theme="light"] .recipient-cancel {
     .message-search-form { grid-template-columns: 1fr; }
     .message-search-form button { width: 100%; }
 }
+
+/* Final density overrides intentionally live at the end of the cascade. */
+.chat-log { gap: 6px; }
+.message-content { padding: 9px 12px; }
+.message-username { margin-bottom: 2px; }
+.message-time { margin-top: 3px; }
+.message-reply-quote { margin-bottom: 4px; }
+
+.composer-tool,
+#chat-message-submit {
+    border-color: transparent;
+    background: transparent;
+}
+
+.composer-tool:focus-visible,
+#chat-message-submit:focus-visible {
+    outline: 2px solid var(--primary-hover);
+    outline-offset: 2px;
+}
+
+.room-navigation-icon { width: 34px; height: 34px; }
+.room-navigation-icon svg { width: 22px; height: 22px; }
+
+.presence-sidebar .user-presence-panel {
+    display: flex;
+    min-height: 0;
+    flex-direction: column;
+}
+
+.presence-sidebar .online-users { flex: 0 1 auto; }
+.presence-sidebar .offline-users { flex: 1 1 auto; }
+.presence-sidebar #online-users-list,
+.presence-sidebar #offline-users-list {
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+}
+.presence-sidebar #offline-users-list { flex: 1 1 auto; }
+
+.emoji-picker { grid-template-columns: repeat(5, 38px); }
+.emoji-picker button {
+    width: 38px;
+    height: 38px;
+    font-size: 20px;
+}
+
+@media (max-width: 700px) {
+    .chat-log { gap: 5px; }
+    .message-content { padding: 8px 11px; }
+}

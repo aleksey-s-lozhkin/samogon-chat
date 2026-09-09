@@ -2001,6 +2001,15 @@ class ChatConsumerTests(TransactionTestCase):
 
         self.assertEqual([item["username"] for item in users], ["maria", "alex"])
         self.assertEqual([item["status"] for item in users], ["Думаю", ""])
+        self.assertEqual([item["last_seen_at"] for item in users], [None, None])
+
+    def test_presence_exposes_last_seen_as_iso_datetime(self):
+        self.user.last_seen_at = timezone.now()
+        self.user.save(update_fields=("last_seen_at",))
+
+        users = async_to_sync(ChatConsumer().get_all_users)()
+
+        self.assertEqual(users[0]["last_seen_at"], self.user.last_seen_at.isoformat())
 
     @patch("chat.services.jobs.process_bartender_job.delay")
     def test_websocket_queues_bartender_instead_of_waiting_for_model(self, delay):
@@ -2329,10 +2338,12 @@ class ChatConsumerTests(TransactionTestCase):
         )
         presence_message = await communicator.receive_json_from()
         self.assertEqual(presence_message["type"], "user_presence")
-        self.assertEqual(
-            presence_message["users"],
-            [{"username": "alex", "avatar_url": None, "status": ""}],
-        )
+        self.assertEqual(len(presence_message["users"]), 1)
+        presence_user = presence_message["users"][0]
+        self.assertEqual(presence_user["username"], "alex")
+        self.assertIsNone(presence_user["avatar_url"])
+        self.assertEqual(presence_user["status"], "")
+        self.assertIsNotNone(presence_user["last_seen_at"])
         self.assertEqual(presence_message["online"], ["alex"])
 
         await communicator.send_to(text_data="not json")
