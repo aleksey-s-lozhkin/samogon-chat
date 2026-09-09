@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import PasswordResetView
 from django.contrib import messages
 from django.conf import settings
+from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse, reverse_lazy
@@ -389,22 +390,30 @@ def disconnect_social_account(request, provider):
         messages.error(request, "Неизвестный способ входа.")
         return redirect("profile")
 
-    account = SocialAccount.objects.filter(
-        user=request.user,
-        provider=provider,
-    ).first()
-    if account is None:
-        messages.error(request, "Этот способ входа уже отключён.")
-        return redirect("profile")
-
-    connected_count = SocialAccount.objects.filter(user=request.user).count()
-    if not request.user.has_usable_password() and connected_count <= 1:
-        messages.error(
-            request,
-            "Сначала задайте пароль или подключите другой сервис.",
+    with transaction.atomic():
+        accounts = list(
+            SocialAccount.objects.select_for_update().filter(user=request.user)
         )
-        return redirect("profile")
+        provider_accounts = [item for item in accounts if item.provider == provider]
+        if not provider_accounts:
+            messages.error(request, "Этот способ входа уже отключён.")
+            return redirect("profile")
 
-    account.delete()
+        remaining_supported_accounts = [
+            item
+            for item in accounts
+            if item.provider in {"github", "google"} and item.provider != provider
+        ]
+        if (
+            not request.user.has_usable_password()
+            and not remaining_supported_accounts
+        ):
+            messages.error(
+                request,
+                "Сначала задайте пароль или подключите другой сервис.",
+            )
+            return redirect("profile")
+
+        SocialAccount.objects.filter(user=request.user, provider=provider).delete()
     messages.success(request, "Способ входа отключён.")
     return redirect("profile")

@@ -4,6 +4,7 @@ import re
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser, Group, Permission
 from django.core.cache import cache
@@ -590,6 +591,32 @@ class AuthenticationHtmxTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Неверный логин или пароль")
 
+    def test_auth_fields_expose_accessible_error_relationships(self):
+        response = self.client.get("/chat/")
+
+        self.assertContains(response, 'name="identifier"')
+        self.assertContains(response, 'maxlength="254"')
+        self.assertContains(response, 'aria-describedby="login-error"', count=2)
+        self.assertContains(
+            response,
+            'aria-describedby="register-error-username"',
+        )
+        self.assertContains(
+            response,
+            'aria-describedby="password-requirements register-error-password"',
+        )
+
+    def test_auth_script_marks_and_clears_invalid_fields(self):
+        with open(
+            settings.BASE_DIR / "static/chat/js/auth.js",
+            encoding="utf-8",
+        ) as script:
+            source = script.read()
+
+        self.assertIn('setAttribute("aria-invalid", "true")', source)
+        self.assertIn('removeAttribute("aria-invalid")', source)
+        self.assertIn("syncRegistrationFieldErrors", source)
+
     def test_successful_login_requests_page_refresh(self):
         response = self.client.post(
             "/users/login/",
@@ -998,6 +1025,78 @@ class OAuthAuthenticationTests(TestCase):
 
         self.assertContains(response, "Сначала задайте пароль")
         self.assertTrue(SocialAccount.objects.filter(pk=account.pk).exists())
+
+    def test_oauth_only_user_can_disconnect_one_of_two_providers(self):
+        user = User.objects.create_user(username="oauth-user")
+        user.set_unusable_password()
+        user.save(update_fields=("password",))
+        github = SocialAccount.objects.create(
+            user=user,
+            provider="github",
+            uid="github-42",
+        )
+        google = SocialAccount.objects.create(
+            user=user,
+            provider="google",
+            uid="google-42",
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            "/users/profile/connections/github/disconnect/",
+        )
+
+        self.assertRedirects(
+            response,
+            "/users/profile/",
+            fetch_redirect_response=False,
+        )
+        self.assertFalse(SocialAccount.objects.filter(pk=github.pk).exists())
+        self.assertTrue(SocialAccount.objects.filter(pk=google.pk).exists())
+
+    def test_unknown_provider_does_not_count_as_remaining_login_method(self):
+        user = User.objects.create_user(username="oauth-user")
+        user.set_unusable_password()
+        user.save(update_fields=("password",))
+        github = SocialAccount.objects.create(
+            user=user,
+            provider="github",
+            uid="github-42",
+        )
+        SocialAccount.objects.create(
+            user=user,
+            provider="unsupported",
+            uid="unsupported-42",
+        )
+        self.client.force_login(user)
+
+        response = self.client.post(
+            "/users/profile/connections/github/disconnect/",
+            follow=True,
+        )
+
+        self.assertContains(response, "Сначала задайте пароль")
+        self.assertTrue(SocialAccount.objects.filter(pk=github.pk).exists())
+
+    @override_settings(
+        GITHUB_OAUTH_CLIENT_ID="github-client",
+        GITHUB_OAUTH_CLIENT_SECRET="github-secret",
+    )
+    def test_profile_confirms_provider_disconnection(self):
+        user = User.objects.create_user(
+            username="local-user",
+            password="local-password-42",
+        )
+        SocialAccount.objects.create(
+            user=user,
+            provider="github",
+            uid="github-42",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get("/users/profile/")
+
+        self.assertContains(response, 'data-oauth-disconnect="GitHub"')
 
 
 class RateLimitTests(TestCase):
