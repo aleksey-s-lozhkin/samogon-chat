@@ -22,3 +22,8 @@ celery = "^5.5"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "playwright (>=1.62.0,<2.0.0)"
+]
