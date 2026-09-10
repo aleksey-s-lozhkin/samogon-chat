@@ -1,6 +1,74 @@
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.templatetags.static import static
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from rest_framework import serializers
+from rest_framework.decorators import (
+    api_view,
+    authentication_classes,
+    permission_classes,
+)
+
+from config.health import readiness_status
+
+
+def health_response(payload, *, status=200):
+    response = JsonResponse(payload, status=status)
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@extend_schema(
+    tags=("system",),
+    responses={
+        200: inline_serializer(
+            name="LivenessResponse",
+            fields={"status": serializers.CharField()},
+        ),
+    },
+    auth=[],
+)
+@api_view(("GET",))
+@authentication_classes(())
+@permission_classes(())
+def health_live(request):
+    """Report that the ASGI process can accept an HTTP request."""
+    return health_response({"status": "ok"})
+
+
+readiness_serializer = inline_serializer(
+    name="ReadinessResponse",
+    fields={
+        "status": serializers.CharField(),
+        "components": serializers.DictField(child=serializers.CharField()),
+    },
+)
+
+
+@extend_schema(
+    tags=("system",),
+    responses={
+        200: readiness_serializer,
+        503: OpenApiResponse(
+            response=readiness_serializer,
+            description="A required dependency is unavailable.",
+        ),
+    },
+    auth=[],
+)
+@api_view(("GET",))
+@authentication_classes(())
+@permission_classes(())
+def health_ready(request):
+    """Report availability of the dependencies required by Web and WebSocket."""
+    ready, components = readiness_status()
+    return health_response(
+        {
+            "status": "ok" if ready else "unavailable",
+            "components": components,
+        },
+        status=200 if ready else 503,
+    )
 
 
 def home(request):

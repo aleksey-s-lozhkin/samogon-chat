@@ -215,7 +215,13 @@ Push работает только в безопасном HTTPS-контекс�
 
 ```bash
 curl --fail https://app.example.invalid/api/v1/status/
+curl --fail https://app.example.invalid/health/live/
+curl --fail https://app.example.invalid/health/ready/
 ```
+
+`live` проверяет только ответ web-процесса. `ready` дополнительно выполняет
+минимальные проверки PostgreSQL и Redis и возвращает `503`, если обязательная
+зависимость недоступна. Имена баз, адреса и тексты исключений не выводятся.
 
 В авторизованной PWA откройте `/api/v1/push/subscriptions/`: ответ должен
 содержать только устройства текущего пользователя с непрозрачными `device_id`,
@@ -311,9 +317,22 @@ Query-параметры общего `REDIS_URL`, предназначенны�
 в URL Celery. Таймауты брокера задаются отдельно переменными
 `CELERY_REDIS_SOCKET_TIMEOUT` и `CELERY_REDIS_CONNECT_TIMEOUT`.
 
+Оба сервиса имеют независимые Docker health checks. Web проверяется через
+HTTP readiness, worker — адресным Celery ping. Посмотреть результат:
+
+```bash
+docker compose ps
+docker inspect --format '{{json .State.Health}}' samogon-web
+docker inspect --format '{{json .State.Health}}' samogon-worker
+```
+
+Состояние `unhealthy` помогает диагностике и останавливает неуспешный deploy,
+но само по себе не вызывает перезапуск в обычном Docker Compose. Политика
+`restart: unless-stopped` перезапускает контейнер после завершения процесса.
+
 После пересоздания `samogon-web` его адрес во внутренней Docker-сети меняется.
-Workflow ждёт готовности Daphne на порту 8000, проверяет конфигурацию Nginx и
-делает graceful reload. Это обновляет адрес upstream без остановки остальных
+Workflow ждёт успешных health checks web и worker, проверяет конфигурацию Nginx
+и делает graceful reload. Это обновляет адрес upstream без остановки остальных
 сервисов и предотвращает `502 Bad Gateway` после деплоя.
 
 ### Защищённые вложения

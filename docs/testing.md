@@ -40,3 +40,26 @@ poetry run python scripts/browser_smoke.py
 записываются. В CI снимки доступны семь дней только как артефакт неуспешного
 запуска.
 
+## Проверка production-контейнеров
+
+После запуска образа проверьте состояния обоих сервисов:
+
+```bash
+docker compose ps
+docker inspect --format '{{json .State.Health}}' samogon-web
+docker inspect --format '{{json .State.Health}}' samogon-worker
+```
+
+Для ручной проверки web снаружи используются два маршрута:
+
+```bash
+curl --fail https://app.example.invalid/health/live/
+curl --fail https://app.example.invalid/health/ready/
+```
+
+`live` подтверждает ответ Daphne, `ready` дополнительно проверяет PostgreSQL и
+Redis. Worker отвечает на адресный Celery ping внутри Docker. Plain Docker
+Compose показывает состояние `unhealthy`, но сам по этому признаку контейнер не
+перезапускает; `restart: unless-stopped` применяется, когда процесс завершился.
+Deploy workflow ждёт готовности обоих контейнеров и останавливает выкладку с
+последними журналами соответствующего сервиса, если проверка не прошла.

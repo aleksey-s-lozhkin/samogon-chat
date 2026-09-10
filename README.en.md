@@ -15,7 +15,8 @@ rooms, direct messages, closed conversations, and a local AI bartender named Sem
 - registration, password recovery, GitHub and Google OAuth;
 - installable PWA and opt-in Web Push notifications;
 - light, dark, and system themes;
-- a versioned chat, profile, and Web Push API with OpenAPI and Swagger.
+- a versioned chat, profile, and Web Push API with OpenAPI and Swagger;
+- safe health checks for Web, PostgreSQL, Redis, and the Celery worker.
 
 ## Stack
 
@@ -39,6 +40,10 @@ poetry run python manage.py check
 poetry run python manage.py spectacular --validate
 poetry run python manage.py test
 ```
+
+With the server running, unauthenticated diagnostics are available at
+`/health/live/` for the Web process and `/health/ready/` for its required
+dependencies. Responses expose no addresses, versions, or internal errors.
 
 Run the isolated browser smoke test:
 
