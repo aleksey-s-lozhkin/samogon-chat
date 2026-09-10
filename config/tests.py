@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 from django.urls import reverse
 
 
@@ -85,6 +85,7 @@ class DependencyHealthTests(SimpleTestCase):
 
         self.assertIs(check_cache(), False)
 
+    @override_settings(ALLOWED_HOSTS=["app.example.invalid"])
     @patch("config.health.urlopen")
     def test_web_probe_uses_readiness_endpoint(self, urlopen):
         response = urlopen.return_value.__enter__.return_value
@@ -93,10 +94,22 @@ class DependencyHealthTests(SimpleTestCase):
         from config.health import web_is_ready
 
         self.assertIs(web_is_ready(3), True)
-        urlopen.assert_called_once_with(
-            "http://127.0.0.1:8000/health/ready/",
-            timeout=3,
-        )
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.full_url, "http://127.0.0.1:8000/health/ready/")
+        self.assertEqual(request.get_header("Host"), "app.example.invalid")
+        self.assertEqual(request.get_header("X-forwarded-proto"), "https")
+        self.assertEqual(urlopen.call_args.kwargs, {"timeout": 3})
+
+    @override_settings(ALLOWED_HOSTS=["*.example.invalid"])
+    @patch("config.health.urlopen")
+    def test_web_probe_supports_wildcard_allowed_host(self, urlopen):
+        urlopen.return_value.__enter__.return_value.status = 200
+
+        from config.health import web_is_ready
+
+        self.assertIs(web_is_ready(3), True)
+        request = urlopen.call_args.args[0]
+        self.assertEqual(request.get_header("Host"), "health.example.invalid")
 
     @patch("config.health.socket.gethostname", return_value="worker-test")
     @patch("config.celery.app.control.inspect")
