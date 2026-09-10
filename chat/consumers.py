@@ -112,6 +112,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         users = await online_users.disconnect(
             room_slug=self.room.slug,
             channel_name=self.channel_name,
+            username=self.user.username,
         )
         await self.touch_last_seen()
         await self.channel_layer.group_discard(
@@ -137,6 +138,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if await self.is_chat_restricted(self.user.id):
             await self.close(code=4403)
             return
+        if self.room.is_private and not await self.can_access_room(self.user.id):
+            await self.close(code=4403)
+            return
 
         try:
             data = json.loads(text_data)
@@ -151,6 +155,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
         if isinstance(data, dict) and data.get("type") == "presence_status":
             await self.handle_presence_status(data)
+            return
+        if isinstance(data, dict) and data.get("type") == "presence_ping":
+            removed_stale = await online_users.touch(
+                room_slug=self.room.slug,
+                channel_name=self.channel_name,
+                username=self.user.username,
+            )
+            if removed_stale:
+                users = await online_users.get_room_users(self.room.slug)
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {"type": "online_users", "users": users},
+                )
+                await self.broadcast_presence()
             return
 
         if not await self.is_rate_allowed(
@@ -220,7 +238,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 )
                 return
             if self.room.is_private and not await self.is_room_member(recipient.id):
-                await self.send_error("Этот гость не сидит за вашим тайным столиком")
+                await self.send_error("Этот пользователь не участвует в закрытой беседе")
                 return
 
         reply_to = None
@@ -519,12 +537,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def send_to_private_room(self, event):
-        """Доставляет реплику всем участникам тайного столика."""
+        """Доставляет реплику всем участникам закрытой беседы."""
         for user_id in await self.get_room_member_ids():
             await self.channel_layer.group_send(
                 f"chat_user_{user_id}",
                 event,
             )
+
+    async def room_access_revoked(self, event):
+        """Закрывает открытую вкладку после выхода или исключения из беседы."""
+        if event.get("room_slug") == self.room.slug:
+            await self.close(code=4403)
 
     @database_sync_to_async
     def get_room(self, room_slug):

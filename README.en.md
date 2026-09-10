@@ -3,13 +3,13 @@
 [Русская версия](README.md)
 
 Samogon is a responsive Django and Channels chat for developers. It provides
-rooms, direct messages, private tables, and a local AI bartender named Semyon.
+rooms, direct messages, closed conversations, and a local AI bartender named Semyon.
 
 ## Features
 
 - real-time messages, presence, and typing indicators;
 - replies, reactions with participant lists, emoji, and safe code blocks;
-- direct messages, private rooms, search, and personal notes;
+- direct messages, closed conversations, search, and personal notes;
 - protected images and documents, up to three files per message;
 - moderation, user reports, temporary and permanent bans;
 - registration, password recovery, GitHub and Google OAuth;

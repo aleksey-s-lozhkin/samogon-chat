@@ -51,6 +51,21 @@ urlpatterns = [
         name="create_private_room",
     ),
     path(
+        "private-rooms/<int:room_id>/update/",
+        views.update_private_room,
+        name="update_private_room",
+    ),
+    path(
+        "private-rooms/<int:room_id>/delete/",
+        views.delete_private_room,
+        name="delete_private_room",
+    ),
+    path(
+        "private-rooms/<int:room_id>/leave/",
+        views.leave_private_room,
+        name="leave_private_room",
+    ),
+    path(
         "",
         views.rooms_page,
         name="rooms",
