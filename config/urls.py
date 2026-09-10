@@ -4,9 +4,20 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
 from config import settings
-from config.views import home, offline, pwa_manifest, robots, service_rules, service_worker
+from config.views import (
+    health_live,
+    health_ready,
+    home,
+    offline,
+    pwa_manifest,
+    robots,
+    service_rules,
+    service_worker,
+)
 
 urlpatterns = [
+    path("health/live/", health_live, name="health_live"),
+    path("health/ready/", health_ready, name="health_ready"),
     path("admin/", admin.site.urls),
     path("api/schema/", SpectacularAPIView.as_view(), name="api_schema"),
     path(

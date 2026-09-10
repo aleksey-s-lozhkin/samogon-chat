@@ -7,6 +7,12 @@ services:
     volumes:
       - ${SAMOGON_DATA_DIR:-./.runtime}/static:/app/staticfiles
       - ${SAMOGON_DATA_DIR:-./.runtime}/media:/app/media
+    healthcheck:
+      test: ["CMD", "python", "/app/deployment/docker/healthcheck.py", "web"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
     networks:
       - infra
 
@@ -18,6 +24,12 @@ services:
     env_file: ${SAMOGON_ENV_FILE:-.env.production}
     environment:
       SKIP_BOOTSTRAP: "1"
+    healthcheck:
+      test: ["CMD", "python", "/app/deployment/docker/healthcheck.py", "worker"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
       - infra
 

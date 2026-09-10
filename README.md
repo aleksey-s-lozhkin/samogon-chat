@@ -15,7 +15,8 @@
 - регистрация, восстановление пароля, GitHub и Google OAuth;
 - устанавливаемая PWA и добровольные Web Push-уведомления;
 - светлая, тёмная и системная темы;
-- версионированный API чата, профиля и Web Push с OpenAPI/Swagger.
+- версионированный API чата, профиля и Web Push с OpenAPI/Swagger;
+- безопасные health checks для web, PostgreSQL, Redis и Celery worker.
 
 ## Стек
 
@@ -39,6 +40,10 @@ poetry run python manage.py check
 poetry run python manage.py spectacular --validate
 poetry run python manage.py test
 ```
+
+При запущенном сервере диагностика доступна без авторизации:
+`/health/live/` проверяет web-процесс, `/health/ready/` — обязательные
+зависимости. Ответы не содержат адресов, версий и текстов внутренних ошибок.
 
 Изолированный браузерный smoke-test:
 
