@@ -370,6 +370,16 @@ Nginx.
 
 ## 7. Боевая проверка
 
+До создания release PR выполните изолированный браузерный сценарий:
+
+```bash
+poetry run python scripts/browser_smoke.py
+```
+
+Он не обращается к production и проверяет основной маршрут в Chromium и
+WebKit. После деплоя остаётся обязательной короткая ручная проверка реального
+домена и журналов:
+
 ```bash
 curl -I https://app.example.invalid/chat/
 docker logs --tail 100 samogon-web

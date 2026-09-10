@@ -22,7 +22,7 @@ jobs:
           python-version: "3.14"
 
       - name: Install dependencies
-        run: pip install poetry && poetry install --no-interaction --no-root
+        run: pip install poetry && poetry install --no-interaction --no-root --only main
 
       - name: Check Django configuration
         run: poetry run python manage.py check
@@ -40,3 +40,35 @@ jobs:
 
       - name: Build image without publishing
         run: docker build --tag samogon:pull-request .
+
+  browser-smoke:
+    name: Browser smoke tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: pip install poetry && poetry install --no-interaction --no-root --with dev
+
+      - name: Install browser engines
+        run: poetry run playwright install --with-deps chromium webkit
+
+      - name: Run browser smoke tests
+        run: poetry run python scripts/browser_smoke.py
+
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: browser-smoke-failure
+          path: test-results/browser-smoke/
+          if-no-files-found: ignore
+          retention-days: 7
