@@ -121,8 +121,8 @@ jobs:
 
           web_ready=0
           for attempt in $(seq 1 60); do
-            if docker exec samogon-web python -c \
-              "import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()"; then
+            if docker exec samogon-web python \
+              /app/deployment/docker/healthcheck.py web; then
               web_ready=1
               break
             fi
@@ -130,6 +130,20 @@ jobs:
           done
           if [ "$web_ready" -ne 1 ]; then
             docker compose -f compose.yaml logs --tail=100 samogon-web
+            exit 1
+          fi
+
+          worker_ready=0
+          for attempt in $(seq 1 30); do
+            if docker exec samogon-worker python \
+              /app/deployment/docker/healthcheck.py worker; then
+              worker_ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$worker_ready" -ne 1 ]; then
+            docker compose -f compose.yaml logs --tail=100 samogon-worker
             exit 1
           fi
 
