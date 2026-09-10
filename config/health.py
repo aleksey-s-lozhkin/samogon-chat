@@ -1,8 +1,9 @@
 import logging
 import socket
 from urllib.error import URLError
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 
@@ -12,11 +13,22 @@ logger = logging.getLogger(__name__)
 
 def web_is_ready(timeout):
     """Check readiness through the same HTTP boundary used by Docker."""
+    allowed_host = next(iter(settings.ALLOWED_HOSTS), "localhost")
+    if allowed_host == "*":
+        allowed_host = "localhost"
+    elif allowed_host.startswith("*."):
+        allowed_host = f"health.{allowed_host[2:]}"
+    elif allowed_host.startswith("."):
+        allowed_host = f"health{allowed_host}"
+    request = Request(
+        "http://127.0.0.1:8000/health/ready/",
+        headers={
+            "Host": allowed_host,
+            "X-Forwarded-Proto": "https",
+        },
+    )
     try:
-        with urlopen(
-            "http://127.0.0.1:8000/health/ready/",
-            timeout=timeout,
-        ) as response:
+        with urlopen(request, timeout=timeout) as response:
             return response.status == 200
     except (OSError, URLError):
         return False
