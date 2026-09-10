@@ -40,6 +40,16 @@ poetry run python manage.py spectacular --validate
 poetry run python manage.py test
 ```
 
+Изолированный браузерный smoke-test:
+
+```bash
+poetry run playwright install chromium webkit
+poetry run python scripts/browser_smoke.py
+```
+
+Он использует временную базу и не изменяет локальные данные. Подробнее:
+[проверка проекта](docs/testing.md).
+
 Ollama, Redis, OAuth, Turnstile и Web Push необязательны для базовой локальной
 разработки. Их параметры задаются только переменными окружения. Начните с
 `.env.example`; реальные адреса и секреты в репозиторий не добавляются.

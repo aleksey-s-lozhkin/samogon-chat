@@ -40,6 +40,16 @@ poetry run python manage.py spectacular --validate
 poetry run python manage.py test
 ```
 
+Run the isolated browser smoke test:
+
+```bash
+poetry run playwright install chromium webkit
+poetry run python scripts/browser_smoke.py
+```
+
+It uses a temporary database and does not modify local data. See the
+[testing guide](docs/testing.md).
+
 Ollama, Redis, OAuth, Turnstile, and Web Push are optional for basic local
 development. Configure them only through environment variables. Start with
 `.env.example`; never commit real hosts or secrets.
