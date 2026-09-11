@@ -99,3 +99,27 @@ python deployment/ollama/benchmark_dialogues.py \
 Сначала оцениваются соответствие сценарию, отсутствие выдумок, естественность и
 тон, а затем скорость и потребление памяти. Более быстрая модель не выбирается,
 если она регулярно теряет контекст или нарушает границы роли.
+
+### Проверка нового характера
+
+Production-промпт не меняется до контрольного сравнения. Кандидат хранится в
+`chat/services/prompts/semen-candidate.txt` и запускается на той же модели и тех
+же сценариях. Метка `--label` позволяет объединить результаты без путаницы:
+
+```bash
+python deployment/ollama/benchmark_dialogues.py \
+  --url http://<ollama-host>:11434 \
+  --label current \
+  qwen3:8b > benchmark-current.jsonl
+
+python deployment/ollama/benchmark_dialogues.py \
+  --url http://<ollama-host>:11434 \
+  --system-prompt chat/services/prompts/semen-candidate.txt \
+  --label candidate \
+  qwen3:8b > benchmark-candidate.jsonl
+```
+
+Кандидат отдельно запрещает повторное знакомство, угадывание имени, повтор уже
+выполненной диагностики, автоматические напитки, обязательные метафоры, Markdown
+и служебный префикс. Эти ограничения проверяются до подключения истории к
+production-вызовам.

@@ -32,6 +32,10 @@ def parse_args():
     parser.add_argument("--scenarios", type=Path, default=DEFAULT_SCENARIOS)
     parser.add_argument("--system-prompt", type=Path, default=DEFAULT_SYSTEM_PROMPT)
     parser.add_argument(
+        "--label",
+        help="Метка варианта промпта в каждой строке результата.",
+    )
+    parser.add_argument(
         "--mode",
         choices=("last", "context", "both"),
         default="both",
@@ -102,6 +106,7 @@ def main():
     args = parse_args()
     scenarios = load_scenarios(args.scenarios)
     system_prompt = args.system_prompt.read_text(encoding="utf-8").strip()
+    prompt_label = args.label or args.system_prompt.stem
     options = {
         "temperature": args.temperature,
         "num_ctx": args.num_ctx,
@@ -119,6 +124,7 @@ def main():
                     "description": scenario["description"],
                     "model": model,
                     "mode": mode,
+                    "prompt": prompt_label,
                 }
                 try:
                     data, content, elapsed_ms = request_reply(
