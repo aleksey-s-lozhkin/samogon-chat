@@ -49,6 +49,17 @@ class BenchmarkDialoguesTests(unittest.TestCase):
             self.assertTrue(scenario["messages"])
             self.assertIn("description", scenario)
 
+    def test_second_prompt_candidate_keeps_critical_boundaries(self):
+        prompt = (
+            Path(__file__).parents[1]
+            / "../chat/services/prompts/semen-candidate-v2.txt"
+        ).resolve().read_text(encoding="utf-8")
+
+        self.assertIn("Никогда не показывай", prompt)
+        self.assertIn("Не угадывай настоящее имя", prompt)
+        self.assertIn("не предлагает\nнапиток без просьбы", prompt)
+        self.assertIn("префикса «>>>»", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()
