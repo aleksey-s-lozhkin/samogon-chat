@@ -89,11 +89,27 @@ jobs:
           compose_dir=/srv/compose/samogon
           data_dir=/srv/data/samogon
 
+          compose_for_image() {
+            local selected_image=$1
+            shift
+            env SAMOGON_IMAGE="$selected_image" \
+                SAMOGON_ENV_FILE="$env_file" \
+                SAMOGON_DATA_DIR="$data_dir" \
+                docker compose -f compose.yaml "$@"
+          }
+
           cd "$compose_dir"
-          env SAMOGON_IMAGE="$image" \
-              SAMOGON_ENV_FILE="$env_file" \
-              SAMOGON_DATA_DIR="$data_dir" \
-              docker compose -f compose.yaml pull samogon-web samogon-worker
+          previous_web_image=$(docker inspect \
+            --format '{{.Config.Image}}' samogon-web 2>/dev/null || true)
+          previous_worker_image=$(docker inspect \
+            --format '{{.Config.Image}}' samogon-worker 2>/dev/null || true)
+          rollback_image=""
+          if [ -n "$previous_web_image" ] \
+              && [ "$previous_web_image" = "$previous_worker_image" ]; then
+            rollback_image=$previous_web_image
+          fi
+
+          compose_for_image "$image" pull samogon-web samogon-worker
 
           if ! grep -q '^VAPID_PUBLIC_KEY=.' "$env_file" \
               || ! grep -q '^VAPID_PRIVATE_KEY=.' "$env_file"; then
@@ -114,10 +130,70 @@ jobs:
             trap - EXIT
           fi
 
-          env SAMOGON_IMAGE="$image" \
-              SAMOGON_ENV_FILE="$env_file" \
-              SAMOGON_DATA_DIR="$data_dir" \
-              docker compose -f compose.yaml up -d --no-build samogon-web samogon-worker
+          deployment_started=1
+          rollback_deployment() {
+            deploy_status=$?
+            trap - EXIT
+            if [ "$deploy_status" -eq 0 ] || [ "$deployment_started" -ne 1 ]; then
+              exit "$deploy_status"
+            fi
+
+            set +e
+            echo "Deployment failed; collecting logs before rollback."
+            compose_for_image "$image" logs --tail=100 samogon-web samogon-worker
+            if [ -z "$rollback_image" ]; then
+              echo "No single previous image is available for automatic rollback."
+              exit "$deploy_status"
+            fi
+
+            echo "Restoring the previously running application image."
+            if ! compose_for_image "$rollback_image" up -d --no-build \
+              samogon-web samogon-worker; then
+              echo "Automatic rollback could not recreate the previous containers."
+              exit "$deploy_status"
+            fi
+
+            rollback_web_ready=0
+            for attempt in $(seq 1 60); do
+              if docker exec samogon-web python -c \
+                "import socket; socket.create_connection(('127.0.0.1', 8000), 2).close()"; then
+                rollback_web_ready=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "$rollback_web_ready" -ne 1 ]; then
+              echo "Previous web image did not start after rollback."
+              compose_for_image "$rollback_image" logs --tail=100 samogon-web
+              exit "$deploy_status"
+            fi
+
+            rollback_worker_ready=0
+            for attempt in $(seq 1 30); do
+              if docker exec samogon-worker python \
+                /app/deployment/docker/healthcheck.py worker; then
+                rollback_worker_ready=1
+                break
+              fi
+              sleep 2
+            done
+            if [ "$rollback_worker_ready" -ne 1 ]; then
+              echo "Previous worker image did not become healthy after rollback."
+              compose_for_image "$rollback_image" logs --tail=100 samogon-worker
+            fi
+
+            if docker exec nginx nginx -t; then
+              docker exec nginx nginx -s reload
+            else
+              echo "Nginx configuration check failed during rollback."
+            fi
+            compose_for_image "$rollback_image" ps
+            echo "Previous application image restored; deployment remains failed."
+            exit "$deploy_status"
+          }
+          trap rollback_deployment EXIT
+
+          compose_for_image "$image" up -d --no-build samogon-web samogon-worker
 
           web_ready=0
           for attempt in $(seq 1 60); do
@@ -129,7 +205,7 @@ jobs:
             sleep 2
           done
           if [ "$web_ready" -ne 1 ]; then
-            docker compose -f compose.yaml logs --tail=100 samogon-web
+            compose_for_image "$image" logs --tail=100 samogon-web
             exit 1
           fi
 
@@ -143,11 +219,13 @@ jobs:
             sleep 2
           done
           if [ "$worker_ready" -ne 1 ]; then
-            docker compose -f compose.yaml logs --tail=100 samogon-worker
+            compose_for_image "$image" logs --tail=100 samogon-worker
             exit 1
           fi
 
           docker exec nginx nginx -t
           docker exec nginx nginx -s reload
-          docker compose -f compose.yaml ps
+          compose_for_image "$image" ps
+          deployment_started=0
+          trap - EXIT
           REMOTE
