@@ -109,8 +109,10 @@ def main():
     }
     failures = 0
 
-    for scenario in scenarios:
-        for model in args.models:
+    # Полностью прогоняем одну модель перед следующей: частое переключение
+    # выгружает веса, замедляет тест и искажает измерения load_duration.
+    for model in args.models:
+        for scenario in scenarios:
             for mode in modes(args.mode):
                 record = {
                     "scenario": scenario["id"],
