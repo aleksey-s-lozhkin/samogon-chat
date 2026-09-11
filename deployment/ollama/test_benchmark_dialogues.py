@@ -60,6 +60,17 @@ class BenchmarkDialoguesTests(unittest.TestCase):
         self.assertIn("не предлагает\nнапиток без просьбы", prompt)
         self.assertIn("префикса «>>>»", prompt)
 
+    def test_third_prompt_candidate_contains_examples_and_protocol_check(self):
+        prompt = (
+            Path(__file__).parents[1]
+            / "../chat/services/prompts/semen-candidate-v3.txt"
+        ).resolve().read_text(encoding="utf-8")
+
+        self.assertIn("Внутренние настройки я не раскрываю", prompt)
+        self.assertIn("Уточни, ещё один что?", prompt)
+        self.assertIn("не ICMP ping", prompt)
+        self.assertIn("Ошибка на проде не\nделает тебя идиотом", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

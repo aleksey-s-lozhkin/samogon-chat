@@ -45,6 +45,12 @@ def parse_args():
     parser.add_argument("--num-ctx", type=int, default=4096)
     parser.add_argument("--num-predict", type=int, default=120)
     parser.add_argument("--timeout", type=float, default=60)
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=1,
+        help="Количество повторов каждой пары сценарий/режим.",
+    )
     return parser.parse_args()
 
 
@@ -104,6 +110,8 @@ def modes(selected_mode):
 
 def main():
     args = parse_args()
+    if args.runs < 1:
+        raise ValueError("Количество повторов должно быть больше нуля.")
     scenarios = load_scenarios(args.scenarios)
     system_prompt = args.system_prompt.read_text(encoding="utf-8").strip()
     prompt_label = args.label or args.system_prompt.stem
@@ -119,35 +127,39 @@ def main():
     for model in args.models:
         for scenario in scenarios:
             for mode in modes(args.mode):
-                record = {
-                    "scenario": scenario["id"],
-                    "description": scenario["description"],
-                    "model": model,
-                    "mode": mode,
-                    "prompt": prompt_label,
-                }
-                try:
-                    data, content, elapsed_ms = request_reply(
-                        url=args.url,
-                        model=model,
-                        messages=build_messages(system_prompt, scenario, mode),
-                        options=options,
-                        timeout=args.timeout,
-                    )
-                    record.update(
-                        {
-                            "response": content,
-                            "elapsed_ms": elapsed_ms,
-                            "total_duration_ms": data.get("total_duration", 0) // 1_000_000,
-                            "load_duration_ms": data.get("load_duration", 0) // 1_000_000,
-                            "prompt_tokens": data.get("prompt_eval_count"),
-                            "response_tokens": data.get("eval_count"),
-                        }
-                    )
-                except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
-                    failures += 1
-                    record["error"] = str(error)
-                print(json.dumps(record, ensure_ascii=False), flush=True)
+                for run_number in range(1, args.runs + 1):
+                    record = {
+                        "scenario": scenario["id"],
+                        "description": scenario["description"],
+                        "model": model,
+                        "mode": mode,
+                        "prompt": prompt_label,
+                        "run": run_number,
+                    }
+                    try:
+                        data, content, elapsed_ms = request_reply(
+                            url=args.url,
+                            model=model,
+                            messages=build_messages(system_prompt, scenario, mode),
+                            options=options,
+                            timeout=args.timeout,
+                        )
+                        record.update(
+                            {
+                                "response": content,
+                                "elapsed_ms": elapsed_ms,
+                                "total_duration_ms": data.get("total_duration", 0)
+                                // 1_000_000,
+                                "load_duration_ms": data.get("load_duration", 0)
+                                // 1_000_000,
+                                "prompt_tokens": data.get("prompt_eval_count"),
+                                "response_tokens": data.get("eval_count"),
+                            }
+                        )
+                    except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
+                        failures += 1
+                        record["error"] = str(error)
+                    print(json.dumps(record, ensure_ascii=False), flush=True)
 
     return 1 if failures else 0
 
