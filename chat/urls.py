@@ -32,6 +32,11 @@ urlpatterns = [
         name="message_attachments",
     ),
     path(
+        "<slug:room_slug>/audio/",
+        views.create_audio_message,
+        name="create_audio_message",
+    ),
+    path(
         "messages/<int:message_id>/delete/",
         views.delete_message,
         name="delete_message",

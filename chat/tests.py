@@ -2,7 +2,7 @@ import json
 import tempfile
 from io import BytesIO
 from io import StringIO
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from asgiref.sync import async_to_sync
 from channels.routing import URLRouter
@@ -49,6 +49,16 @@ from .validators import validate_message
 User = get_user_model()
 
 
+def ffprobe_result(*, duration="12.5", streams=None):
+    return Mock(
+        returncode=0,
+        stdout=json.dumps({
+            "format": {"duration": duration},
+            "streams": streams or [{"codec_type": "audio", "codec_name": "opus"}],
+        }),
+    )
+
+
 class AttachmentServiceTests(TestCase):
     def setUp(self):
         self.media_directory = tempfile.TemporaryDirectory()
@@ -76,6 +86,14 @@ class AttachmentServiceTests(TestCase):
             name,
             image_data.getvalue(),
             content_type="image/png",
+        )
+
+    @staticmethod
+    def make_webm_file(name="voice.webm"):
+        return SimpleUploadedFile(
+            name,
+            b"\x1aE\xdf\xa3" + b"audio-data" * 10,
+            content_type="audio/webm",
         )
 
     def test_create_attachment_saves_verified_image_under_random_name(self):
@@ -117,6 +135,33 @@ class AttachmentServiceTests(TestCase):
             "Файл не является корректным изображением.",
         ):
             validate_attachment(uploaded_file)
+
+    @patch("chat.services.attachments.subprocess.run")
+    def test_accepts_webm_audio_and_rejects_fake_audio(self, run):
+        run.return_value = ffprobe_result()
+        metadata = validate_attachment(self.make_webm_file())
+
+        self.assertEqual(metadata.kind, Attachment.Kind.AUDIO)
+        self.assertEqual(metadata.content_type, "audio/webm")
+        self.assertEqual(metadata.duration_ms, 12500)
+        with self.assertRaisesMessage(
+            AttachmentValidationError,
+            "Содержимое аудиозаписи не совпадает с её форматом.",
+        ):
+            validate_attachment(SimpleUploadedFile("voice.webm", b"not audio"))
+
+    @patch("chat.services.attachments.subprocess.run")
+    def test_rejects_container_with_video_stream(self, run):
+        run.return_value = ffprobe_result(streams=[
+            {"codec_type": "audio", "codec_name": "opus"},
+            {"codec_type": "video", "codec_name": "vp9"},
+        ])
+
+        with self.assertRaisesMessage(
+            AttachmentValidationError,
+            "Файл должен содержать только аудиозапись.",
+        ):
+            validate_attachment(self.make_webm_file())
 
     def test_accepts_utf8_text_and_rejects_binary_content(self):
         text_file = SimpleUploadedFile("notes.txt", "Привет".encode())
@@ -335,6 +380,113 @@ class AttachmentUploadViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+
+class AudioMessageViewTests(TestCase):
+    def setUp(self):
+        self.media_directory = tempfile.TemporaryDirectory()
+        self.settings_override = override_settings(
+            MEDIA_ROOT=self.media_directory.name,
+            AUDIO_MESSAGE_MAX_DURATION_SECONDS=180,
+        )
+        self.settings_override.enable()
+        self.author = User.objects.create_user(username="author")
+        self.outsider = User.objects.create_user(username="outsider")
+        self.room = Room.objects.create(name="General", slug="general")
+        self.url = reverse("chat:create_audio_message", args=[self.room.slug])
+
+    def tearDown(self):
+        self.settings_override.disable()
+        self.media_directory.cleanup()
+
+    @staticmethod
+    def make_audio():
+        return SimpleUploadedFile(
+            "voice.webm",
+            b"\x1aE\xdf\xa3" + b"audio-data" * 10,
+            content_type="audio/webm",
+        )
+
+    @patch("chat.services.attachments.subprocess.run")
+    @patch("chat.views.broadcast_message")
+    def test_author_can_create_standalone_audio_message(self, broadcast, run):
+        run.return_value = ffprobe_result()
+        self.client.force_login(self.author)
+
+        response = self.client.post(
+            self.url,
+            {"audio": self.make_audio(), "duration_ms": "12500"},
+        )
+
+        self.assertEqual(response.status_code, 201)
+        message = Message.objects.get()
+        attachment = message.attachments.get()
+        self.assertEqual(message.text, "")
+        self.assertEqual(attachment.kind, Attachment.Kind.AUDIO)
+        self.assertEqual(attachment.duration_ms, 12500)
+        self.assertEqual(response.json()["attachments"][0]["content_type"], "audio/webm")
+        self.assertNotIn("voice", attachment.file.name)
+        broadcast.assert_called_once_with(message)
+
+    def test_invalid_audio_does_not_create_message(self):
+        self.client.force_login(self.author)
+
+        response = self.client.post(
+            self.url,
+            {
+                "audio": SimpleUploadedFile("voice.webm", b"not audio"),
+                "duration_ms": "1200",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Message.objects.exists())
+
+    @patch("chat.services.attachments.subprocess.run")
+    def test_audio_longer_than_three_minutes_is_rejected(self, run):
+        run.return_value = ffprobe_result(duration="180.001")
+        self.client.force_login(self.author)
+
+        response = self.client.post(
+            self.url,
+            {"audio": self.make_audio(), "duration_ms": "180001"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Message.objects.exists())
+
+    def test_private_room_requires_membership(self):
+        private_room = Room.objects.create(
+            name="Закрытая беседа",
+            slug="closed",
+            visibility=Room.Visibility.PRIVATE,
+            owner=self.author,
+        )
+        private_room.members.add(self.author)
+        self.client.force_login(self.outsider)
+
+        response = self.client.post(
+            reverse("chat:create_audio_message", args=[private_room.slug]),
+            {"audio": self.make_audio(), "duration_ms": "1200"},
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(Message.objects.exists())
+
+    @patch(
+        "chat.services.attachments.subprocess.run",
+        side_effect=FileNotFoundError,
+    )
+    def test_unavailable_inspector_returns_service_error(self, _run):
+        self.client.force_login(self.author)
+
+        response = self.client.post(
+            self.url,
+            {"audio": self.make_audio(), "duration_ms": "1200"},
+        )
+
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(Message.objects.exists())
 
 
 class MessageDeleteViewTests(TestCase):

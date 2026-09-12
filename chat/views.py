@@ -27,8 +27,14 @@ from .models import (
     Room,
     RoomMembership,
 )
-from .services.attachments import AttachmentValidationError, create_attachments
-from .services.events import broadcast_attachment_update
+from .services.attachments import (
+    AttachmentInspectionUnavailable,
+    AttachmentValidationError,
+    create_attachment,
+    create_attachments,
+    validate_attachment,
+)
+from .services.events import broadcast_attachment_update, broadcast_message
 from .services.messages import MessageService
 from .services.navigation import get_last_room_url
 from .services.reports import create_message_report
@@ -297,6 +303,60 @@ def add_message_attachments(request, message_id):
     ]
     broadcast_attachment_update(message, serialized_attachments)
     return JsonResponse({"attachments": serialized_attachments}, status=201)
+
+
+@login_required
+def create_audio_message(request, room_slug):
+    """Атомарно создаёт самостоятельную аудиореплику без фиктивного текста."""
+    if request.method != "POST":
+        raise Http404("Маршрут аудиосообщения не найден")
+    if not is_allowed(
+        identifier=f"user:{request.user.id}",
+        bucket="audio_message",
+        limit=settings.ATTACHMENT_RATE_LIMIT,
+        window_seconds=settings.RATE_LIMIT_WINDOW_SECONDS,
+    ):
+        return JsonResponse(
+            {"error": "Слишком много аудиосообщений. Подождите минуту."},
+            status=429,
+        )
+
+    room = get_object_or_404(Room, slug=room_slug)
+    if room.is_private and not room.memberships.filter(user=request.user).exists():
+        raise Http404("Беседа не найдена")
+
+    uploaded_file = request.FILES.get("audio")
+    if uploaded_file is None:
+        return JsonResponse({"error": "Аудиозапись не найдена."}, status=400)
+
+    try:
+        metadata = validate_attachment(uploaded_file)
+        if metadata.kind != Attachment.Kind.AUDIO:
+            raise AttachmentValidationError("Выбранный файл не является аудиозаписью.")
+        with transaction.atomic():
+            message = MessageService.create_message(
+                user_id=request.user.id,
+                room=room,
+                text="",
+            )
+            attachment = create_attachment(
+                message=message,
+                uploaded_file=uploaded_file,
+                metadata=metadata,
+            )
+    except AttachmentValidationError as error:
+        return JsonResponse({"error": str(error)}, status=400)
+    except AttachmentInspectionUnavailable as error:
+        return JsonResponse({"error": str(error)}, status=503)
+
+    message = Message.objects.select_related("room", "user").prefetch_related(
+        "attachments", "reactions",
+    ).get(pk=message.pk)
+    broadcast_message(message)
+    return JsonResponse(
+        MessageService.serialize_message(message, viewer_id=request.user.id),
+        status=201,
+    )
 
 
 @login_required
