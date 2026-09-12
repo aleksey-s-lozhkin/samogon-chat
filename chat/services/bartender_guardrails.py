@@ -30,6 +30,16 @@ DIRECT_INSULT = re.compile(
     r"\bты\b.{0,45}\b(?:идиот\w*|дурак\w*|бесполезн\w*|туп\w*)",
     re.IGNORECASE,
 )
+TOPIC_DISMISSAL = re.compile(
+    r"(?:\bотстань\b|\bхватит\b|\bзакрой\w*\s+тем\w*|\bоставь\w*\s+тем\w*|"
+    r"\bне\s+(?:говори|пиши|начинай|возвращайся)\b)",
+    re.IGNORECASE,
+)
+REPETITION_FEEDBACK = re.compile(
+    r"(?:\bповторя\w*\b.{0,35}\b(?:меня|мо[ию]|реплик\w*|слов\w*)\b|"
+    r"\bне\s+повторяй\b|\bхватит\s+повторя\w*\b|\bзеркал\w*\s+мо[ию]\b)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -40,6 +50,16 @@ class GuardrailReply:
 
 def guardrail_reply(prompt: str):
     """Возвращает предсказуемый ответ для граничных сценариев."""
+    if TOPIC_DISMISSAL.search(prompt):
+        return GuardrailReply(
+            rule="topic_dismissal",
+            text="Ладно, эту тему оставим.",
+        )
+    if REPETITION_FEEDBACK.search(prompt):
+        return GuardrailReply(
+            rule="repetition_feedback",
+            text="Справедливо, увлёкся. Исправлюсь.",
+        )
     if MEDICAL_RISK.search(prompt):
         return GuardrailReply(
             rule="medical_risk",
