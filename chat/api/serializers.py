@@ -80,7 +80,9 @@ class AttachmentSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     name = serializers.CharField()
     size = serializers.IntegerField(min_value=1)
-    kind = serializers.ChoiceField(choices=("image", "file"))
+    kind = serializers.ChoiceField(choices=("image", "file", "audio"))
+    duration_ms = serializers.IntegerField(min_value=1, allow_null=True)
+    content_type = serializers.CharField()
     preview_url = serializers.CharField()
     download_url = serializers.CharField()
 

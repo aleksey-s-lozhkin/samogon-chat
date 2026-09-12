@@ -151,6 +151,8 @@ class MessageService:
             "name": attachment.original_name,
             "size": attachment.size,
             "kind": attachment.kind,
+            "duration_ms": attachment.duration_ms,
+            "content_type": attachment.content_type,
             "preview_url": preview_url,
             "download_url": reverse("chat:download_attachment", args=[attachment.id]),
         }
@@ -170,6 +172,8 @@ class MessageService:
             "name": attachment.original_name,
             "size": attachment.size,
             "kind": attachment.kind,
+            "duration_ms": getattr(attachment, "duration_ms", None),
+            "content_type": attachment.content_type,
             "preview_url": reverse("chat:note_attachment", args=[attachment.id]),
             "download_url": reverse(
                 "chat:download_note_attachment",

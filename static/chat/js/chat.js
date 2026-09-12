@@ -4,6 +4,7 @@ const {
     username: currentUsername,
     canModerateMessages,
     attachmentUploadTemplate,
+    audioMessageUrl,
     messageDeleteTemplate,
     messageReportTemplate,
     noteCreateUrl,
@@ -16,6 +17,7 @@ const REACTION_EMOJI = ["👍", "👎", "❤️", "😂", "🔥", "😮", "😢"
 const TYPING_DEBOUNCE_MS = 250;
 const TYPING_IDLE_MS = 1600;
 const TYPING_TTL_MS = 3500;
+const AUDIO_MAX_DURATION_MS = 180000;
 
 let chatSocket = null;
 let reconnectTimer = null;
@@ -43,6 +45,19 @@ let typingActive = false;
 let typingRecipient = null;
 let messageSoundContext = null;
 let presenceHeartbeatTimer = null;
+let audioRecorder = null;
+let audioStream = null;
+let audioChunks = [];
+let audioStartedAt = 0;
+let audioTimer = null;
+let audioStopTimer = null;
+let recordedAudio = null;
+let recordedAudioDurationMs = 0;
+let cancelAudioOnStop = false;
+let sendAudioOnStop = false;
+let audioPointerId = null;
+let audioPointerStartX = 0;
+let audioGestureCanceled = false;
 const typingUsers = new Map();
 const USE_VISUAL_VIEWPORT_HEIGHT = /Android/i.test(navigator.userAgent);
 const IS_IPHONE = /iPhone|iPod/i.test(navigator.userAgent);
@@ -908,9 +923,11 @@ function addMessage(data) {
 
     const text = document.createElement("div");
     text.className = "message-text";
-    renderMessageText(text, data.message);
-    if (/^(?=.*\p{Extended_Pictographic})[\p{Extended_Pictographic}\p{Emoji_Component}\s]+$/u.test(data.message)) {
-        text.classList.add("is-emoji-only");
+    if (data.message) {
+        renderMessageText(text, data.message);
+        if (/^(?=.*\p{Extended_Pictographic})[\p{Extended_Pictographic}\p{Emoji_Component}\s]+$/u.test(data.message)) {
+            text.classList.add("is-emoji-only");
+        }
     }
 
     const time = document.createElement("div");
@@ -1225,6 +1242,18 @@ function renderMessageAttachments(content, attachments) {
     const container = document.createElement("div");
     container.className = "message-attachments";
     attachments.forEach((attachment) => {
+        if (attachment.kind === "audio") {
+            const audioContainer = document.createElement("div");
+            audioContainer.className = "message-attachment message-attachment-audio";
+            const audio = document.createElement("audio");
+            audio.controls = true;
+            audio.preload = "metadata";
+            audio.src = attachment.preview_url;
+            audio.setAttribute("aria-label", "Аудиосообщение");
+            audioContainer.append(audio);
+            container.append(audioContainer);
+            return;
+        }
         const link = document.createElement("a");
         link.className = `message-attachment message-attachment-${attachment.kind}`;
         link.href = attachment.preview_url;
@@ -1251,6 +1280,222 @@ function renderMessageAttachments(content, attachments) {
         container.append(link);
     });
     content.querySelector(".message-time")?.before(container);
+}
+
+function selectAudioFormat() {
+    const variants = [
+        {mimeType: "audio/webm;codecs=opus", extension: "webm"},
+        {mimeType: "audio/mp4;codecs=mp4a.40.2", extension: "m4a"},
+        {mimeType: "audio/mp4", extension: "m4a"},
+        {mimeType: "audio/webm", extension: "webm"},
+        {mimeType: "audio/ogg;codecs=opus", extension: "ogg"},
+    ];
+    return variants.find(
+        ({mimeType}) => MediaRecorder.isTypeSupported?.(mimeType),
+    ) || null;
+}
+
+function formatAudioTime(milliseconds) {
+    const seconds = Math.floor(milliseconds / 1000);
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function updateAudioTimer() {
+    const elapsed = Math.min(Date.now() - audioStartedAt, AUDIO_MAX_DURATION_MS);
+    const time = document.getElementById("audio-recording-time");
+    if (time) {
+        time.textContent = formatAudioTime(elapsed);
+    }
+}
+
+function releaseAudioStream() {
+    audioStream?.getTracks().forEach((track) => track.stop());
+    audioStream = null;
+}
+
+function clearAudioRecording() {
+    window.clearInterval(audioTimer);
+    window.clearTimeout(audioStopTimer);
+    audioTimer = null;
+    audioStopTimer = null;
+    releaseAudioStream();
+    audioRecorder = null;
+    audioChunks = [];
+    recordedAudio = null;
+    recordedAudioDurationMs = 0;
+    cancelAudioOnStop = false;
+    sendAudioOnStop = false;
+    audioPointerId = null;
+    audioGestureCanceled = false;
+    document.getElementById("audio-recorder")?.classList.add("hidden");
+    document.getElementById("chat-message-submit")?.classList.remove("is-recording");
+    updateComposerSubmitMode();
+}
+
+function finishAudioRecording(shouldSend = true) {
+    if (audioRecorder?.state === "recording") {
+        sendAudioOnStop = shouldSend;
+        cancelAudioOnStop = !shouldSend;
+        audioRecorder.stop();
+    }
+}
+
+async function startAudioRecording() {
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+        showError("Этот браузер не умеет записывать аудиосообщения.");
+        return;
+    }
+    if (directRecipient || bartenderMode || noteMode || replyTarget) {
+        showError("Сначала завершите текущий режим ответа или заметки.");
+        return;
+    }
+    if (selectedAttachments.length || pendingAttachmentUpload) {
+        showError("Сначала отправьте или уберите выбранные файлы.");
+        return;
+    }
+
+    try {
+        const format = selectAudioFormat();
+        audioStream = await navigator.mediaDevices.getUserMedia({audio: true});
+        if (audioPointerId === null) {
+            releaseAudioStream();
+            return;
+        }
+        audioRecorder = format
+            ? new MediaRecorder(audioStream, {mimeType: format.mimeType})
+            : new MediaRecorder(audioStream);
+        audioRecorder.datasetExtension = format?.extension || (
+            audioRecorder.mimeType.includes("mp4") ? "m4a" : "webm"
+        );
+        audioChunks = [];
+        cancelAudioOnStop = false;
+        sendAudioOnStop = false;
+        audioRecorder.addEventListener("dataavailable", (event) => {
+            if (event.data.size) {
+                audioChunks.push(event.data);
+            }
+        });
+        audioRecorder.addEventListener("stop", () => {
+            window.clearInterval(audioTimer);
+            window.clearTimeout(audioStopTimer);
+            releaseAudioStream();
+            if (cancelAudioOnStop || !audioChunks.length) {
+                clearAudioRecording();
+                return;
+            }
+            recordedAudioDurationMs = Math.max(1, Math.min(
+                Date.now() - audioStartedAt,
+                AUDIO_MAX_DURATION_MS,
+            ));
+            recordedAudio = new Blob(audioChunks, {type: audioRecorder.mimeType});
+            if (sendAudioOnStop) {
+                sendAudioRecording();
+            } else {
+                clearAudioRecording();
+            }
+        }, {once: true});
+        audioStartedAt = Date.now();
+        audioRecorder.start(250);
+        document.getElementById("audio-recorder")?.classList.remove("hidden");
+        document.getElementById("chat-message-submit")?.classList.add("is-recording");
+        updateAudioTimer();
+        audioTimer = window.setInterval(updateAudioTimer, 250);
+        audioStopTimer = window.setTimeout(() => finishAudioRecording(true), AUDIO_MAX_DURATION_MS);
+    } catch (error) {
+        clearAudioRecording();
+        showError(error?.name === "NotAllowedError"
+            ? "Разрешите доступ к микрофону в настройках браузера."
+            : "Не удалось начать запись. Проверьте микрофон.");
+    }
+}
+
+async function sendAudioRecording() {
+    if (!recordedAudio || !audioRecorder) {
+        return;
+    }
+    const hint = document.getElementById("audio-recording-hint");
+    if (hint) {
+        hint.textContent = "Отправляем…";
+    }
+    const formData = new FormData();
+    const extension = audioRecorder.datasetExtension || "webm";
+    formData.append("audio", recordedAudio, `voice-${Date.now()}.${extension}`);
+    formData.append("duration_ms", String(recordedAudioDurationMs));
+    try {
+        const response = await fetch(audioMessageUrl, {
+            method: "POST",
+            body: formData,
+            headers: {"X-CSRFToken": getCsrfToken()},
+            credentials: "same-origin",
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || "Не удалось отправить аудиосообщение.");
+        }
+        clearAudioRecording();
+    } catch (error) {
+        showError(error.message || "Не удалось отправить аудиосообщение.");
+        clearAudioRecording();
+    } finally {
+        if (hint) {
+            hint.textContent = "Отпустите, чтобы отправить · влево — отмена";
+        }
+    }
+}
+
+function composerHasText() {
+    return Boolean(document.getElementById("chat-message-input")?.value.trim());
+}
+
+function updateComposerSubmitMode() {
+    const button = document.getElementById("chat-message-submit");
+    if (!button || audioRecorder?.state === "recording") {
+        return;
+    }
+    const voiceMode = !composerHasText();
+    button.classList.toggle("is-voice-mode", voiceMode);
+    button.querySelector(".submit-icon")?.classList.toggle("hidden", voiceMode);
+    button.querySelector(".microphone-icon")?.classList.toggle("hidden", !voiceMode);
+    button.ariaLabel = voiceMode
+        ? "Удерживайте для записи аудиосообщения"
+        : "Отправить сообщение";
+    button.title = voiceMode ? "Удерживайте для записи" : "Отправить";
+}
+
+function startAudioGesture(event) {
+    if (composerHasText() || audioRecorder) {
+        return;
+    }
+    event.preventDefault();
+    audioPointerId = event.pointerId;
+    audioPointerStartX = event.clientX;
+    audioGestureCanceled = false;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    startAudioRecording();
+}
+
+function moveAudioGesture(event) {
+    if (event.pointerId !== audioPointerId) {
+        return;
+    }
+    audioGestureCanceled = event.clientX - audioPointerStartX < -70;
+    const hint = document.getElementById("audio-recording-hint");
+    if (hint) {
+        hint.textContent = audioGestureCanceled
+            ? "Отпустите, чтобы отменить"
+            : "Отпустите, чтобы отправить · влево — отмена";
+    }
+}
+
+function endAudioGesture(event) {
+    if (event.pointerId !== audioPointerId) {
+        return;
+    }
+    const shouldSend = !audioGestureCanceled && event.type === "pointerup";
+    audioPointerId = null;
+    if (audioRecorder?.state === "recording") {
+        finishAudioRecording(shouldSend);
+    }
 }
 
 function renderMessageReactions(content, reactions, messageId) {
@@ -1788,6 +2033,7 @@ function updateInputSize() {
         input.style.height = `${Math.min(Math.max(input.scrollHeight, 46), 96)}px`;
     }
     counter.textContent = `${input.value.length} / ${MESSAGE_MAX_LENGTH}`;
+    updateComposerSubmitMode();
 }
 
 function replaceTextEmoticons(text) {
@@ -1894,7 +2140,16 @@ function createMessageAction(className, title, icon) {
     return action;
 }
 
-document.getElementById("chat-message-submit")?.addEventListener("click", sendMessage);
+const composerSubmit = document.getElementById("chat-message-submit");
+composerSubmit?.addEventListener("click", () => {
+    if (composerHasText()) {
+        sendMessage();
+    }
+});
+composerSubmit?.addEventListener("pointerdown", startAudioGesture);
+composerSubmit?.addEventListener("pointermove", moveAudioGesture);
+composerSubmit?.addEventListener("pointerup", endAudioGesture);
+composerSubmit?.addEventListener("pointercancel", endAudioGesture);
 document.getElementById("chat-attachment-trigger")?.addEventListener("click", selectAttachments);
 document.getElementById("chat-attachment-input")?.addEventListener("change", handleAttachmentSelection);
 document.getElementById("cancel-direct-message")?.addEventListener("click", clearDirectRecipient);
@@ -1954,6 +2209,7 @@ document.getElementById("scroll-to-latest")?.addEventListener("click", () => {
     }
     document.getElementById("scroll-to-latest")?.classList.add("hidden");
 });
+window.addEventListener("pagehide", releaseAudioStream);
 document.getElementById("chat-log")?.addEventListener("scroll", (event) => {
     document
         .getElementById("scroll-to-latest")

@@ -248,7 +248,7 @@ class NoteAttachment(models.Model):
     size = models.PositiveIntegerField()
     kind = models.CharField(
         max_length=10,
-        choices=(("image", "Изображение"), ("file", "Файл")),
+        choices=(("image", "Изображение"), ("file", "Файл"), ("audio", "Аудио")),
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -271,6 +271,7 @@ class Attachment(models.Model):
     class Kind(models.TextChoices):
         IMAGE = "image", "Изображение"
         FILE = "file", "Файл"
+        AUDIO = "audio", "Аудио"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     message = models.ForeignKey(
@@ -283,6 +284,7 @@ class Attachment(models.Model):
     content_type = models.CharField(max_length=100)
     size = models.PositiveIntegerField()
     kind = models.CharField(max_length=10, choices=Kind.choices)
+    duration_ms = models.PositiveIntegerField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

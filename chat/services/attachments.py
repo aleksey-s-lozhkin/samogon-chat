@@ -1,5 +1,8 @@
 from dataclasses import dataclass
+import json
 from pathlib import Path
+import subprocess
+import tempfile
 
 from django.conf import settings
 from django.core.files.uploadedfile import UploadedFile
@@ -13,6 +16,10 @@ class AttachmentValidationError(ValueError):
     """Понятная пользователю причина, по которой файл не принят."""
 
 
+class AttachmentInspectionUnavailable(RuntimeError):
+    """Сервер не смог безопасно проверить содержимое аудиофайла."""
+
+
 @dataclass(frozen=True)
 class AttachmentMetadata:
     """Проверенные данные, которые сохраняются вместе с файлом."""
@@ -21,6 +28,7 @@ class AttachmentMetadata:
     content_type: str
     size: int
     kind: str
+    duration_ms: int | None = None
 
 
 IMAGE_TYPES = {
@@ -41,6 +49,12 @@ TEXT_FILE_TYPES = {
     ".js": "text/javascript",
 }
 PDF_CONTENT_TYPE = "application/pdf"
+AUDIO_TYPES = {
+    ".webm": "audio/webm",
+    ".mp4": "audio/mp4",
+    ".m4a": "audio/mp4",
+    ".ogg": "audio/ogg",
+}
 
 
 def _clean_filename(uploaded_file: UploadedFile) -> tuple[str, str]:
@@ -108,6 +122,77 @@ def _validate_document(
     )
 
 
+def _validate_audio(uploaded_file: UploadedFile, suffix: str) -> AttachmentMetadata:
+    if uploaded_file.size > settings.AUDIO_MESSAGE_MAX_SIZE:
+        raise AttachmentValidationError("Аудиосообщение не должно быть больше 10 МБ.")
+
+    header = uploaded_file.read(16)
+    uploaded_file.seek(0)
+    valid = (
+        suffix == ".webm" and header.startswith(b"\x1aE\xdf\xa3")
+        or suffix in {".mp4", ".m4a"} and header[4:8] == b"ftyp"
+        or suffix == ".ogg" and header.startswith(b"OggS")
+    )
+    if not valid:
+        raise AttachmentValidationError(
+            "Содержимое аудиозаписи не совпадает с её форматом."
+        )
+
+    try:
+        with tempfile.NamedTemporaryFile(suffix=suffix) as temporary_file:
+            for chunk in uploaded_file.chunks():
+                temporary_file.write(chunk)
+            temporary_file.flush()
+            result = subprocess.run(
+                [
+                    settings.FFPROBE_BINARY,
+                    "-v", "error",
+                    "-show_entries", "format=duration:stream=codec_type,codec_name",
+                    "-of", "json",
+                    temporary_file.name,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=settings.FFPROBE_TIMEOUT_SECONDS,
+                check=False,
+            )
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as error:
+        uploaded_file.seek(0)
+        raise AttachmentInspectionUnavailable(
+            "Сервис проверки аудиозаписей временно недоступен."
+        ) from error
+    finally:
+        uploaded_file.seek(0)
+
+    if result.returncode != 0:
+        raise AttachmentValidationError("Не удалось прочитать аудиозапись.")
+    try:
+        probe = json.loads(result.stdout)
+        streams = probe.get("streams", [])
+        duration_seconds = float(probe.get("format", {}).get("duration"))
+    except (TypeError, ValueError, json.JSONDecodeError) as error:
+        raise AttachmentValidationError("Не удалось определить длительность аудиозаписи.") from error
+
+    audio_streams = [stream for stream in streams if stream.get("codec_type") == "audio"]
+    if not audio_streams or any(stream.get("codec_type") == "video" for stream in streams):
+        raise AttachmentValidationError("Файл должен содержать только аудиозапись.")
+    allowed_codecs = {"aac", "opus", "vorbis"}
+    if any(stream.get("codec_name") not in allowed_codecs for stream in audio_streams):
+        raise AttachmentValidationError("Аудиокодек этой записи не поддерживается.")
+
+    duration_ms = round(duration_seconds * 1000)
+    if not 0 < duration_ms <= settings.AUDIO_MESSAGE_MAX_DURATION_SECONDS * 1000:
+        raise AttachmentValidationError("Запись должна быть не длиннее трёх минут.")
+
+    return AttachmentMetadata(
+        original_name=Path(uploaded_file.name).name[:255],
+        content_type=AUDIO_TYPES[suffix],
+        size=uploaded_file.size,
+        kind=Attachment.Kind.AUDIO,
+        duration_ms=duration_ms,
+    )
+
+
 def validate_attachment(uploaded_file: UploadedFile) -> AttachmentMetadata:
     """Проверяет расширение, размер и реальные данные до записи на диск."""
     original_name, suffix = _clean_filename(uploaded_file)
@@ -115,6 +200,8 @@ def validate_attachment(uploaded_file: UploadedFile) -> AttachmentMetadata:
         raise AttachmentValidationError("Нельзя прикрепить пустой файл.")
     if suffix in IMAGE_TYPES:
         metadata = _validate_image(uploaded_file, suffix)
+    elif suffix in AUDIO_TYPES:
+        metadata = _validate_audio(uploaded_file, suffix)
     elif suffix == ".pdf" or suffix in TEXT_FILE_TYPES:
         metadata = _validate_document(uploaded_file, suffix)
     else:
@@ -124,12 +211,30 @@ def validate_attachment(uploaded_file: UploadedFile) -> AttachmentMetadata:
         content_type=metadata.content_type,
         size=metadata.size,
         kind=metadata.kind,
+        duration_ms=metadata.duration_ms,
     )
 
 
-def create_attachment(*, message: Message, uploaded_file: UploadedFile) -> Attachment:
+def create_attachment(
+    *,
+    message: Message,
+    uploaded_file: UploadedFile,
+    metadata: AttachmentMetadata | None = None,
+) -> Attachment:
     """Создаёт вложение только после полной проверки его содержимого."""
-    return create_attachments(message=message, uploaded_files=[uploaded_file])[0]
+    if message.attachments.count() >= settings.ATTACHMENT_MAX_COUNT:
+        raise AttachmentValidationError("К сообщению можно добавить не больше трёх файлов.")
+    if metadata is None:
+        metadata = validate_attachment(uploaded_file)
+    return Attachment.objects.create(
+        message=message,
+        file=uploaded_file,
+        original_name=metadata.original_name,
+        content_type=metadata.content_type,
+        size=metadata.size,
+        kind=metadata.kind,
+        duration_ms=metadata.duration_ms,
+    )
 
 
 def create_attachments(
@@ -156,6 +261,7 @@ def create_attachments(
                 content_type=metadata.content_type,
                 size=metadata.size,
                 kind=metadata.kind,
+                duration_ms=metadata.duration_ms,
             )
             for uploaded_file, metadata in checked_files
         ]

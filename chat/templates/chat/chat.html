@@ -85,6 +85,7 @@
         isAuthenticated: {{ user.is_authenticated|yesno:"true,false" }},
         canModerateMessages: {{ perms.chat.moderate_message|yesno:"true,false" }},
         attachmentUploadTemplate: "{% url 'chat:message_attachments' 0 %}",
+        audioMessageUrl: "{% url 'chat:create_audio_message' room.slug %}",
         messageDeleteTemplate: "{% url 'chat:delete_message' 0 %}",
         messageReportTemplate: "{% url 'chat:report_message' 0 %}",
         noteCreateUrl: "{% url 'chat:create_note' %}",
@@ -99,7 +100,7 @@
 </script>
 
     <script src="{% static 'chat/js/composer-hints.js' %}?v=1"></script>
-    <script src="{% static 'chat/js/chat.js' %}?v=34"></script>
+    <script src="{% static 'chat/js/chat.js' %}?v=35"></script>
 <script src="{% static 'chat/js/auth.js' %}?v=7"></script>
 <script src="{% static 'chat/js/theme.js' %}?v=1"></script>
 

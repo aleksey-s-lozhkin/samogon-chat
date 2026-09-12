@@ -61,6 +61,13 @@
                                                     loading="lazy"
                                                 >
                                             </a>
+                                        {% elif attachment.kind == "audio" %}
+                                            <audio
+                                                class="note-attachment-audio"
+                                                controls
+                                                preload="metadata"
+                                                src="{% url 'chat:note_attachment' attachment.id %}"
+                                            ></audio>
                                         {% else %}
                                             <a
                                                 href="{% url 'chat:download_note_attachment' attachment.id %}"
