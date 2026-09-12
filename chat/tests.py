@@ -32,9 +32,11 @@ from .models import (
 )
 from .routing import websocket_urlpatterns
 from .services.attachments import (
+    AttachmentMetadata,
     AttachmentValidationError,
     create_attachment,
     create_attachments,
+    normalize_audio_attachment,
     validate_attachment,
 )
 from .services.welcome import WELCOME_TEXT, ensure_welcome_message
@@ -178,6 +180,33 @@ class AttachmentServiceTests(TestCase):
         metadata = validate_attachment(self.make_webm_file())
 
         self.assertEqual(metadata.duration_ms, 5000)
+
+    @patch("chat.services.attachments.subprocess.run")
+    def test_normalizes_audio_to_faststart_m4a(self, run):
+        def create_normalized_file(command, **_kwargs):
+            with open(command[-1], "wb") as output_file:
+                output_file.write(b"\x00\x00\x00\x18ftypM4A normalized")
+            return Mock(returncode=0)
+
+        run.side_effect = create_normalized_file
+        source = self.make_webm_file()
+        metadata = AttachmentMetadata(
+            original_name="voice.webm",
+            content_type="audio/webm",
+            size=source.size,
+            kind=Attachment.Kind.AUDIO,
+            duration_ms=5000,
+        )
+
+        normalized_file, normalized_metadata = normalize_audio_attachment(
+            source,
+            metadata,
+        )
+
+        self.assertEqual(normalized_file.name, "voice.m4a")
+        self.assertEqual(normalized_metadata.content_type, "audio/mp4")
+        self.assertEqual(normalized_metadata.duration_ms, 5000)
+        self.assertIn("+faststart", run.call_args.args[0])
 
     def test_accepts_utf8_text_and_rejects_binary_content(self):
         text_file = SimpleUploadedFile("notes.txt", "Привет".encode())
@@ -423,9 +452,10 @@ class AudioMessageViewTests(TestCase):
             content_type="audio/webm",
         )
 
+    @patch("chat.views.normalize_audio_attachment", side_effect=lambda file, metadata: (file, metadata))
     @patch("chat.services.attachments.subprocess.run")
     @patch("chat.views.broadcast_message")
-    def test_author_can_create_standalone_audio_message(self, broadcast, run):
+    def test_author_can_create_standalone_audio_message(self, broadcast, run, _normalize):
         run.return_value = ffprobe_result()
         self.client.force_login(self.author)
 
