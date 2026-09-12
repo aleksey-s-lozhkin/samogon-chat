@@ -1,21 +1,25 @@
 import json
 import logging
 import re
+from dataclasses import dataclass
+from html import escape
 from pathlib import Path
 from time import monotonic
-from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
 
+from chat.services.bartender_context import BartenderContextEntry
+from chat.services.bartender_guardrails import guardrail_reply
+
 
 BARTENDER_MENTION = re.compile(r"^@(?:сем[её]н|semen)\b[,:!]?\s*", re.IGNORECASE)
 HAN_CHARACTERS = re.compile(r"[\u3400-\u9fff]")
 CYRILLIC_CHARACTERS = re.compile(r"[А-Яа-яЁё]")
 BARTENDER_SYSTEM_PROMPT = (
-    Path(__file__).with_name("prompts") / "semen-caretaker.txt"
+    Path(__file__).with_name("prompts") / "semen.txt"
 ).read_text(encoding="utf-8").strip()
 BARTENDER_LANGUAGE_FALLBACK = (
     "Поймал сбой в разговорнике. Спросите ещё раз — я уже сверяю словарь."
@@ -39,22 +43,29 @@ class BartenderService:
     def is_mentioned(self, text: str) -> bool:
         return bool(BARTENDER_MENTION.match(text))
 
-    def reply(self, *, room_name: str, username: str, text: str) -> BartenderReply:
+    def reply(
+        self,
+        *,
+        text: str,
+        context: tuple[BartenderContextEntry, ...] = (),
+        current_author: str = "guest_1",
+    ) -> BartenderReply:
         started_at = monotonic()
         retried_for_language = False
         prompt = (
             BARTENDER_MENTION.sub("", text).strip()
             or "Поздоровайся с гостями."
         )
-        messages = [
-            {"role": "system", "content": BARTENDER_SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": (
-                    f"Комната: {room_name}. Гость @{username}: {prompt}"
-                ),
-            },
-        ]
+        guarded_reply = guardrail_reply(prompt)
+        if guarded_reply:
+            logger.info("bartender_guardrail_reply rule=%s", guarded_reply.rule)
+            return BartenderReply(text=guarded_reply.text)
+
+        messages = self._build_messages(
+            prompt=prompt,
+            context=context,
+            current_author=current_author,
+        )
         try:
             content = self._request_reply(messages)
 
@@ -97,6 +108,24 @@ class BartenderService:
         )
 
         return BartenderReply(text=self._truncate_reply(content))
+
+    @staticmethod
+    def _build_messages(*, prompt, context, current_author):
+        parts = []
+        if context:
+            serialized = "\n".join(
+                f'<message author="{escape(item.author)}">{escape(item.text)}</message>'
+                for item in context
+            )
+            parts.append(f"<conversation_history>\n{serialized}\n</conversation_history>")
+        parts.append(
+            f'<current_message author="{escape(current_author)}">'
+            f"{escape(prompt)}</current_message>"
+        )
+        return [
+            {"role": "system", "content": BARTENDER_SYSTEM_PROMPT},
+            {"role": "user", "content": "\n".join(parts)},
+        ]
 
     @staticmethod
     def _truncate_reply(content: str) -> str:
