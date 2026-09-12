@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 
 from django.conf import settings
-from django.core.files.uploadedfile import UploadedFile
+from django.core.files.uploadedfile import SimpleUploadedFile, UploadedFile
 from django.db import transaction
 from PIL import Image, UnidentifiedImageError
 
@@ -232,6 +232,67 @@ def validate_attachment(uploaded_file: UploadedFile) -> AttachmentMetadata:
         content_type=metadata.content_type,
         size=metadata.size,
         kind=metadata.kind,
+        duration_ms=metadata.duration_ms,
+    )
+
+
+def normalize_audio_attachment(
+    uploaded_file: UploadedFile,
+    metadata: AttachmentMetadata,
+) -> tuple[UploadedFile, AttachmentMetadata]:
+    """Преобразует проверенную запись в совместимый с WebKit и Chromium M4A/AAC."""
+    source_suffix = Path(metadata.original_name).suffix.lower()
+    try:
+        with (
+            tempfile.NamedTemporaryFile(suffix=source_suffix) as source_file,
+            tempfile.NamedTemporaryFile(suffix=".m4a") as output_file,
+        ):
+            for chunk in uploaded_file.chunks():
+                source_file.write(chunk)
+            source_file.flush()
+            result = subprocess.run(
+                [
+                    settings.FFMPEG_BINARY,
+                    "-v", "error",
+                    "-y",
+                    "-i", source_file.name,
+                    "-map", "0:a:0",
+                    "-vn",
+                    "-c:a", "aac",
+                    "-b:a", "64k",
+                    "-movflags", "+faststart",
+                    "-f", "mp4",
+                    output_file.name,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=settings.AUDIO_TRANSCODE_TIMEOUT_SECONDS,
+                check=False,
+            )
+            output_file.seek(0)
+            normalized_content = output_file.read()
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as error:
+        uploaded_file.seek(0)
+        raise AttachmentInspectionUnavailable(
+            "Сервис подготовки аудиозаписей временно недоступен."
+        ) from error
+    finally:
+        uploaded_file.seek(0)
+
+    if result.returncode != 0 or not normalized_content:
+        raise AttachmentValidationError("Не удалось подготовить аудиозапись.")
+
+    normalized_name = f"{Path(metadata.original_name).stem}.m4a"
+    normalized_file = SimpleUploadedFile(
+        normalized_name,
+        normalized_content,
+        content_type="audio/mp4",
+    )
+    return normalized_file, AttachmentMetadata(
+        original_name=normalized_name,
+        content_type="audio/mp4",
+        size=len(normalized_content),
+        kind=Attachment.Kind.AUDIO,
         duration_ms=metadata.duration_ms,
     )
 
