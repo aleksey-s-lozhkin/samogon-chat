@@ -75,6 +75,7 @@
 
 </div>
 
+{{ atmosphere_lines|json_script:"atmosphere-lines-data" }}
 
 <script>
     const chatConfig = {
@@ -88,6 +89,7 @@
         messageReportTemplate: "{% url 'chat:report_message' 0 %}",
         noteCreateUrl: "{% url 'chat:create_note' %}",
         focusMessageId: {{ focus_message_id|default:"null" }},
+        atmosphereLines: JSON.parse(document.getElementById("atmosphere-lines-data").textContent),
 
     };
 
@@ -97,7 +99,7 @@
 </script>
 
     <script src="{% static 'chat/js/composer-hints.js' %}?v=1"></script>
-    <script src="{% static 'chat/js/chat.js' %}?v=33"></script>
+    <script src="{% static 'chat/js/chat.js' %}?v=34"></script>
 <script src="{% static 'chat/js/auth.js' %}?v=7"></script>
 <script src="{% static 'chat/js/theme.js' %}?v=1"></script>
 

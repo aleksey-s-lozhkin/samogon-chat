@@ -3,6 +3,7 @@ from django.utils import timezone
 
 from .models import (
     Attachment,
+    AtmosphereLine,
     Message,
     MessageReaction,
     MessageReport,
@@ -11,6 +12,41 @@ from .models import (
     RoomMembership,
     RoomReadState,
 )
+
+
+@admin.register(AtmosphereLine)
+class AtmosphereLineAdmin(admin.ModelAdmin):
+    """Модельные строки никогда не публикуются без явного решения человека."""
+
+    list_display = (
+        "text",
+        "kind",
+        "status",
+        "is_active",
+        "generated_by_model",
+        "approved_by",
+        "created_at",
+    )
+    list_filter = ("status", "kind", "is_active")
+    search_fields = ("text", "source_label", "generated_by_model")
+    readonly_fields = ("generated_by_model", "approved_by", "approved_at", "created_at")
+    actions = ("approve_lines", "reject_lines")
+
+    @admin.action(description="Одобрить выбранные строки")
+    def approve_lines(self, request, queryset):
+        queryset.update(
+            status=AtmosphereLine.Status.APPROVED,
+            approved_by=request.user,
+            approved_at=timezone.now(),
+        )
+
+    @admin.action(description="Отклонить выбранные строки")
+    def reject_lines(self, request, queryset):
+        queryset.update(
+            status=AtmosphereLine.Status.REJECTED,
+            approved_by=None,
+            approved_at=None,
+        )
 
 
 @admin.register(Room)
