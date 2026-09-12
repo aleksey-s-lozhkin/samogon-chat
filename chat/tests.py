@@ -2015,9 +2015,10 @@ class ChatLayoutViewsTests(TestCase):
         with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
             source = script.read()
 
-        self.assertIn("content.append(author, text, time);", source)
+        self.assertIn("content.append(author);", source)
+        self.assertIn("content.append(time);", source)
         self.assertLess(
-            source.index("content.append(author, text, time);"),
+            source.index("content.append(time);"),
             source.index("renderMessageAttachments(content, data.attachments || []);"),
         )
 
