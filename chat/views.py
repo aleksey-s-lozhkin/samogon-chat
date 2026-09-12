@@ -32,6 +32,7 @@ from .services.attachments import (
     AttachmentValidationError,
     create_attachment,
     create_attachments,
+    normalize_audio_attachment,
     validate_attachment,
 )
 from .services.events import broadcast_attachment_update, broadcast_message
@@ -333,6 +334,7 @@ def create_audio_message(request, room_slug):
         metadata = validate_attachment(uploaded_file)
         if metadata.kind != Attachment.Kind.AUDIO:
             raise AttachmentValidationError("Выбранный файл не является аудиозаписью.")
+        uploaded_file, metadata = normalize_audio_attachment(uploaded_file, metadata)
         with transaction.atomic():
             message = MessageService.create_message(
                 user_id=request.user.id,
