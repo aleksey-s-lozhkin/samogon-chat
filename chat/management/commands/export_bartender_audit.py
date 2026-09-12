@@ -77,7 +77,9 @@ class Command(BaseCommand):
                 "elapsed_ms": elapsed_ms,
                 "question_chars": len(job.question.text),
                 "response_chars": len(job.response.text),
-                "context_sent_to_model": 0,
+                # Точный объём контекста не сохраняется в BartenderJob.
+                # None не выдаёт текущую политику за исторический факт.
+                "context_sent_to_model": None,
             }
             if options["include_content"]:
                 context = list(

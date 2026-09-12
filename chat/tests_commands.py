@@ -60,7 +60,7 @@ class ExportBartenderAuditTests(TestCase):
         record = json.loads(output.getvalue())
         self.assertEqual(record["configured_model_at_export"], "test-model")
         self.assertEqual(record["elapsed_ms"], 250)
-        self.assertEqual(record["context_sent_to_model"], 0)
+        self.assertIsNone(record["context_sent_to_model"])
         self.assertNotIn("question", record)
         self.assertNotIn("response", record)
 

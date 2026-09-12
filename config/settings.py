@@ -250,7 +250,7 @@ WEB_PUSH_ENABLED = bool(VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY)
 # Keep the endpoint environment-specific: localhost is a safe development
 # default, while deployments may point to a dedicated internal service.
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "samogon-semen-caretaker")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "20"))
 OLLAMA_KEEP_ALIVE_RAW = os.getenv("OLLAMA_KEEP_ALIVE", "-1")
 try:
@@ -263,6 +263,12 @@ OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.5"))
 OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "120"))
 BARTENDER_RESPONSE_MAX_LENGTH = int(
     os.getenv("BARTENDER_RESPONSE_MAX_LENGTH", "360")
+)
+BARTENDER_CONTEXT_MESSAGE_LIMIT = int(
+    os.getenv("BARTENDER_CONTEXT_MESSAGE_LIMIT", "8")
+)
+BARTENDER_CONTEXT_MESSAGE_MAX_CHARS = int(
+    os.getenv("BARTENDER_CONTEXT_MESSAGE_MAX_CHARS", "500")
 )
 BARTENDER_USERNAME = os.getenv("BARTENDER_USERNAME", "semen")
 
