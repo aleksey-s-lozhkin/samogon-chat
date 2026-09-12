@@ -418,3 +418,44 @@ class BartenderJob(models.Model):
 
     class Meta:
         ordering = ("-created_at",)
+
+
+class AtmosphereLine(models.Model):
+    """Короткая строка для шапки, публикуемая только после модерации."""
+
+    class Kind(models.TextChoices):
+        SEMEN = "semen", "Реплика Семёна"
+        PEP = "pep", "Цитата PEP"
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "На модерации"
+        APPROVED = "approved", "Одобрена"
+        REJECTED = "rejected", "Отклонена"
+
+    text = models.CharField(max_length=140, unique=True)
+    kind = models.CharField(max_length=12, choices=Kind.choices)
+    status = models.CharField(
+        max_length=12,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        db_index=True,
+    )
+    source_label = models.CharField(max_length=80, blank=True)
+    source_url = models.URLField(blank=True)
+    generated_by_model = models.CharField(max_length=120, blank=True)
+    is_active = models.BooleanField(default=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="approved_atmosphere_lines",
+        blank=True,
+        null=True,
+    )
+    approved_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("kind", "text")
+
+    def __str__(self):
+        return self.text

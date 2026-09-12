@@ -107,7 +107,9 @@ class BartenderService:
             retried_for_language,
         )
 
-        return BartenderReply(text=self._truncate_reply(content))
+        return BartenderReply(
+            text=self._truncate_reply(self._strip_markdown_decoration(content))
+        )
 
     @staticmethod
     def _build_messages(*, prompt, context, current_author):
@@ -142,6 +144,12 @@ class BartenderService:
         if " " in shortened:
             shortened = shortened.rsplit(" ", 1)[0].rstrip()
         return f"{shortened}…"
+
+    @staticmethod
+    def _strip_markdown_decoration(content: str) -> str:
+        """Убираем видимые маркеры, не меняя текст и имена вроде __hash__."""
+        content = re.sub(r"```(?:[A-Za-z0-9_+-]+)?\s*", "", content)
+        return content.replace("`", "").replace("**", "").strip()
 
     @staticmethod
     def _needs_language_retry(content: str) -> bool:

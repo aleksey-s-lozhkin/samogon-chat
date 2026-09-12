@@ -32,7 +32,7 @@ from .services.events import broadcast_attachment_update
 from .services.messages import MessageService
 from .services.navigation import get_last_room_url
 from .services.reports import create_message_report
-from .selectors import get_visible_rooms
+from .selectors import get_published_atmosphere_lines, get_visible_rooms
 
 
 def add_unread_counts(rooms, user):
@@ -156,6 +156,7 @@ def chat_page(request, room_slug):
             "focus_message_id": focus_message_id,
             "pending_report_count": pending_report_count,
             "presence_status_choices": User.PresenceStatus.choices,
+            "atmosphere_lines": get_published_atmosphere_lines(),
         },
     )
 

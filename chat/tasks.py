@@ -1,14 +1,34 @@
 from celery import shared_task
 from celery.signals import worker_ready
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 
-from chat.models import BartenderJob
+from chat.models import AtmosphereLine, BartenderJob
+from chat.services.atmosphere import AtmosphereUnavailable, generate_atmosphere_line
 from chat.services.bartender import BartenderUnavailable, bartender
 from chat.services.bartender_context import build_bartender_conversation
 from chat.services.events import broadcast_message
 from chat.services.messages import MessageService
 from users.services.push import send_direct_message_push
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=15)
+def generate_atmosphere_line_candidate(self):
+    """Создаёт черновик; публикация остаётся ручным решением в админке."""
+    try:
+        text = generate_atmosphere_line()
+    except AtmosphereUnavailable as error:
+        raise self.retry(exc=error)
+    line, _ = AtmosphereLine.objects.get_or_create(
+        text=text,
+        defaults={
+            "kind": AtmosphereLine.Kind.SEMEN,
+            "status": AtmosphereLine.Status.DRAFT,
+            "generated_by_model": settings.OLLAMA_MODEL,
+        },
+    )
+    return line.pk
 
 
 @worker_ready.connect
