@@ -49,12 +49,14 @@ from .validators import validate_message
 User = get_user_model()
 
 
-def ffprobe_result(*, duration="12.5", streams=None):
+def ffprobe_result(*, duration="12.5", streams=None, packets=None):
+    format_data = {} if duration is None else {"duration": duration}
     return Mock(
         returncode=0,
         stdout=json.dumps({
-            "format": {"duration": duration},
+            "format": format_data,
             "streams": streams or [{"codec_type": "audio", "codec_name": "opus"}],
+            "packets": packets or [],
         }),
     )
 
@@ -162,6 +164,20 @@ class AttachmentServiceTests(TestCase):
             "Файл должен содержать только аудиозапись.",
         ):
             validate_attachment(self.make_webm_file())
+
+    @patch("chat.services.attachments.subprocess.run")
+    def test_uses_packet_timestamps_for_streaming_webm_duration(self, run):
+        run.return_value = ffprobe_result(
+            duration=None,
+            packets=[
+                {"pts_time": "0.000", "duration_time": "0.020"},
+                {"pts_time": "4.980", "duration_time": "0.020"},
+            ],
+        )
+
+        metadata = validate_attachment(self.make_webm_file())
+
+        self.assertEqual(metadata.duration_ms, 5000)
 
     def test_accepts_utf8_text_and_rejects_binary_content(self):
         text_file = SimpleUploadedFile("notes.txt", "Привет".encode())
