@@ -2207,6 +2207,22 @@ class BartenderServiceTests(TestCase):
         self.assertIn("без оскорблений", reply.text)
         mock_urlopen.assert_not_called()
 
+    @patch("chat.services.bartender.urlopen")
+    def test_topic_dismissal_drops_previous_subject(self, mock_urlopen):
+        reply = bartender.reply(text="@Семён, да отстань ты от сервера")
+
+        self.assertEqual(reply.text, "Ладно, эту тему оставим.")
+        self.assertNotIn("сервер", reply.text.casefold())
+        mock_urlopen.assert_not_called()
+
+    @patch("chat.services.bartender.urlopen")
+    def test_repetition_feedback_is_accepted_without_echo(self, mock_urlopen):
+        reply = bartender.reply(text="@Семён, ты будешь повторять мои реплики?")
+
+        self.assertEqual(reply.text, "Справедливо, увлёкся. Исправлюсь.")
+        self.assertNotIn("реплик", reply.text.casefold())
+        mock_urlopen.assert_not_called()
+
 
 class BartenderContextTests(TestCase):
     def setUp(self):
