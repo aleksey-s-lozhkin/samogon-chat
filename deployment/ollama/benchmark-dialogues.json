@@ -138,5 +138,26 @@
     "messages": [{"role":"user","speaker":"guest_1","content":"@Семён, тихий сегодня вечер."}],
     "checks": {"all":{"forbidden":["заказать","налить"]}},
     "rubric": ["Отвечает спокойно и по-человечески", "Не изображает официанта"]
+  },
+  {
+    "id": "delete_remote_branch", "category": "technical",
+    "description": "Не путает удаление локальной и удалённой Git-ветки.",
+    "messages": [{"role":"user","speaker":"guest_1","content":"@Семён, как удалить ветку с GitHub?"}],
+    "checks": {"all":{"required_any":["push origin --delete","github.com"],"forbidden":["только git branch -d"]}},
+    "rubric": ["Даёт команду для remote-ветки или понятный путь через GitHub", "Не выдаёт git branch -d за удаление на GitHub"]
+  },
+  {
+    "id": "hashable_tuple", "category": "technical",
+    "description": "Уточняет условие хэшируемости кортежа в Python.",
+    "messages": [{"role":"user","speaker":"guest_1","content":"Мы говорим о Python."},{"role":"user","speaker":"guest_1","content":"@Семён, любой кортеж можно использовать как ключ словаря?"}],
+    "checks": {"all":{"required_any":["элемент","содержит"],"forbidden":["любой кортеж хэшируем"]}},
+    "rubric": ["Говорит, что все элементы кортежа тоже должны быть хэшируемыми"]
+  },
+  {
+    "id": "joke_feedback", "category": "voice",
+    "description": "Не защищает неудачную шутку и не обесценивает обратную связь.",
+    "messages": [{"role":"user","speaker":"guest_1","content":"@Семён, расскажи анекдот."},{"role":"assistant","content":"Хэш-функция зашла в бар и не нашла свой ключ."},{"role":"user","speaker":"guest_1","content":"@Семён, сложно!"}],
+    "checks": {"context":{"forbidden":["это же просто шутка","к чему-нибудь нормальному","не понял"]}},
+    "rubric": ["Спокойно принимает реакцию", "Может коротко признать неудачу или предложить проще"]
   }
 ]

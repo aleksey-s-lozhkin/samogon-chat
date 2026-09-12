@@ -2149,6 +2149,19 @@ class BartenderServiceTests(TestCase):
         self.assertEqual(reply.text, "Первая мысль закончена.")
 
     @patch("chat.services.bartender.urlopen")
+    def test_reply_removes_markdown_decoration_without_damaging_identifiers(
+        self,
+        mock_urlopen,
+    ):
+        mock_urlopen.return_value.__enter__.return_value.read.return_value = (
+            '{"message": {"content": "**В Python** `None` и `__hash__` хэшируемы."}}'.encode()
+        )
+
+        reply = bartender.reply(text="@Семён, расскажи про hashable")
+
+        self.assertEqual(reply.text, "В Python None и __hash__ хэшируемы.")
+
+    @patch("chat.services.bartender.urlopen")
     def test_medical_risk_uses_deterministic_reply(self, mock_urlopen):
         reply = bartender.reply(text="@Семён, второй день сильно болит грудь")
 
