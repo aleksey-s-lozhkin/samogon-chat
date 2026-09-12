@@ -1,6 +1,6 @@
 from django.db.models import Case, IntegerField, Q, Value, When
 
-from chat.models import Room
+from chat.models import AtmosphereLine, Room
 
 
 PUBLIC_ROOM_ORDER = (
@@ -36,4 +36,16 @@ def get_visible_rooms(user):
             "room_order",
             "name",
         )
+    )
+
+
+def get_published_atmosphere_lines(limit=50):
+    """Выдаёт только одобренный активный контент без модельных черновиков."""
+    return list(
+        AtmosphereLine.objects.filter(
+            status=AtmosphereLine.Status.APPROVED,
+            is_active=True,
+        )
+        .order_by("kind", "id")
+        .values_list("text", flat=True)[:limit]
     )

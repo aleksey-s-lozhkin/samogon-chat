@@ -50,13 +50,16 @@ const SOCKET_RECONNECT_MAX_DELAY_MS = 30000;
 const PRESENCE_HEARTBEAT_INTERVAL_MS = 25000;
 const SOCKET_FATAL_CLOSE_CODES = new Set([4401, 4403, 4404]);
 
-const TAGLINES = [
+const FALLBACK_TAGLINES = [
     "Семён протирает стакан и слушает логи.",
     "Здесь баги разбирают по душам.",
     "Заходите с вопросом, выходите с планом.",
     "Связь есть. Наливаю первую тему.",
     "У стойки спорят о табах и мирятся на пробелах.",
 ];
+const TAGLINES = chatConfig.atmosphereLines?.length
+    ? chatConfig.atmosphereLines
+    : FALLBACK_TAGLINES;
 const COMPOSER_HINTS = window.SAMOGON_COMPOSER_HINTS || ["Ваша реплика…"];
 let taglineIndex = 0;
 let composerHintIndex = 0;
