@@ -147,7 +147,8 @@ def _validate_audio(uploaded_file: UploadedFile, suffix: str) -> AttachmentMetad
                 [
                     settings.FFPROBE_BINARY,
                     "-v", "error",
-                    "-show_entries", "format=duration:stream=codec_type,codec_name",
+                    "-show_entries",
+                    "format=duration:stream=codec_type,codec_name,duration:packet=pts_time,duration_time",
                     "-of", "json",
                     temporary_file.name,
                 ],
@@ -169,9 +170,8 @@ def _validate_audio(uploaded_file: UploadedFile, suffix: str) -> AttachmentMetad
     try:
         probe = json.loads(result.stdout)
         streams = probe.get("streams", [])
-        duration_seconds = float(probe.get("format", {}).get("duration"))
-    except (TypeError, ValueError, json.JSONDecodeError) as error:
-        raise AttachmentValidationError("Не удалось определить длительность аудиозаписи.") from error
+    except (TypeError, json.JSONDecodeError) as error:
+        raise AttachmentValidationError("Не удалось прочитать данные аудиозаписи.") from error
 
     audio_streams = [stream for stream in streams if stream.get("codec_type") == "audio"]
     if not audio_streams or any(stream.get("codec_type") == "video" for stream in streams):
@@ -180,6 +180,27 @@ def _validate_audio(uploaded_file: UploadedFile, suffix: str) -> AttachmentMetad
     if any(stream.get("codec_name") not in allowed_codecs for stream in audio_streams):
         raise AttachmentValidationError("Аудиокодек этой записи не поддерживается.")
 
+    duration_candidates = [probe.get("format", {}).get("duration")]
+    duration_candidates.extend(stream.get("duration") for stream in audio_streams)
+    parsed_durations = []
+    for candidate in duration_candidates:
+        try:
+            parsed_durations.append(float(candidate))
+        except (TypeError, ValueError):
+            continue
+    if not parsed_durations:
+        for packet in probe.get("packets", []):
+            try:
+                packet_end = float(packet["pts_time"]) + float(
+                    packet.get("duration_time") or 0
+                )
+            except (KeyError, TypeError, ValueError):
+                continue
+            parsed_durations.append(packet_end)
+    if not parsed_durations:
+        raise AttachmentValidationError("Не удалось определить длительность аудиозаписи.")
+
+    duration_seconds = max(parsed_durations)
     duration_ms = round(duration_seconds * 1000)
     if not 0 < duration_ms <= settings.AUDIO_MESSAGE_MAX_DURATION_SECONDS * 1000:
         raise AttachmentValidationError("Запись должна быть не длиннее трёх минут.")
