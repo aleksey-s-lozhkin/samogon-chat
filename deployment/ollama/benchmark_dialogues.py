@@ -6,17 +6,31 @@ import json
 import re
 import sys
 import time
+from html import escape
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = SCRIPT_DIR.parents[1]
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
+from chat.services.bartender_guardrails import guardrail_reply
+
+
 DEFAULT_SCENARIOS = SCRIPT_DIR / "benchmark-dialogues.json"
 DEFAULT_SYSTEM_PROMPT = (
-    SCRIPT_DIR / "../../chat/services/prompts/semen-caretaker.txt"
+    SCRIPT_DIR / "../../chat/services/prompts/semen.txt"
 ).resolve()
 BARTENDER_MENTION = re.compile(r"^@(?:сем[её]н|semen)\b[,:!]?\s*", re.IGNORECASE)
+HAN_CHARACTERS = re.compile(r"[\u3400-\u9fff]")
+CYRILLIC_CHARACTERS = re.compile(r"[А-Яа-яЁё]")
+LANGUAGE_RETRY_PROMPT = (
+    "Перепиши свой ответ ниже только грамотным русским языком, "
+    "без иероглифов, английского текста и markdown. Сохрани смысл и ответь коротко."
+)
 
 
 def parse_args():
@@ -51,6 +65,25 @@ def parse_args():
         default=1,
         help="Количество повторов каждой пары сценарий/режим.",
     )
+    parser.add_argument(
+        "--scenario",
+        action="append",
+        dest="scenario_ids",
+        help=(
+            "Запустить только сценарий с этим id. "
+            "Параметр можно повторять."
+        ),
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        help="Дублировать JSONL-результат в файл.",
+    )
+    parser.add_argument(
+        "--without-guardrails",
+        action="store_true",
+        help="Выключить защитные ответы приложения и тестировать только модель.",
+    )
     return parser.parse_args()
 
 
@@ -61,22 +94,46 @@ def load_scenarios(path: Path):
     return data
 
 
-def format_user_message(message):
+def select_scenarios(scenarios, selected_ids):
+    if not selected_ids:
+        return scenarios
+    by_id = {scenario["id"]: scenario for scenario in scenarios}
+    missing = sorted(set(selected_ids) - by_id.keys())
+    if missing:
+        raise ValueError("Неизвестные id сценариев: " + ", ".join(missing))
+    selected = set(selected_ids)
+    return [scenario for scenario in scenarios if scenario["id"] in selected]
+
+
+def format_history_message(message):
+    content = BARTENDER_MENTION.sub("", message["content"]).strip()
+    if message["role"] == "assistant":
+        return f'<message author="semen">{escape(content)}</message>'
+    speaker = message.get("speaker", "guest")
+    return f'<message author="{escape(speaker)}">{escape(content)}</message>'
+
+
+def format_current_message(message):
     speaker = message.get("speaker", "guest")
     content = BARTENDER_MENTION.sub("", message["content"]).strip()
-    return f"Комната: У стойки. Гость @{speaker}: {content}"
+    return f'<current_message author="{escape(speaker)}">{escape(content)}</current_message>'
 
 
 def build_messages(system_prompt, scenario, mode):
     dialogue = scenario["messages"]
     selected = dialogue[-1:] if mode == "last" else dialogue
-    messages = [{"role": "system", "content": system_prompt}]
-    for message in selected:
-        content = message["content"]
-        if message["role"] == "user":
-            content = format_user_message(message)
-        messages.append({"role": message["role"], "content": content})
-    return messages
+    current = selected[-1]
+    if current["role"] != "user":
+        raise ValueError("Последнее сообщение сценария должно быть от участника.")
+    history = "\n".join(format_history_message(message) for message in selected[:-1])
+    content_parts = []
+    if history:
+        content_parts.append(f"<conversation_history>\n{history}\n</conversation_history>")
+    content_parts.append(format_current_message(current))
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": "\n".join(content_parts)},
+    ]
 
 
 def request_reply(*, url, model, messages, options, timeout):
@@ -104,6 +161,12 @@ def request_reply(*, url, model, messages, options, timeout):
     return data, content, elapsed_ms
 
 
+def needs_language_retry(content):
+    return bool(HAN_CHARACTERS.search(content)) or not bool(
+        CYRILLIC_CHARACTERS.search(content)
+    )
+
+
 def modes(selected_mode):
     return ("last", "context") if selected_mode == "both" else (selected_mode,)
 
@@ -112,7 +175,10 @@ def main():
     args = parse_args()
     if args.runs < 1:
         raise ValueError("Количество повторов должно быть больше нуля.")
-    scenarios = load_scenarios(args.scenarios)
+    scenarios = select_scenarios(
+        load_scenarios(args.scenarios),
+        args.scenario_ids,
+    )
     system_prompt = args.system_prompt.read_text(encoding="utf-8").strip()
     prompt_label = args.label or args.system_prompt.stem
     options = {
@@ -121,6 +187,7 @@ def main():
         "num_predict": args.num_predict,
     }
     failures = 0
+    output_lines = []
 
     # Полностью прогоняем одну модель перед следующей: частое переключение
     # выгружает веса, замедляет тест и искажает измерения load_duration.
@@ -137,13 +204,38 @@ def main():
                         "run": run_number,
                     }
                     try:
-                        data, content, elapsed_ms = request_reply(
-                            url=args.url,
-                            model=model,
-                            messages=build_messages(system_prompt, scenario, mode),
-                            options=options,
-                            timeout=args.timeout,
-                        )
+                        current_prompt = BARTENDER_MENTION.sub(
+                            "", scenario["messages"][-1]["content"]
+                        ).strip()
+                        guarded = None if args.without_guardrails else guardrail_reply(current_prompt)
+                        if guarded:
+                            data, content, elapsed_ms = {}, guarded.text, 0
+                            record["guardrail"] = guarded.rule
+                        else:
+                            data, content, elapsed_ms = request_reply(
+                                url=args.url,
+                                model=model,
+                                messages=build_messages(system_prompt, scenario, mode),
+                                options=options,
+                                timeout=args.timeout,
+                            )
+                            if needs_language_retry(content):
+                                record["language_retry"] = True
+                                retry_data, content, retry_elapsed_ms = request_reply(
+                                    url=args.url,
+                                    model=model,
+                                    messages=[
+                                        {"role": "system", "content": system_prompt},
+                                        {
+                                            "role": "user",
+                                            "content": f"{LANGUAGE_RETRY_PROMPT}\n\nОтвет: {content}",
+                                        },
+                                    ],
+                                    options=options,
+                                    timeout=args.timeout,
+                                )
+                                elapsed_ms += retry_elapsed_ms
+                                data = retry_data
                         record.update(
                             {
                                 "response": content,
@@ -159,7 +251,13 @@ def main():
                     except (HTTPError, URLError, TimeoutError, OSError, ValueError) as error:
                         failures += 1
                         record["error"] = str(error)
-                    print(json.dumps(record, ensure_ascii=False), flush=True)
+                    line = json.dumps(record, ensure_ascii=False)
+                    output_lines.append(line)
+                    print(line, flush=True)
+
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text("\n".join(output_lines) + "\n", encoding="utf-8")
 
     return 1 if failures else 0
 

@@ -5,6 +5,7 @@ from django.utils import timezone
 
 from chat.models import BartenderJob
 from chat.services.bartender import BartenderUnavailable, bartender
+from chat.services.bartender_context import build_bartender_conversation
 from chat.services.events import broadcast_message
 from chat.services.messages import MessageService
 from users.services.push import send_direct_message_push
@@ -29,10 +30,16 @@ def process_bartender_job(self, job_id):
     job.error_code = ""
     job.save(update_fields=("status", "started_at", "error_code"))
     try:
+        conversation = build_bartender_conversation(
+            room=job.room,
+            question=job.question,
+            user_id=job.user_id,
+            private=job.private,
+        )
         reply = bartender.reply(
-            room_name=job.room.name,
-            username=job.user.username,
             text=job.question.text,
+            context=conversation.history,
+            current_author=conversation.current_author,
         ).text
     except BartenderUnavailable as error:
         if self.request.retries < self.max_retries:

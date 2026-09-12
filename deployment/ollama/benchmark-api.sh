@@ -7,7 +7,7 @@ MODELS=("${@:-samogon-semen-gemma}")
 OLLAMA_URL="${OLLAMA_URL:-http://127.0.0.1:11434}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROMPTS_FILE="${SCRIPT_DIR}/benchmark-prompts.txt"
-SYSTEM_PROMPT_FILE="${SCRIPT_DIR}/../../chat/services/prompts/semen-caretaker.txt"
+SYSTEM_PROMPT_FILE="${SCRIPT_DIR}/../../chat/services/prompts/semen.txt"
 
 SYSTEM_PROMPT="$(<"${SYSTEM_PROMPT_FILE}")"
 
