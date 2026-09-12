@@ -107,6 +107,14 @@
         </button>
     </div>
 
+    <div id="audio-recorder" class="audio-recorder hidden" aria-live="polite">
+        <div id="audio-recording-state" class="audio-recording-state">
+            <span class="audio-recording-dot" aria-hidden="true"></span>
+            <time id="audio-recording-time">0:00</time>
+            <strong id="audio-recording-hint">Отпустите, чтобы отправить · влево — отмена</strong>
+        </div>
+    </div>
+
     <div class="chat-input">
         <input
             id="chat-attachment-input"
@@ -163,8 +171,12 @@
             aria-label="Отправить сообщение"
             title="Отправить"
         >
-            <svg aria-hidden="true" viewBox="0 0 24 24">
+            <svg class="submit-icon" aria-hidden="true" viewBox="0 0 24 24">
                 <path d="m5 3 15 9L5 21V3Z" />
+            </svg>
+            <svg class="microphone-icon hidden" aria-hidden="true" viewBox="0 0 24 24">
+                <rect x="9" y="3" width="6" height="12" rx="3" />
+                <path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21M8.5 21h7" />
             </svg>
         </button>
     </div>
