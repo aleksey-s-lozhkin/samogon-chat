@@ -1725,7 +1725,16 @@ html[data-theme="light"] .message-skeleton-line::after {
 
 .message-attachment-audio {
     width: min(320px, 100%);
-    padding: 5px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    overflow: visible;
+}
+
+.message-audio-meta {
+    color: var(--text-soft);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
 }
 
 .message-attachment-audio audio,
@@ -2288,6 +2297,12 @@ html[data-theme="light"] .message-skeleton-line::after {
     background: rgba(255, 255, 255, 0.06);
     color: var(--text-soft);
     touch-action: none;
+}
+
+body.is-audio-recording,
+body.is-audio-recording * {
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 #chat-message-submit.is-recording {
@@ -4901,14 +4916,19 @@ html[data-theme="light"] .recipient-cancel {
 /* Final density overrides intentionally live at the end of the cascade. */
 .chat-log { gap: 6px; }
 .message-content { padding: 9px 12px; }
-.message-username { margin-bottom: 2px; }
+.message-username { margin-bottom: 0; line-height: 1.2; }
+.message-attachments { margin-top: 4px; }
 .message-time { margin-top: 3px; }
 .message-reply-quote { margin-bottom: 4px; }
 
 .composer-tool,
 #chat-message-submit {
-    border-color: transparent;
+    border: 0;
     background: transparent;
+    box-shadow: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 .composer-tool:focus-visible,
