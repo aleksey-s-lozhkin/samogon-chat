@@ -88,6 +88,7 @@ def process_bartender_job(self, job_id):
             room=job.room,
             text=reply,
             recipient_id=job.user_id if job.private else None,
+            reply_to_id=job.question_id,
         )
         job.response = response
         job.status = BartenderJob.Status.SUCCEEDED
