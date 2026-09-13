@@ -61,10 +61,10 @@ let audioGestureCanceled = false;
 let followLatestWhileTyping = false;
 let androidViewportBaseline = window.visualViewport?.height || window.innerHeight;
 let androidKeyboardViewportWasReduced = false;
-let bartenderHoldTimer = null;
-let bartenderHoldPointerId = null;
-let bartenderHoldStartX = 0;
-let bartenderHoldStartY = 0;
+let bartenderSwipePointerId = null;
+let bartenderSwipeStartX = 0;
+let bartenderSwipeStartY = 0;
+let bartenderSwipeReady = false;
 const typingUsers = new Map();
 const USE_VISUAL_VIEWPORT_HEIGHT = /Android/i.test(navigator.userAgent);
 const IS_ANDROID = /Android/i.test(navigator.userAgent);
@@ -72,9 +72,9 @@ const IS_IPHONE = /iPhone|iPod/i.test(navigator.userAgent);
 const SOCKET_RECONNECT_MAX_DELAY_MS = 30000;
 const PRESENCE_HEARTBEAT_INTERVAL_MS = 25000;
 const SOCKET_FATAL_CLOSE_CODES = new Set([4401, 4403, 4404]);
-const BARTENDER_HOLD_DELAY_MS = 500;
-const BARTENDER_HOLD_MOVE_TOLERANCE_PX = 12;
-const BARTENDER_HOLD_HINT_STORAGE_KEY = "samogon-bartender-hold-hint-seen";
+const BARTENDER_SWIPE_TRIGGER_PX = 56;
+const BARTENDER_SWIPE_VERTICAL_TOLERANCE_PX = 28;
+const BARTENDER_SWIPE_HINT_STORAGE_KEY = "samogon-bartender-swipe-hint-seen";
 
 const FALLBACK_TAGLINES = [
     "Семён протирает стакан и слушает логи.",
@@ -89,7 +89,7 @@ const TAGLINES = chatConfig.atmosphereLines?.length
 const COMPOSER_HINTS = window.SAMOGON_COMPOSER_HINTS || ["Ваша реплика…"];
 let taglineIndex = 0;
 let composerHintIndex = 0;
-let showBartenderHoldHint = shouldShowBartenderHoldHint();
+let showBartenderSwipeHint = shouldShowBartenderSwipeHint();
 
 if (isAuthenticated) {
     connectWebSocket();
@@ -842,24 +842,24 @@ function activateBartender() {
     }
 }
 
-function shouldShowBartenderHoldHint() {
+function shouldShowBartenderSwipeHint() {
     try {
-        return window.localStorage.getItem(BARTENDER_HOLD_HINT_STORAGE_KEY) !== "true";
+        return window.localStorage.getItem(BARTENDER_SWIPE_HINT_STORAGE_KEY) !== "true";
     } catch (error) {
         return false;
     }
 }
 
-function rememberBartenderHoldHint() {
-    showBartenderHoldHint = false;
+function rememberBartenderSwipeHint() {
+    showBartenderSwipeHint = false;
     try {
-        window.localStorage.setItem(BARTENDER_HOLD_HINT_STORAGE_KEY, "true");
+        window.localStorage.setItem(BARTENDER_SWIPE_HINT_STORAGE_KEY, "true");
     } catch (error) {
         // Жест работает и без доступного localStorage.
     }
 }
 
-function canStartBartenderHold(event) {
+function canStartBartenderSwipe(event) {
     const input = event.currentTarget;
     return event.pointerType !== "mouse"
         && window.matchMedia("(max-width: 700px) and (pointer: coarse)").matches
@@ -870,48 +870,48 @@ function canStartBartenderHold(event) {
         && !replyTarget;
 }
 
-function clearBartenderHoldGesture() {
-    window.clearTimeout(bartenderHoldTimer);
-    bartenderHoldTimer = null;
-    bartenderHoldPointerId = null;
+function clearBartenderSwipeGesture() {
+    bartenderSwipePointerId = null;
+    bartenderSwipeReady = false;
     document.getElementById("chat-message-input")
-        ?.classList.remove("is-bartender-hold-pending");
+        ?.classList.remove("is-bartender-swipe-ready");
 }
 
-function startBartenderHoldGesture(event) {
-    if (!canStartBartenderHold(event)) {
+function startBartenderSwipeGesture(event) {
+    if (!canStartBartenderSwipe(event)) {
         return;
     }
-    bartenderHoldPointerId = event.pointerId;
-    bartenderHoldStartX = event.clientX;
-    bartenderHoldStartY = event.clientY;
-    event.currentTarget.classList.add("is-bartender-hold-pending");
-    bartenderHoldTimer = window.setTimeout(() => {
-        rememberBartenderHoldHint();
+    bartenderSwipePointerId = event.pointerId;
+    bartenderSwipeStartX = event.clientX;
+    bartenderSwipeStartY = event.clientY;
+}
+
+function moveBartenderSwipeGesture(event) {
+    if (event.pointerId !== bartenderSwipePointerId) {
+        return;
+    }
+    const deltaX = event.clientX - bartenderSwipeStartX;
+    const deltaY = Math.abs(event.clientY - bartenderSwipeStartY);
+    if (deltaX < 0 || deltaY > BARTENDER_SWIPE_VERTICAL_TOLERANCE_PX) {
+        clearBartenderSwipeGesture();
+        return;
+    }
+    bartenderSwipeReady = deltaX >= BARTENDER_SWIPE_TRIGGER_PX;
+    event.currentTarget.classList.toggle("is-bartender-swipe-ready", bartenderSwipeReady);
+    if (deltaX > 12) event.preventDefault();
+}
+
+function endBartenderSwipeGesture(event) {
+    if (event.pointerId !== bartenderSwipePointerId) {
+        return;
+    }
+    const shouldActivate = bartenderSwipeReady;
+    clearBartenderSwipeGesture();
+    if (shouldActivate) {
+        rememberBartenderSwipeHint();
         navigator.vibrate?.(30);
         activateBartender();
-        clearBartenderHoldGesture();
-    }, BARTENDER_HOLD_DELAY_MS);
-}
-
-function moveBartenderHoldGesture(event) {
-    if (event.pointerId !== bartenderHoldPointerId) {
-        return;
     }
-    const moved = Math.hypot(
-        event.clientX - bartenderHoldStartX,
-        event.clientY - bartenderHoldStartY,
-    );
-    if (moved > BARTENDER_HOLD_MOVE_TOLERANCE_PX) {
-        clearBartenderHoldGesture();
-    }
-}
-
-function endBartenderHoldGesture(event) {
-    if (event.pointerId !== bartenderHoldPointerId) {
-        return;
-    }
-    clearBartenderHoldGesture();
 }
 
 function setBartenderVisibility(isPrivate) {
@@ -2264,8 +2264,8 @@ function rotateComposerHint(input) {
 
 function setComposerPlaceholder(input) {
     if (input && !input.value && !directRecipient && !bartenderMode) {
-        input.placeholder = showBartenderHoldHint
-            ? "Удерживайте для Семёна…"
+        input.placeholder = showBartenderSwipeHint
+            ? "Смахните вправо для Семёна…"
             : COMPOSER_HINTS[composerHintIndex];
     }
 }
@@ -2329,15 +2329,10 @@ document.getElementById("bartender-public")?.addEventListener("click", () => set
 document.getElementById("bartender-private")?.addEventListener("click", () => setBartenderVisibility(true));
 document.getElementById("cancel-bartender-message")?.addEventListener("click", clearBartenderMode);
 const chatInput = document.getElementById("chat-message-input");
-chatInput?.addEventListener("pointerdown", startBartenderHoldGesture);
-chatInput?.addEventListener("pointermove", moveBartenderHoldGesture);
-chatInput?.addEventListener("pointerup", endBartenderHoldGesture);
-chatInput?.addEventListener("pointercancel", endBartenderHoldGesture);
-chatInput?.addEventListener("contextmenu", (event) => {
-    if (bartenderHoldPointerId !== null && !chatInput.value.trim()) {
-        event.preventDefault();
-    }
-});
+chatInput?.addEventListener("pointerdown", startBartenderSwipeGesture);
+chatInput?.addEventListener("pointermove", moveBartenderSwipeGesture);
+chatInput?.addEventListener("pointerup", endBartenderSwipeGesture);
+chatInput?.addEventListener("pointercancel", clearBartenderSwipeGesture);
 chatInput?.addEventListener("focus", () => {
     const chatLog = document.getElementById("chat-log");
     followLatestWhileTyping = Boolean(chatLog && isNearBottom(chatLog));
@@ -2352,8 +2347,8 @@ chatInput?.addEventListener("focus", () => {
     if (followLatestWhileTyping) {
         scrollToLatestAfterLayout(chatLog, false);
     }
-    if (showBartenderHoldHint) {
-        rememberBartenderHoldHint();
+    if (showBartenderSwipeHint) {
+        rememberBartenderSwipeHint();
         setComposerPlaceholder(chatInput);
     }
 });
@@ -2363,7 +2358,7 @@ chatInput?.addEventListener("input", () => {
 });
 chatInput?.addEventListener("blur", () => {
     followLatestWhileTyping = false;
-    clearBartenderHoldGesture();
+    clearBartenderSwipeGesture();
     androidKeyboardViewportWasReduced = false;
     setAndroidKeyboardMode(false);
     stopTyping();
