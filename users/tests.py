@@ -191,6 +191,8 @@ class PushSubscriptionTests(TestCase):
 
         for name in ("standalone", "api", "worker", "permission", "subscription"):
             self.assertContains(response, f'data-push-check="{name}"')
+        self.assertContains(response, "data-push-report-copy")
+        self.assertContains(response, "Скопировать диагностику")
 
     @override_settings(WEB_PUSH_ENABLED=True)
     def test_subscribe_creates_device_subscription(self):

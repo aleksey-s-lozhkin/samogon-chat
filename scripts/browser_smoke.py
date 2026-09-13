@@ -295,6 +295,12 @@ def run_mobile_layout(playwright, server, engine, viewport):
             ).wait_for()
             if page.locator("[data-push-master]").is_enabled():
                 raise AssertionError("Push нельзя включать в обычной вкладке iPhone")
+            page.locator("[data-push-report-copy]").click()
+            report = page.locator("[data-push-report-output]").input_value()
+            if '"standalone": false' not in report or '"appleMobile": true' not in report:
+                raise AssertionError("Диагностический отчёт не определил режим iPhone")
+            if "endpoint" in report or "p256dh" in report:
+                raise AssertionError("Диагностический отчёт содержит секреты подписки")
     except Exception:
         ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
         filename = f"{engine}-{viewport['width']}x{viewport['height']}-failure.png"

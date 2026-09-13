@@ -21,10 +21,22 @@ if (pushSettings) {
     const master = pushSettings.querySelector("[data-push-master]");
     const direct = pushSettings.querySelector("[data-push-direct]");
     const status = pushSettings.querySelector("[data-push-status]");
+    const reportButton = pushSettings.querySelector("[data-push-report-copy]");
+    const reportStatus = pushSettings.querySelector("[data-push-report-status]");
+    const reportOutput = pushSettings.querySelector("[data-push-report-output]");
+    const diagnosticValues = {};
+    const runtimeValues = {
+        workerScope: "unknown",
+        workerState: "unknown",
+        workerControlsPage: Boolean(navigator.serviceWorker?.controller),
+        browserSubscription: "unknown",
+        serverSubscription: "unknown",
+    };
     const diagnostic = (name, message, isError = false) => {
         const element = pushSettings.querySelector(`[data-push-check="${name}"]`);
         element.textContent = message;
         element.classList.toggle("error", isError);
+        diagnosticValues[name] = message;
     };
     const isStandalone = window.matchMedia("(display-mode: standalone)").matches
         || window.navigator.standalone === true;
@@ -64,6 +76,50 @@ if (pushSettings) {
         });
         if (!response.ok) throw new Error("Сервер не сохранил настройку.");
     };
+    const buildDiagnosticReport = () => JSON.stringify({
+        report: "Samogon Web Push diagnostics",
+        collectedAt: new Date().toISOString(),
+        appOrigin: window.location.origin,
+        serverConfigured: pushSettings.dataset.enabled === "true",
+        secureContext: window.isSecureContext,
+        online: navigator.onLine,
+        standalone: isStandalone,
+        appleMobile: isAppleMobile,
+        userAgent: navigator.userAgent,
+        platform: navigator.platform || "unknown",
+        language: navigator.language || "unknown",
+        viewport: `${window.innerWidth}x${window.innerHeight}`,
+        screen: `${window.screen.width}x${window.screen.height}`,
+        diagnostics: diagnosticValues,
+        serviceWorker: {
+            supported: hasServiceWorker,
+            scope: runtimeValues.workerScope,
+            state: runtimeValues.workerState,
+            controlsPage: runtimeValues.workerControlsPage,
+        },
+        push: {
+            apiAvailable: hasPushApi,
+            permission: "Notification" in window ? Notification.permission : "unavailable",
+            browserSubscription: runtimeValues.browserSubscription,
+            serverSubscription: runtimeValues.serverSubscription,
+        },
+    }, null, 2);
+    const copyDiagnosticReport = async () => {
+        const report = buildDiagnosticReport();
+        reportOutput.value = report;
+        try {
+            await navigator.clipboard.writeText(report);
+            reportOutput.hidden = true;
+            reportStatus.textContent = "Диагностика скопирована. Пришлите её в чат.";
+        } catch (_error) {
+            reportOutput.hidden = false;
+            reportOutput.focus();
+            reportOutput.select();
+            reportStatus.textContent = "Автокопирование недоступно. Скопируйте текст из поля ниже.";
+        }
+    };
+
+    reportButton.addEventListener("click", copyDiagnosticReport);
 
     const initializePush = async () => {
         if (pushSettings.dataset.enabled !== "true") {
@@ -87,6 +143,9 @@ if (pushSettings) {
             registration = await navigator.serviceWorker.getRegistration("/")
                 || await navigator.serviceWorker.register("/service-worker.js");
             registration = await navigator.serviceWorker.ready;
+            runtimeValues.workerScope = registration.scope;
+            runtimeValues.workerState = registration.active?.state || "no-active-worker";
+            runtimeValues.workerControlsPage = Boolean(navigator.serviceWorker.controller);
             diagnostic("worker", "Зарегистрирован");
         } catch (_error) {
             disableControls();
@@ -98,6 +157,7 @@ if (pushSettings) {
         let subscription;
         try {
             subscription = await registration.pushManager.getSubscription();
+            runtimeValues.browserSubscription = subscription ? "present" : "absent";
             diagnostic("subscription", subscription ? "Подписка найдена" : "Не подписано");
             master.checked = false;
             direct.disabled = true;
@@ -110,6 +170,9 @@ if (pushSettings) {
                         master.checked = saved.known && saved.enabled;
                         direct.checked = saved.directMessages;
                         direct.disabled = !master.checked;
+                        runtimeValues.serverSubscription = saved.known
+                            ? (saved.enabled ? "known-enabled" : "known-disabled")
+                            : "unknown";
                         diagnostic("subscription", saved.known ? "Привязано к аккаунту" : "Не привязано");
                     }
                 } catch (_error) {
@@ -145,6 +208,8 @@ if (pushSettings) {
                         ...subscription.toJSON(), enabled: true, directMessages: direct.checked,
                     });
                     direct.disabled = false;
+                    runtimeValues.browserSubscription = "present";
+                    runtimeValues.serverSubscription = "known-enabled";
                     diagnostic("subscription", "Привязано к аккаунту");
                     setStatus("Уведомления включены для этого устройства.");
                 } else if (subscription) {
@@ -152,6 +217,8 @@ if (pushSettings) {
                     await subscription.unsubscribe();
                     subscription = null;
                     direct.disabled = true;
+                    runtimeValues.browserSubscription = "absent";
+                    runtimeValues.serverSubscription = "unknown";
                     diagnostic("subscription", "Не подписано");
                     setStatus("Уведомления отключены для этого устройства.");
                 }

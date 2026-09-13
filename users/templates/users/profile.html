@@ -12,7 +12,7 @@
     {% include "pwa/head.html" %}
     <link
         rel="stylesheet"
-        href="{% static 'users/css/profile.css' %}?v=7"
+        href="{% static 'users/css/profile.css' %}?v=8"
     >
 
 </head>
@@ -186,6 +186,11 @@
             <div><dt>Разрешение</dt><dd data-push-check="permission">Проверяем…</dd></div>
             <div><dt>Это устройство</dt><dd data-push-check="subscription">Проверяем…</dd></div>
         </dl>
+        <button class="push-report-button" type="button" data-push-report-copy>
+            Скопировать диагностику
+        </button>
+        <p class="push-report-status" data-push-report-status aria-live="polite"></p>
+        <textarea class="push-report-output" data-push-report-output readonly hidden></textarea>
     </section>
 
 
@@ -283,7 +288,7 @@
 
     </div>
 
-<script src="{% static 'users/js/profile.js' %}?v=7"></script>
+<script src="{% static 'users/js/profile.js' %}?v=8"></script>
 <script src="{% static 'chat/js/theme.js' %}?v=1"></script>
 
 </div>
