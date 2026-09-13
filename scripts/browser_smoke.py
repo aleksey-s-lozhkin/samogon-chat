@@ -165,7 +165,12 @@ def assert_composer_inside_viewport(page):
 
 
 def assert_mobile_chrome_hides_on_input(page):
+    original_viewport = page.viewport_size
     page.locator("#chat-message-input").focus()
+    page.set_viewport_size({
+        "width": original_viewport["width"],
+        "height": original_viewport["height"] - 300,
+    })
     page.locator(".chat-page.is-input-focused-mobile").wait_for()
     geometry = page.locator(".chat-page").evaluate(
         """element => ({
@@ -175,8 +180,9 @@ def assert_mobile_chrome_hides_on_input(page):
     )
     if geometry["header"] != 0 or geometry["roomHeader"] != 0:
         raise AssertionError(f"Мобильные заголовки не скрылись: {geometry}")
-    page.locator("#chat-message-input").evaluate("element => element.blur()")
+    page.set_viewport_size(original_viewport)
     page.locator(".chat-page.is-input-focused-mobile").wait_for(state="detached")
+    page.locator("#chat-message-input").evaluate("element => element.blur()")
 
 
 def run_chromium_flow(playwright, server):
