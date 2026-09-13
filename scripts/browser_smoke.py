@@ -237,6 +237,30 @@ def run_mobile_layout(playwright, server, engine, viewport):
         input_element.blur()
         page.locator(".chat-header").wait_for(state="visible")
 
+        input_element.fill("")
+        pointer = {
+            "pointerId": 41,
+            "pointerType": "touch",
+            "clientX": 120,
+            "clientY": 640,
+        }
+        input_element.dispatch_event("pointerdown", pointer)
+        page.wait_for_timeout(120)
+        input_element.dispatch_event("pointerup", pointer)
+        if not page.locator("#bartender-recipient").evaluate(
+            "element => element.classList.contains('hidden')"
+        ):
+            raise AssertionError("Короткий тап ошибочно вызвал Семёна")
+
+        pointer["pointerId"] = 42
+        input_element.dispatch_event("pointerdown", pointer)
+        page.wait_for_timeout(550)
+        if page.locator("#bartender-recipient").evaluate(
+            "element => element.classList.contains('hidden')"
+        ):
+            raise AssertionError("Долгое нажатие не вызвало Семёна")
+        page.locator("#cancel-bartender-message").click()
+
         message = page.locator(".message").first
         message.locator(".message-content").click()
         if "is-selected" not in (message.get_attribute("class") or ""):
