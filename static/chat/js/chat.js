@@ -69,6 +69,9 @@ const typingUsers = new Map();
 const USE_VISUAL_VIEWPORT_HEIGHT = /Android/i.test(navigator.userAgent);
 const IS_ANDROID = /Android/i.test(navigator.userAgent);
 const IS_IPHONE = /iPhone|iPod/i.test(navigator.userAgent);
+const SUPPORTS_BARTENDER_SWIPE = window.matchMedia(
+    "(max-width: 700px) and (pointer: coarse)",
+).matches;
 const SOCKET_RECONNECT_MAX_DELAY_MS = 30000;
 const PRESENCE_HEARTBEAT_INTERVAL_MS = 25000;
 const SOCKET_FATAL_CLOSE_CODES = new Set([4401, 4403, 4404]);
@@ -89,7 +92,8 @@ const TAGLINES = chatConfig.atmosphereLines?.length
 const COMPOSER_HINTS = window.SAMOGON_COMPOSER_HINTS || ["Ваша реплика…"];
 let taglineIndex = 0;
 let composerHintIndex = 0;
-let showBartenderSwipeHint = shouldShowBartenderSwipeHint();
+let showBartenderSwipeHint = SUPPORTS_BARTENDER_SWIPE
+    && shouldShowBartenderSwipeHint();
 
 if (isAuthenticated) {
     connectWebSocket();
@@ -289,9 +293,15 @@ function updateAppHeight() {
         height = window.visualViewport?.height || window.innerHeight;
     } else if (IS_IPHONE && isStandalonePwa()) {
         const portrait = window.matchMedia("(orientation: portrait)").matches;
-        height = portrait
+        const fullHeight = portrait
             ? Math.max(window.screen.width, window.screen.height)
             : Math.min(window.screen.width, window.screen.height);
+        const viewportHeight = window.visualViewport?.height || window.innerHeight;
+        const inputIsFocused = document.getElementById("chat-message-input")
+            === document.activeElement;
+        height = inputIsFocused && viewportHeight < fullHeight - 120
+            ? viewportHeight
+            : fullHeight;
     }
 
     if (!height) {
@@ -862,7 +872,7 @@ function rememberBartenderSwipeHint() {
 function canStartBartenderSwipe(event) {
     const input = event.currentTarget;
     return event.pointerType !== "mouse"
-        && window.matchMedia("(max-width: 700px) and (pointer: coarse)").matches
+        && SUPPORTS_BARTENDER_SWIPE
         && !input.value.trim()
         && !directRecipient
         && !bartenderMode
