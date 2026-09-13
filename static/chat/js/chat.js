@@ -59,8 +59,10 @@ let audioPointerId = null;
 let audioPointerStartX = 0;
 let audioGestureCanceled = false;
 let followLatestWhileTyping = false;
+let androidViewportBaseline = window.visualViewport?.height || window.innerHeight;
 const typingUsers = new Map();
 const USE_VISUAL_VIEWPORT_HEIGHT = /Android/i.test(navigator.userAgent);
+const IS_ANDROID = /Android/i.test(navigator.userAgent);
 const IS_IPHONE = /iPhone|iPod/i.test(navigator.userAgent);
 const SOCKET_RECONNECT_MAX_DELAY_MS = 30000;
 const PRESENCE_HEARTBEAT_INTERVAL_MS = 25000;
@@ -94,9 +96,30 @@ function handleViewportResize() {
     updateAppHeight();
     const input = document.getElementById("chat-message-input");
     const chatLog = document.getElementById("chat-log");
+    if (IS_ANDROID) {
+        const viewportHeight = window.visualViewport?.height || window.innerHeight;
+        const inputIsFocused = input === document.activeElement;
+        if (!inputIsFocused) {
+            androidViewportBaseline = Math.max(androidViewportBaseline, viewportHeight);
+            setAndroidKeyboardMode(false);
+        } else if (viewportHeight >= androidViewportBaseline - 64) {
+            setAndroidKeyboardMode(false);
+        }
+    }
     if (followLatestWhileTyping && input === document.activeElement && chatLog) {
         scrollToLatestAfterLayout(chatLog, false);
     }
+}
+
+function setAndroidKeyboardMode(active) {
+    if (!IS_ANDROID || !window.matchMedia("(max-width: 700px)").matches) {
+        document.querySelector(".chat-page")?.classList.remove("is-android-keyboard-open");
+        return;
+    }
+    document.querySelector(".chat-page")?.classList.toggle(
+        "is-android-keyboard-open",
+        active,
+    );
 }
 window.addEventListener("orientationchange", updateAppHeight);
 window.addEventListener("online", reconnectWebSocketNow);
@@ -1687,6 +1710,10 @@ document.addEventListener("click", (event) => {
     if (!event.target.closest(".message-reaction")) {
         closeReactionUserPopovers();
     }
+    if (selectedMessageElement && !event.target.closest(".message")) {
+        selectedMessageElement.classList.remove("is-selected");
+        selectedMessageElement = null;
+    }
 });
 
 document.addEventListener("keydown", (event) => {
@@ -2210,6 +2237,13 @@ const chatInput = document.getElementById("chat-message-input");
 chatInput?.addEventListener("focus", () => {
     const chatLog = document.getElementById("chat-log");
     followLatestWhileTyping = Boolean(chatLog && isNearBottom(chatLog));
+    if (IS_ANDROID) {
+        androidViewportBaseline = Math.max(
+            androidViewportBaseline,
+            window.visualViewport?.height || window.innerHeight,
+        );
+        setAndroidKeyboardMode(true);
+    }
     if (followLatestWhileTyping) {
         scrollToLatestAfterLayout(chatLog, false);
     }
@@ -2220,6 +2254,7 @@ chatInput?.addEventListener("input", () => {
 });
 chatInput?.addEventListener("blur", () => {
     followLatestWhileTyping = false;
+    setAndroidKeyboardMode(false);
     stopTyping();
 });
 chatInput?.addEventListener("keydown", (event) => {
