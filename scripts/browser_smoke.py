@@ -285,6 +285,22 @@ def run_mobile_layout(playwright, server, engine, viewport):
 
         page.get_by_role("button", name="Открыть комнаты").click()
         page.locator('[data-room-slug="smoke-owned-private"]').wait_for()
+
+        if not is_android:
+            page.goto(f"{server.base_url}/users/profile/")
+            page.locator("[data-push-diagnostics]").wait_for()
+            page.get_by_text(
+                "На iPhone и iPad откройте Самогон с экрана «Домой»",
+                exact=False,
+            ).wait_for()
+            if page.locator("[data-push-master]").is_enabled():
+                raise AssertionError("Push нельзя включать в обычной вкладке iPhone")
+            page.locator("[data-push-report-copy]").click()
+            report = page.locator("[data-push-report-output]").input_value()
+            if '"standalone": false' not in report or '"appleMobile": true' not in report:
+                raise AssertionError("Диагностический отчёт не определил режим iPhone")
+            if "endpoint" in report or "p256dh" in report:
+                raise AssertionError("Диагностический отчёт содержит секреты подписки")
     except Exception:
         ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
         filename = f"{engine}-{viewport['width']}x{viewport['height']}-failure.png"
@@ -305,6 +321,8 @@ def main():
                 "DATABASE_URL": "",
                 "REDIS_URL": "",
                 "DEBUG": "1",
+                "VAPID_PUBLIC_KEY": "smoke-public-key",
+                "VAPID_PRIVATE_KEY": "smoke-private-key",
             }
         )
         prepare_database(environment)
