@@ -1744,6 +1744,19 @@ html[data-theme="light"] .message-skeleton-line::after {
     min-width: 220px;
     max-width: 100%;
     height: 38px;
+    border-radius: 999px;
+    color-scheme: dark;
+}
+
+.message-attachment-audio audio::-webkit-media-controls-play-button,
+.note-attachment-audio::-webkit-media-controls-play-button {
+    border-radius: 50%;
+    background-color: var(--amber);
+}
+
+html[data-theme="light"] .message-attachment-audio audio,
+html[data-theme="light"] .note-attachment-audio {
+    color-scheme: light;
 }
 
 .message-attachment-name {
@@ -4966,4 +4979,9 @@ html[data-theme="light"] .recipient-cancel {
 @media (max-width: 700px) {
     .chat-log { gap: 5px; }
     .message-content { padding: 8px 11px; }
+
+    .chat-page.is-android-keyboard-open > .chat-header,
+    .chat-page.is-android-keyboard-open .room-header {
+        display: none;
+    }
 }
