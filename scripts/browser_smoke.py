@@ -203,17 +203,48 @@ def run_chromium_flow(playwright, server):
 def run_mobile_layout(playwright, server, engine, viewport):
     browser_type = getattr(playwright, engine)
     browser = browser_type.launch()
+    is_android = engine == "chromium"
     context = browser.new_context(
         viewport=viewport,
         device_scale_factor=3,
         is_mobile=True,
         has_touch=True,
+        user_agent=(
+            "Mozilla/5.0 (Linux; Android 14; Pixel 5) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36"
+            if is_android else
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) "
+            "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 "
+            "Mobile/15E148 Safari/604.1"
+        ),
     )
     page = context.new_page()
     try:
         login(page, server.base_url)
         open_chat(page, "u-stoyki")
         assert_composer_inside_viewport(page)
+        input_element = page.locator("#chat-message-input")
+        input_element.focus()
+        header_is_hidden = page.locator(".chat-header").evaluate(
+            "element => getComputedStyle(element).display === 'none'"
+        )
+        if header_is_hidden != is_android:
+            raise AssertionError("Некорректный режим мобильной шапки при фокусе")
+        if is_android:
+            page.set_viewport_size({"width": viewport["width"], "height": 500})
+            page.set_viewport_size(viewport)
+            page.locator(".chat-header").wait_for(state="visible")
+        input_element.blur()
+        page.locator(".chat-header").wait_for(state="visible")
+
+        message = page.locator(".message").first
+        message.locator(".message-content").click()
+        if "is-selected" not in (message.get_attribute("class") or ""):
+            raise AssertionError("Действия сообщения не открылись по нажатию")
+        page.locator(".chat-composer").click(position={"x": 2, "y": 2})
+        if "is-selected" in (message.get_attribute("class") or ""):
+            raise AssertionError("Действия сообщения не закрылись вне пузыря")
+
         page.get_by_role("button", name="Открыть комнаты").click()
         page.locator('[data-room-slug="smoke-owned-private"]').wait_for()
     except Exception:
