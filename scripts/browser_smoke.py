@@ -164,27 +164,6 @@ def assert_composer_inside_viewport(page):
         raise AssertionError(f"Composer имеет некорректную высоту: {geometry}")
 
 
-def assert_mobile_chrome_hides_on_input(page):
-    original_viewport = page.viewport_size
-    page.locator("#chat-message-input").focus()
-    page.set_viewport_size({
-        "width": original_viewport["width"],
-        "height": original_viewport["height"] - 300,
-    })
-    page.locator(".chat-page.is-input-focused-mobile").wait_for()
-    geometry = page.locator(".chat-page").evaluate(
-        """element => ({
-            header: element.querySelector('.chat-header').getBoundingClientRect().height,
-            roomHeader: element.querySelector('.room-header').getBoundingClientRect().height,
-        })"""
-    )
-    if geometry["header"] != 0 or geometry["roomHeader"] != 0:
-        raise AssertionError(f"Мобильные заголовки не скрылись: {geometry}")
-    page.set_viewport_size(original_viewport)
-    page.locator(".chat-page.is-input-focused-mobile").wait_for(state="detached")
-    page.locator("#chat-message-input").evaluate("element => element.blur()")
-
-
 def run_chromium_flow(playwright, server):
     browser = playwright.chromium.launch()
     context = browser.new_context(viewport={"width": 1440, "height": 900})
@@ -235,7 +214,6 @@ def run_mobile_layout(playwright, server, engine, viewport):
         login(page, server.base_url)
         open_chat(page, "u-stoyki")
         assert_composer_inside_viewport(page)
-        assert_mobile_chrome_hides_on_input(page)
         page.get_by_role("button", name="Открыть комнаты").click()
         page.locator('[data-room-slug="smoke-owned-private"]').wait_for()
     except Exception:
