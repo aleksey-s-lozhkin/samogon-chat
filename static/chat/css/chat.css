@@ -5053,6 +5053,11 @@ html[data-theme="light"] .recipient-cancel {
     .chat-page.is-compact-mobile .bartender-visibility button {
         flex: 1;
     }
+
+    .chat-page.is-input-focused-mobile > .chat-header,
+    .chat-page.is-input-focused-mobile .room-header {
+        display: none;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
