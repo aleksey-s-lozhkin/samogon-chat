@@ -59,6 +59,9 @@ let audioPointerId = null;
 let audioPointerStartX = 0;
 let audioGestureCanceled = false;
 let followLatestWhileTyping = false;
+let lastChatScrollTop = 0;
+let mobileScrollUserDriven = false;
+let mobileScrollIntentTimer = null;
 const typingUsers = new Map();
 const USE_VISUAL_VIEWPORT_HEIGHT = /Android/i.test(navigator.userAgent);
 const IS_IPHONE = /iPhone|iPod/i.test(navigator.userAgent);
@@ -97,6 +100,48 @@ function handleViewportResize() {
     if (followLatestWhileTyping && input === document.activeElement && chatLog) {
         scrollToLatestAfterLayout(chatLog, false);
     }
+}
+
+function setMobileChromeCompact(compact) {
+    if (!window.matchMedia("(max-width: 700px)").matches) {
+        document.querySelector(".chat-page")?.classList.remove("is-compact-mobile");
+        return;
+    }
+    const chatLog = document.getElementById("chat-log");
+    const wasNearBottom = Boolean(chatLog && isNearBottom(chatLog));
+    document.querySelector(".chat-page")?.classList.toggle(
+        "is-compact-mobile",
+        compact,
+    );
+    if (compact && wasNearBottom && chatLog) {
+        scrollToLatestAfterLayout(chatLog, false);
+    }
+}
+
+function updateMobileChromeForScroll(chatLog) {
+    const scrollTop = chatLog.scrollTop;
+    const delta = scrollTop - lastChatScrollTop;
+    lastChatScrollTop = scrollTop;
+    if (!mobileScrollUserDriven) {
+        return;
+    }
+    if (Math.abs(delta) < 8) {
+        return;
+    }
+    if (delta > 0) {
+        setMobileChromeCompact(true);
+    } else if (document.activeElement?.id !== "chat-message-input") {
+        setMobileChromeCompact(false);
+    }
+}
+
+function markMobileScrollIntent(event) {
+    mobileScrollUserDriven = true;
+    lastChatScrollTop = event.currentTarget.scrollTop;
+    window.clearTimeout(mobileScrollIntentTimer);
+    mobileScrollIntentTimer = window.setTimeout(() => {
+        mobileScrollUserDriven = false;
+    }, 700);
 }
 window.addEventListener("orientationchange", updateAppHeight);
 window.addEventListener("online", reconnectWebSocketNow);
@@ -2209,6 +2254,7 @@ document.getElementById("cancel-bartender-message")?.addEventListener("click", c
 const chatInput = document.getElementById("chat-message-input");
 chatInput?.addEventListener("focus", () => {
     const chatLog = document.getElementById("chat-log");
+    setMobileChromeCompact(true);
     followLatestWhileTyping = Boolean(chatLog && isNearBottom(chatLog));
     if (followLatestWhileTyping) {
         scrollToLatestAfterLayout(chatLog, false);
@@ -2244,7 +2290,11 @@ document.getElementById("scroll-to-latest")?.addEventListener("click", () => {
     document.getElementById("scroll-to-latest")?.classList.add("hidden");
 });
 window.addEventListener("pagehide", releaseAudioStream);
-document.getElementById("chat-log")?.addEventListener("scroll", (event) => {
+const chatLogElement = document.getElementById("chat-log");
+chatLogElement?.addEventListener("touchstart", markMobileScrollIntent, {passive: true});
+chatLogElement?.addEventListener("wheel", markMobileScrollIntent, {passive: true});
+chatLogElement?.addEventListener("scroll", (event) => {
+    updateMobileChromeForScroll(event.currentTarget);
     document
         .getElementById("scroll-to-latest")
         ?.classList.toggle("hidden", isNearBottom(event.currentTarget));
