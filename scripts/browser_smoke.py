@@ -256,10 +256,21 @@ def run_mobile_layout(playwright, server, engine, viewport):
         pointer["pointerId"] = 42
         input_element.dispatch_event("pointerdown", pointer)
         page.wait_for_timeout(550)
+        input_element.dispatch_event("pointerup", pointer)
+        if not page.locator("#bartender-recipient").evaluate(
+            "element => element.classList.contains('hidden')"
+        ):
+            raise AssertionError("Долгое нажатие ошибочно вызвало Семёна")
+
+        pointer["pointerId"] = 43
+        input_element.dispatch_event("pointerdown", pointer)
+        pointer["clientX"] = 190
+        input_element.dispatch_event("pointermove", pointer)
+        input_element.dispatch_event("pointerup", pointer)
         if page.locator("#bartender-recipient").evaluate(
             "element => element.classList.contains('hidden')"
         ):
-            raise AssertionError("Долгое нажатие не вызвало Семёна")
+            raise AssertionError("Свайп вправо не вызвал Семёна")
         if is_android:
             page.set_viewport_size({"width": viewport["width"], "height": 500})
             page.wait_for_timeout(250)
@@ -274,6 +285,21 @@ def run_mobile_layout(playwright, server, engine, viewport):
             page.set_viewport_size(viewport)
         page.locator("#cancel-bartender-message").click()
         input_element.blur()
+
+        input_element.fill("текст для вставки")
+        pointer["pointerId"] = 44
+        pointer["clientX"] = 120
+        input_element.dispatch_event("pointerdown", pointer)
+        pointer["clientX"] = 190
+        input_element.dispatch_event("pointermove", pointer)
+        input_element.dispatch_event("pointerup", pointer)
+        if not page.locator("#bartender-recipient").evaluate(
+            "element => element.classList.contains('hidden')"
+        ):
+            raise AssertionError("Свайп по тексту ошибочно вызвал Семёна")
+        input_element.fill("")
+        input_element.blur()
+        page.locator(".chat-header").wait_for(state="visible")
 
         message = page.locator(".message").first
         message.locator(".message-content").click()
