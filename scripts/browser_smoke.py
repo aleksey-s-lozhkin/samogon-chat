@@ -232,6 +232,7 @@ def run_mobile_layout(playwright, server, engine, viewport):
             raise AssertionError("Некорректный режим мобильной шапки при фокусе")
         if is_android:
             page.set_viewport_size({"width": viewport["width"], "height": 500})
+            page.wait_for_timeout(120)
             page.set_viewport_size(viewport)
             page.locator(".chat-header").wait_for(state="visible")
         input_element.blur()
@@ -259,7 +260,20 @@ def run_mobile_layout(playwright, server, engine, viewport):
             "element => element.classList.contains('hidden')"
         ):
             raise AssertionError("Долгое нажатие не вызвало Семёна")
+        if is_android:
+            page.set_viewport_size({"width": viewport["width"], "height": 500})
+            page.wait_for_timeout(250)
+            assert_composer_inside_viewport(page)
+            banner_height = page.locator("#bartender-recipient").evaluate(
+                "element => element.getBoundingClientRect().height"
+            )
+            if banner_height > 52:
+                raise AssertionError(
+                    f"Панель Семёна слишком высокая с клавиатурой: {banner_height}"
+                )
+            page.set_viewport_size(viewport)
         page.locator("#cancel-bartender-message").click()
+        input_element.blur()
 
         message = page.locator(".message").first
         message.locator(".message-content").click()

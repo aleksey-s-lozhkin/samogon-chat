@@ -2001,6 +2001,9 @@ class ChatLayoutViewsTests(TestCase):
         offline = self.client.get(reverse("offline"))
 
         self.assertContains(home, 'rel="manifest"')
+        self.assertContains(home, "Установить приложение")
+        self.assertContains(home, "На экран “Домой”")
+        self.assertContains(home, "home/js/pwa-install.js")
         self.assertEqual(manifest.status_code, 200)
         self.assertEqual(manifest["Content-Type"], "application/manifest+json")
         self.assertEqual(manifest.json()["display"], "standalone")

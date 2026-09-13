@@ -4994,4 +4994,24 @@ html[data-theme="light"] .recipient-cancel {
     .chat-page.is-android-keyboard-open .room-header {
         display: none;
     }
+
+    .chat-page.is-android-keyboard-open .bartender-recipient {
+        flex-wrap: nowrap;
+        padding: 6px 12px;
+    }
+
+    .chat-page.is-android-keyboard-open .bartender-recipient > span:first-child {
+        display: none;
+    }
+
+    .chat-page.is-android-keyboard-open .bartender-visibility {
+        order: initial;
+        width: auto;
+        margin-left: 0;
+        flex: 1;
+    }
+
+    .chat-page.is-android-keyboard-open .bartender-visibility button {
+        flex: 1;
+    }
 }
