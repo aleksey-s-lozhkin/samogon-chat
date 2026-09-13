@@ -60,6 +60,7 @@ let audioPointerStartX = 0;
 let audioGestureCanceled = false;
 let followLatestWhileTyping = false;
 let androidViewportBaseline = window.visualViewport?.height || window.innerHeight;
+let androidKeyboardViewportWasReduced = false;
 let bartenderHoldTimer = null;
 let bartenderHoldPointerId = null;
 let bartenderHoldStartX = 0;
@@ -109,8 +110,13 @@ function handleViewportResize() {
         const inputIsFocused = input === document.activeElement;
         if (!inputIsFocused) {
             androidViewportBaseline = Math.max(androidViewportBaseline, viewportHeight);
+            androidKeyboardViewportWasReduced = false;
             setAndroidKeyboardMode(false);
-        } else if (viewportHeight >= androidViewportBaseline - 64) {
+        } else if (viewportHeight < androidViewportBaseline - 64) {
+            androidKeyboardViewportWasReduced = true;
+            setAndroidKeyboardMode(true);
+        } else if (androidKeyboardViewportWasReduced) {
+            androidKeyboardViewportWasReduced = false;
             setAndroidKeyboardMode(false);
         }
     }
@@ -826,7 +832,14 @@ function activateBartender() {
     if (!input.value.trim().startsWith(`@${BARTENDER_USERNAME}`)) {
         input.value = `@${BARTENDER_USERNAME} ${input.value.trim()}`.trimEnd() + " ";
     }
-    input.focus();
+    updateInputSize();
+    if (document.activeElement !== input) {
+        input.focus({preventScroll: true});
+    }
+    const chatLog = document.getElementById("chat-log");
+    if (chatLog) {
+        scrollToLatestAfterLayout(chatLog, false);
+    }
 }
 
 function shouldShowBartenderHoldHint() {
@@ -2252,7 +2265,7 @@ function rotateComposerHint(input) {
 function setComposerPlaceholder(input) {
     if (input && !input.value && !directRecipient && !bartenderMode) {
         input.placeholder = showBartenderHoldHint
-            ? "Удерживайте пустое поле, чтобы позвать Семёна…"
+            ? "Удерживайте для Семёна…"
             : COMPOSER_HINTS[composerHintIndex];
     }
 }
@@ -2333,6 +2346,7 @@ chatInput?.addEventListener("focus", () => {
             androidViewportBaseline,
             window.visualViewport?.height || window.innerHeight,
         );
+        androidKeyboardViewportWasReduced = false;
         setAndroidKeyboardMode(true);
     }
     if (followLatestWhileTyping) {
@@ -2350,6 +2364,7 @@ chatInput?.addEventListener("input", () => {
 chatInput?.addEventListener("blur", () => {
     followLatestWhileTyping = false;
     clearBartenderHoldGesture();
+    androidKeyboardViewportWasReduced = false;
     setAndroidKeyboardMode(false);
     stopTyping();
 });
