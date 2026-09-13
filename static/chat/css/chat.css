@@ -4967,16 +4967,6 @@ html[data-theme="light"] .recipient-cancel {
     .chat-log { gap: 5px; }
     .message-content { padding: 8px 11px; }
 
-    .chat-header,
-    .room-header,
-    .direct-recipient,
-    .bartender-recipient {
-        transition:
-            min-height 180ms ease,
-            padding 180ms ease,
-            gap 180ms ease;
-    }
-
     .chat-page.is-compact-mobile .chat-header {
         min-height: 48px;
         padding: 4px 12px;
@@ -5057,14 +5047,5 @@ html[data-theme="light"] .recipient-cancel {
     .chat-page.is-input-focused-mobile > .chat-header,
     .chat-page.is-input-focused-mobile .room-header {
         display: none;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .chat-header,
-    .room-header,
-    .direct-recipient,
-    .bartender-recipient {
-        transition: none;
     }
 }
