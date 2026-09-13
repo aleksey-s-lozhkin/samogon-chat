@@ -62,6 +62,7 @@ let followLatestWhileTyping = false;
 let lastChatScrollTop = 0;
 let mobileScrollUserDriven = false;
 let mobileScrollIntentTimer = null;
+let mobileViewportBaseline = window.visualViewport?.height || window.innerHeight;
 const typingUsers = new Map();
 const USE_VISUAL_VIEWPORT_HEIGHT = /Android/i.test(navigator.userAgent);
 const IS_IPHONE = /iPhone|iPod/i.test(navigator.userAgent);
@@ -95,10 +96,34 @@ window.addEventListener("resize", handleViewportResize);
 
 function handleViewportResize() {
     updateAppHeight();
+    syncMobileKeyboardState();
     const input = document.getElementById("chat-message-input");
     const chatLog = document.getElementById("chat-log");
     if (followLatestWhileTyping && input === document.activeElement && chatLog) {
         scrollToLatestAfterLayout(chatLog, false);
+    }
+}
+
+function syncMobileKeyboardState() {
+    const viewportHeight = window.visualViewport?.height || window.innerHeight;
+    const inputIsFocused = document.activeElement?.id === "chat-message-input";
+    if (!window.matchMedia("(max-width: 700px)").matches) {
+        setMobileInputFocusMode(false);
+        mobileViewportBaseline = viewportHeight;
+        return;
+    }
+
+    if (!inputIsFocused) {
+        setMobileInputFocusMode(false);
+        mobileViewportBaseline = Math.max(mobileViewportBaseline, viewportHeight);
+        return;
+    }
+
+    const keyboardThreshold = Math.max(100, mobileViewportBaseline * 0.18);
+    const keyboardIsOpen = mobileViewportBaseline - viewportHeight > keyboardThreshold;
+    setMobileInputFocusMode(keyboardIsOpen);
+    if (!keyboardIsOpen) {
+        mobileViewportBaseline = Math.max(mobileViewportBaseline, viewportHeight);
     }
 }
 
@@ -152,7 +177,14 @@ function markMobileScrollIntent(event) {
         mobileScrollUserDriven = false;
     }, 700);
 }
-window.addEventListener("orientationchange", updateAppHeight);
+window.addEventListener("orientationchange", () => {
+    setMobileInputFocusMode(false);
+    window.setTimeout(() => {
+        mobileViewportBaseline = window.visualViewport?.height || window.innerHeight;
+        updateAppHeight();
+        syncMobileKeyboardState();
+    }, 250);
+});
 window.addEventListener("online", reconnectWebSocketNow);
 window.addEventListener("pageshow", () => {
     updateAppHeight();
@@ -2263,9 +2295,8 @@ document.getElementById("cancel-bartender-message")?.addEventListener("click", c
 const chatInput = document.getElementById("chat-message-input");
 chatInput?.addEventListener("focus", () => {
     const chatLog = document.getElementById("chat-log");
-    setMobileInputFocusMode(true);
-    setMobileChromeCompact(true);
     followLatestWhileTyping = Boolean(chatLog && isNearBottom(chatLog));
+    window.requestAnimationFrame(syncMobileKeyboardState);
     if (followLatestWhileTyping) {
         scrollToLatestAfterLayout(chatLog, false);
     }
@@ -2277,6 +2308,7 @@ chatInput?.addEventListener("input", () => {
 chatInput?.addEventListener("blur", () => {
     followLatestWhileTyping = false;
     setMobileInputFocusMode(false);
+    window.setTimeout(syncMobileKeyboardState, 200);
     stopTyping();
 });
 chatInput?.addEventListener("keydown", (event) => {
