@@ -1880,6 +1880,7 @@ class BartenderJobTaskTests(TestCase):
         self.assertEqual(job.status, BartenderJob.Status.SUCCEEDED)
         self.assertEqual(job.response.text, "Смотрю логи.")
         self.assertEqual(job.response.user.username, settings.BARTENDER_USERNAME)
+        self.assertEqual(job.response.reply_to, self.question)
         self.assertEqual(reply.call_count, 1)
         reply_kwargs = reply.call_args.kwargs
         self.assertEqual(reply_kwargs["text"], self.question.text)
