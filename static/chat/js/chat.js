@@ -58,6 +58,7 @@ let sendAudioOnStop = false;
 let audioPointerId = null;
 let audioPointerStartX = 0;
 let audioGestureCanceled = false;
+let followLatestWhileTyping = false;
 const typingUsers = new Map();
 const USE_VISUAL_VIEWPORT_HEIGHT = /Android/i.test(navigator.userAgent);
 const IS_IPHONE = /iPhone|iPod/i.test(navigator.userAgent);
@@ -85,9 +86,18 @@ if (isAuthenticated) {
 
 updateAppHeight();
 initializeViewportDiagnostics();
-window.visualViewport?.addEventListener("resize", updateAppHeight);
+window.visualViewport?.addEventListener("resize", handleViewportResize);
 window.visualViewport?.addEventListener("scroll", updateAppHeight);
-window.addEventListener("resize", updateAppHeight);
+window.addEventListener("resize", handleViewportResize);
+
+function handleViewportResize() {
+    updateAppHeight();
+    const input = document.getElementById("chat-message-input");
+    const chatLog = document.getElementById("chat-log");
+    if (followLatestWhileTyping && input === document.activeElement && chatLog) {
+        scrollToLatestAfterLayout(chatLog, false);
+    }
+}
 window.addEventListener("orientationchange", updateAppHeight);
 window.addEventListener("online", reconnectWebSocketNow);
 window.addEventListener("pageshow", () => {
@@ -825,7 +835,10 @@ function addMessage(data) {
         return;
     }
 
-    const wasNearBottom = isNearBottom(chatLog);
+    const wasNearBottom = isNearBottom(chatLog) || (
+        followLatestWhileTyping
+        && document.activeElement?.id === "chat-message-input"
+    );
     clearHistorySkeleton();
     chatLog.querySelector(".chat-empty-state")?.remove();
     const timestamp = data.timestamp || data.created_at;
@@ -939,7 +952,11 @@ function addMessage(data) {
         });
     }
 
-    content.append(author, text, time);
+    content.append(author);
+    if (data.message) {
+        content.append(text);
+    }
+    content.append(time);
     // Время должно быть в DOM до вложений: они встают непосредственно перед ним.
     renderMessageAttachments(content, data.attachments || []);
     renderMessageReactions(content, data.reactions || [], data.id);
@@ -1245,12 +1262,17 @@ function renderMessageAttachments(content, attachments) {
         if (attachment.kind === "audio") {
             const audioContainer = document.createElement("div");
             audioContainer.className = "message-attachment message-attachment-audio";
+            const meta = document.createElement("span");
+            meta.className = "message-audio-meta";
+            meta.textContent = attachment.duration_ms
+                ? `Аудиосообщение · ${formatAudioTime(attachment.duration_ms)}`
+                : "Аудиосообщение";
             const audio = document.createElement("audio");
             audio.controls = true;
             audio.preload = "metadata";
             audio.src = attachment.preview_url;
             audio.setAttribute("aria-label", "Аудиосообщение");
-            audioContainer.append(audio);
+            audioContainer.append(meta, audio);
             container.append(audioContainer);
             return;
         }
@@ -1329,6 +1351,7 @@ function clearAudioRecording() {
     audioGestureCanceled = false;
     document.getElementById("audio-recorder")?.classList.add("hidden");
     document.getElementById("chat-message-submit")?.classList.remove("is-recording");
+    document.body.classList.remove("is-audio-recording");
     updateComposerSubmitMode();
 }
 
@@ -1398,6 +1421,7 @@ async function startAudioRecording() {
         audioRecorder.start(250);
         document.getElementById("audio-recorder")?.classList.remove("hidden");
         document.getElementById("chat-message-submit")?.classList.add("is-recording");
+        document.body.classList.add("is-audio-recording");
         updateAudioTimer();
         audioTimer = window.setInterval(updateAudioTimer, 250);
         audioStopTimer = window.setTimeout(() => finishAudioRecording(true), AUDIO_MAX_DURATION_MS);
@@ -2183,11 +2207,21 @@ document.getElementById("bartender-public")?.addEventListener("click", () => set
 document.getElementById("bartender-private")?.addEventListener("click", () => setBartenderVisibility(true));
 document.getElementById("cancel-bartender-message")?.addEventListener("click", clearBartenderMode);
 const chatInput = document.getElementById("chat-message-input");
+chatInput?.addEventListener("focus", () => {
+    const chatLog = document.getElementById("chat-log");
+    followLatestWhileTyping = Boolean(chatLog && isNearBottom(chatLog));
+    if (followLatestWhileTyping) {
+        scrollToLatestAfterLayout(chatLog, false);
+    }
+});
 chatInput?.addEventListener("input", () => {
     updateInputSize();
     scheduleTyping();
 });
-chatInput?.addEventListener("blur", stopTyping);
+chatInput?.addEventListener("blur", () => {
+    followLatestWhileTyping = false;
+    stopTyping();
+});
 chatInput?.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
