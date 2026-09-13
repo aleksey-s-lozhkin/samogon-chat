@@ -185,6 +185,13 @@ class PushSubscriptionTests(TestCase):
             "directMessages": True,
         }
 
+    @override_settings(WEB_PUSH_ENABLED=True, VAPID_PUBLIC_KEY="public-key")
+    def test_profile_contains_device_push_diagnostics(self):
+        response = self.client.get("/users/profile/")
+
+        for name in ("standalone", "api", "worker", "permission", "subscription"):
+            self.assertContains(response, f'data-push-check="{name}"')
+
     @override_settings(WEB_PUSH_ENABLED=True)
     def test_subscribe_creates_device_subscription(self):
         response = self.client.post(
