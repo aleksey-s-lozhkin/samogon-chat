@@ -118,6 +118,15 @@ function setMobileChromeCompact(compact) {
     }
 }
 
+function setMobileInputFocusMode(active) {
+    const chatPage = document.querySelector(".chat-page");
+    if (!window.matchMedia("(max-width: 700px)").matches) {
+        chatPage?.classList.remove("is-input-focused-mobile");
+        return;
+    }
+    chatPage?.classList.toggle("is-input-focused-mobile", active);
+}
+
 function updateMobileChromeForScroll(chatLog) {
     const scrollTop = chatLog.scrollTop;
     const delta = scrollTop - lastChatScrollTop;
@@ -2254,6 +2263,7 @@ document.getElementById("cancel-bartender-message")?.addEventListener("click", c
 const chatInput = document.getElementById("chat-message-input");
 chatInput?.addEventListener("focus", () => {
     const chatLog = document.getElementById("chat-log");
+    setMobileInputFocusMode(true);
     setMobileChromeCompact(true);
     followLatestWhileTyping = Boolean(chatLog && isNearBottom(chatLog));
     if (followLatestWhileTyping) {
@@ -2266,6 +2276,7 @@ chatInput?.addEventListener("input", () => {
 });
 chatInput?.addEventListener("blur", () => {
     followLatestWhileTyping = false;
+    setMobileInputFocusMode(false);
     stopTyping();
 });
 chatInput?.addEventListener("keydown", (event) => {
