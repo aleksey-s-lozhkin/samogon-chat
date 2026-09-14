@@ -232,12 +232,19 @@ def run_mobile_layout(playwright, server, engine, viewport):
             raise AssertionError("Touch-устройство не показывает подсказку свайпа")
         input_element.focus()
         page.set_viewport_size({"width": viewport["width"], "height": 500})
-        page.wait_for_timeout(120)
-        header_is_hidden = page.locator(".chat-header").evaluate(
-            "element => getComputedStyle(element).display === 'none'"
+        # Playwright меняет viewport не так, как системная клавиатура и в
+        # WebKit на CI не всегда сохраняет прежнюю высоту visualViewport.
+        # Имитируем сохранённую до клавиатуры высоту и проверяем реальный
+        # обработчик, CSS и геометрию формы.
+        page.evaluate(
+            """() => {
+                mobileViewportBaseline = (
+                    window.visualViewport?.height || window.innerHeight
+                ) + 200;
+                handleViewportResize();
+            }"""
         )
-        if not header_is_hidden:
-            raise AssertionError("Шапка не скрылась при открытой мобильной клавиатуре")
+        page.locator(".chat-header").wait_for(state="hidden")
         assert_composer_inside_viewport(page)
         page.set_viewport_size(viewport)
         page.locator(".chat-header").wait_for(state="visible")
@@ -271,6 +278,14 @@ def run_mobile_layout(playwright, server, engine, viewport):
         pointer["pointerId"] = 43
         input_element.focus()
         page.set_viewport_size({"width": viewport["width"], "height": 500})
+        page.evaluate(
+            """() => {
+                mobileViewportBaseline = (
+                    window.visualViewport?.height || window.innerHeight
+                ) + 200;
+                handleViewportResize();
+            }"""
+        )
         page.locator(".chat-header").wait_for(state="hidden")
         input_element.dispatch_event("pointerdown", pointer)
         pointer["clientX"] = 190
