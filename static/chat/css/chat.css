@@ -4991,28 +4991,28 @@ html[data-theme="light"] .recipient-cancel {
     .chat-log { gap: 5px; }
     .message-content { padding: 8px 11px; }
 
-    .chat-page.is-android-keyboard-open > .chat-header,
-    .chat-page.is-android-keyboard-open .room-header {
+    .chat-page.is-mobile-keyboard-open > .chat-header,
+    .chat-page.is-mobile-keyboard-open .room-header {
         display: none;
     }
 
-    .chat-page.is-android-keyboard-open .bartender-recipient {
+    .chat-page.is-mobile-keyboard-open .bartender-recipient {
         flex-wrap: nowrap;
         padding: 6px 12px;
     }
 
-    .chat-page.is-android-keyboard-open .bartender-recipient > span:first-child {
+    .chat-page.is-mobile-keyboard-open .bartender-recipient > span:first-child {
         display: none;
     }
 
-    .chat-page.is-android-keyboard-open .bartender-visibility {
+    .chat-page.is-mobile-keyboard-open .bartender-visibility {
         order: initial;
         width: auto;
         margin-left: 0;
         flex: 1;
     }
 
-    .chat-page.is-android-keyboard-open .bartender-visibility button {
+    .chat-page.is-mobile-keyboard-open .bartender-visibility button {
         flex: 1;
     }
 }
