@@ -2075,7 +2075,7 @@ class ChatLayoutViewsTests(TestCase):
         message_render = source.index("data.messages.forEach(addMessage);", history_handler)
         self.assertLess(skeleton_clear, message_render)
 
-    def test_chat_adapts_to_android_keyboard_viewport(self):
+    def test_chat_adapts_to_mobile_keyboard_viewport(self):
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
@@ -2099,6 +2099,10 @@ class ChatLayoutViewsTests(TestCase):
         self.assertIn("Math.max(window.screen.width, window.screen.height)", javascript)
         self.assertIn('style.removeProperty("--app-height")', javascript)
         self.assertIn('visualViewport?.addEventListener("resize"', javascript)
+        self.assertIn("is-mobile-keyboard-open", css)
+        self.assertIn("function setMobileKeyboardMode", javascript)
+        self.assertNotIn("is-android-keyboard-open", css)
+        self.assertNotIn("inputIsFocused && viewportHeight", javascript)
 
     def test_chat_reconnects_websocket_after_pwa_resume(self):
         with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:

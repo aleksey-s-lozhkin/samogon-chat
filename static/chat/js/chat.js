@@ -59,12 +59,13 @@ let audioPointerId = null;
 let audioPointerStartX = 0;
 let audioGestureCanceled = false;
 let followLatestWhileTyping = false;
-let androidViewportBaseline = window.visualViewport?.height || window.innerHeight;
-let androidKeyboardViewportWasReduced = false;
+let mobileViewportBaseline = window.visualViewport?.height || window.innerHeight;
+let mobileKeyboardViewportWasReduced = false;
 let bartenderSwipePointerId = null;
 let bartenderSwipeStartX = 0;
 let bartenderSwipeStartY = 0;
 let bartenderSwipeReady = false;
+let bartenderSwipeActivationTimer = null;
 const typingUsers = new Map();
 const USE_VISUAL_VIEWPORT_HEIGHT = /Android/i.test(navigator.userAgent);
 const IS_ANDROID = /Android/i.test(navigator.userAgent);
@@ -102,26 +103,26 @@ if (isAuthenticated) {
 updateAppHeight();
 initializeViewportDiagnostics();
 window.visualViewport?.addEventListener("resize", handleViewportResize);
-window.visualViewport?.addEventListener("scroll", updateAppHeight);
+window.visualViewport?.addEventListener("scroll", handleViewportResize);
 window.addEventListener("resize", handleViewportResize);
 
 function handleViewportResize() {
     updateAppHeight();
     const input = document.getElementById("chat-message-input");
     const chatLog = document.getElementById("chat-log");
-    if (IS_ANDROID) {
+    if (IS_ANDROID || IS_IPHONE) {
         const viewportHeight = window.visualViewport?.height || window.innerHeight;
         const inputIsFocused = input === document.activeElement;
         if (!inputIsFocused) {
-            androidViewportBaseline = Math.max(androidViewportBaseline, viewportHeight);
-            androidKeyboardViewportWasReduced = false;
-            setAndroidKeyboardMode(false);
-        } else if (viewportHeight < androidViewportBaseline - 64) {
-            androidKeyboardViewportWasReduced = true;
-            setAndroidKeyboardMode(true);
-        } else if (androidKeyboardViewportWasReduced) {
-            androidKeyboardViewportWasReduced = false;
-            setAndroidKeyboardMode(false);
+            mobileViewportBaseline = Math.max(mobileViewportBaseline, viewportHeight);
+            mobileKeyboardViewportWasReduced = false;
+            setMobileKeyboardMode(false);
+        } else if (viewportHeight < mobileViewportBaseline - 64) {
+            mobileKeyboardViewportWasReduced = true;
+            setMobileKeyboardMode(true);
+        } else if (mobileKeyboardViewportWasReduced) {
+            mobileKeyboardViewportWasReduced = false;
+            setMobileKeyboardMode(false);
         }
     }
     if (followLatestWhileTyping && input === document.activeElement && chatLog) {
@@ -129,13 +130,14 @@ function handleViewportResize() {
     }
 }
 
-function setAndroidKeyboardMode(active) {
-    if (!IS_ANDROID || !window.matchMedia("(max-width: 700px)").matches) {
-        document.querySelector(".chat-page")?.classList.remove("is-android-keyboard-open");
+function setMobileKeyboardMode(active) {
+    if (!(IS_ANDROID || IS_IPHONE)
+        || !window.matchMedia("(max-width: 700px)").matches) {
+        document.querySelector(".chat-page")?.classList.remove("is-mobile-keyboard-open");
         return;
     }
     document.querySelector(".chat-page")?.classList.toggle(
-        "is-android-keyboard-open",
+        "is-mobile-keyboard-open",
         active,
     );
 }
@@ -293,15 +295,9 @@ function updateAppHeight() {
         height = window.visualViewport?.height || window.innerHeight;
     } else if (IS_IPHONE && isStandalonePwa()) {
         const portrait = window.matchMedia("(orientation: portrait)").matches;
-        const fullHeight = portrait
+        height = portrait
             ? Math.max(window.screen.width, window.screen.height)
             : Math.min(window.screen.width, window.screen.height);
-        const viewportHeight = window.visualViewport?.height || window.innerHeight;
-        const inputIsFocused = document.getElementById("chat-message-input")
-            === document.activeElement;
-        height = inputIsFocused && viewportHeight < fullHeight - 120
-            ? viewportHeight
-            : fullHeight;
     }
 
     if (!height) {
@@ -920,8 +916,47 @@ function endBartenderSwipeGesture(event) {
     if (shouldActivate) {
         rememberBartenderSwipeHint();
         navigator.vibrate?.(30);
-        activateBartender();
+        scheduleBartenderSwipeActivation();
     }
+}
+
+function scheduleBartenderSwipeActivation() {
+    window.clearTimeout(bartenderSwipeActivationTimer);
+    const startedAt = performance.now();
+    let previousHeight = window.visualViewport?.height || window.innerHeight;
+    let stableChecks = 0;
+
+    const activateWhenViewportSettles = () => {
+        const viewportHeight = window.visualViewport?.height || window.innerHeight;
+        if (Math.abs(viewportHeight - previousHeight) < 2) {
+            stableChecks += 1;
+        } else {
+            stableChecks = 0;
+            previousHeight = viewportHeight;
+        }
+
+        if (stableChecks >= 2 || performance.now() - startedAt >= 500) {
+            bartenderSwipeActivationTimer = null;
+            activateBartender();
+            handleViewportResize();
+            window.requestAnimationFrame(() => {
+                updateAppHeight();
+                const chatLog = document.getElementById("chat-log");
+                if (chatLog) scrollToLatestAfterLayout(chatLog, false);
+            });
+            return;
+        }
+
+        bartenderSwipeActivationTimer = window.setTimeout(
+            activateWhenViewportSettles,
+            60,
+        );
+    };
+
+    bartenderSwipeActivationTimer = window.setTimeout(
+        activateWhenViewportSettles,
+        60,
+    );
 }
 
 function setBartenderVisibility(isPrivate) {
@@ -2346,13 +2381,13 @@ chatInput?.addEventListener("pointercancel", clearBartenderSwipeGesture);
 chatInput?.addEventListener("focus", () => {
     const chatLog = document.getElementById("chat-log");
     followLatestWhileTyping = Boolean(chatLog && isNearBottom(chatLog));
-    if (IS_ANDROID) {
-        androidViewportBaseline = Math.max(
-            androidViewportBaseline,
+    if (IS_ANDROID || IS_IPHONE) {
+        mobileViewportBaseline = Math.max(
+            mobileViewportBaseline,
             window.visualViewport?.height || window.innerHeight,
         );
-        androidKeyboardViewportWasReduced = false;
-        setAndroidKeyboardMode(true);
+        mobileKeyboardViewportWasReduced = false;
+        handleViewportResize();
     }
     if (followLatestWhileTyping) {
         scrollToLatestAfterLayout(chatLog, false);
@@ -2369,8 +2404,10 @@ chatInput?.addEventListener("input", () => {
 chatInput?.addEventListener("blur", () => {
     followLatestWhileTyping = false;
     clearBartenderSwipeGesture();
-    androidKeyboardViewportWasReduced = false;
-    setAndroidKeyboardMode(false);
+    window.clearTimeout(bartenderSwipeActivationTimer);
+    bartenderSwipeActivationTimer = null;
+    mobileKeyboardViewportWasReduced = false;
+    setMobileKeyboardMode(false);
     stopTyping();
 });
 chatInput?.addEventListener("keydown", (event) => {
