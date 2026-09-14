@@ -172,6 +172,10 @@ def run_chromium_flow(playwright, server):
         login(page, server.base_url)
         open_chat(page, "u-stoyki")
         assert_composer_inside_viewport(page)
+        if "Смахните вправо" in (
+            page.locator("#chat-message-input").get_attribute("placeholder") or ""
+        ):
+            raise AssertionError("Desktop ошибочно показывает подсказку мобильного свайпа")
 
         message = f"smoke message {time.time_ns()}"
         page.locator("#chat-message-input").fill(message)
@@ -224,6 +228,8 @@ def run_mobile_layout(playwright, server, engine, viewport):
         open_chat(page, "u-stoyki")
         assert_composer_inside_viewport(page)
         input_element = page.locator("#chat-message-input")
+        if "Смахните вправо" not in (input_element.get_attribute("placeholder") or ""):
+            raise AssertionError("Touch-устройство не показывает подсказку свайпа")
         input_element.focus()
         header_is_hidden = page.locator(".chat-header").evaluate(
             "element => getComputedStyle(element).display === 'none'"

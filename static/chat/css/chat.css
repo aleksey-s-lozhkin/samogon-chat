@@ -2061,6 +2061,12 @@ html[data-theme="light"] .note-attachment-audio {
     box-shadow: 0 0 0 3px rgba(225, 161, 75, 0.18);
 }
 
+@media (max-width: 700px) and (pointer: coarse) {
+    #chat-message-input {
+        touch-action: pan-y;
+    }
+}
+
 #chat-message-submit {
     min-width: 112px;
     min-height: 46px;
