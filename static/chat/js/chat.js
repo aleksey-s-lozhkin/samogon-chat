@@ -59,26 +59,13 @@ let audioPointerId = null;
 let audioPointerStartX = 0;
 let audioGestureCanceled = false;
 let followLatestWhileTyping = false;
-let mobileViewportBaseline = window.visualViewport?.height || window.innerHeight;
-let mobileKeyboardViewportWasReduced = false;
-let bartenderSwipePointerId = null;
-let bartenderSwipeStartX = 0;
-let bartenderSwipeStartY = 0;
-let bartenderSwipeReady = false;
-let bartenderSwipeActivationTimer = null;
 const typingUsers = new Map();
 const USE_VISUAL_VIEWPORT_HEIGHT = /Android/i.test(navigator.userAgent);
 const IS_ANDROID = /Android/i.test(navigator.userAgent);
 const IS_IPHONE = /iPhone|iPod/i.test(navigator.userAgent);
-const SUPPORTS_BARTENDER_SWIPE = window.matchMedia(
-    "(max-width: 700px) and (pointer: coarse)",
-).matches;
 const SOCKET_RECONNECT_MAX_DELAY_MS = 30000;
 const PRESENCE_HEARTBEAT_INTERVAL_MS = 25000;
 const SOCKET_FATAL_CLOSE_CODES = new Set([4401, 4403, 4404]);
-const BARTENDER_SWIPE_TRIGGER_PX = 56;
-const BARTENDER_SWIPE_VERTICAL_TOLERANCE_PX = 28;
-const BARTENDER_SWIPE_HINT_STORAGE_KEY = "samogon-bartender-swipe-hint-seen";
 
 const FALLBACK_TAGLINES = [
     "Семён протирает стакан и слушает логи.",
@@ -93,8 +80,6 @@ const TAGLINES = chatConfig.atmosphereLines?.length
 const COMPOSER_HINTS = window.SAMOGON_COMPOSER_HINTS || ["Ваша реплика…"];
 let taglineIndex = 0;
 let composerHintIndex = 0;
-let showBartenderSwipeHint = SUPPORTS_BARTENDER_SWIPE
-    && shouldShowBartenderSwipeHint();
 
 if (isAuthenticated) {
     connectWebSocket();
@@ -110,21 +95,6 @@ function handleViewportResize() {
     updateAppHeight();
     const input = document.getElementById("chat-message-input");
     const chatLog = document.getElementById("chat-log");
-    if (IS_ANDROID || IS_IPHONE) {
-        const viewportHeight = window.visualViewport?.height || window.innerHeight;
-        const inputIsFocused = input === document.activeElement;
-        if (!inputIsFocused) {
-            mobileViewportBaseline = Math.max(mobileViewportBaseline, viewportHeight);
-            mobileKeyboardViewportWasReduced = false;
-            setMobileKeyboardMode(false);
-        } else if (viewportHeight < mobileViewportBaseline - 64) {
-            mobileKeyboardViewportWasReduced = true;
-            setMobileKeyboardMode(true);
-        } else if (mobileKeyboardViewportWasReduced) {
-            mobileKeyboardViewportWasReduced = false;
-            setMobileKeyboardMode(false);
-        }
-    }
     if (followLatestWhileTyping && input === document.activeElement && chatLog) {
         scrollToLatestAfterLayout(chatLog, false);
     }
@@ -846,117 +816,6 @@ function activateBartender() {
     if (chatLog) {
         scrollToLatestAfterLayout(chatLog, false);
     }
-}
-
-function shouldShowBartenderSwipeHint() {
-    try {
-        return window.localStorage.getItem(BARTENDER_SWIPE_HINT_STORAGE_KEY) !== "true";
-    } catch (error) {
-        return false;
-    }
-}
-
-function rememberBartenderSwipeHint() {
-    showBartenderSwipeHint = false;
-    try {
-        window.localStorage.setItem(BARTENDER_SWIPE_HINT_STORAGE_KEY, "true");
-    } catch (error) {
-        // Жест работает и без доступного localStorage.
-    }
-}
-
-function canStartBartenderSwipe(event) {
-    const input = event.currentTarget;
-    return event.pointerType !== "mouse"
-        && SUPPORTS_BARTENDER_SWIPE
-        && !input.value.trim()
-        && !directRecipient
-        && !bartenderMode
-        && !noteMode
-        && !replyTarget;
-}
-
-function clearBartenderSwipeGesture() {
-    bartenderSwipePointerId = null;
-    bartenderSwipeReady = false;
-    document.getElementById("chat-message-input")
-        ?.classList.remove("is-bartender-swipe-ready");
-}
-
-function startBartenderSwipeGesture(event) {
-    if (!canStartBartenderSwipe(event)) {
-        return;
-    }
-    bartenderSwipePointerId = event.pointerId;
-    bartenderSwipeStartX = event.clientX;
-    bartenderSwipeStartY = event.clientY;
-}
-
-function moveBartenderSwipeGesture(event) {
-    if (event.pointerId !== bartenderSwipePointerId) {
-        return;
-    }
-    const deltaX = event.clientX - bartenderSwipeStartX;
-    const deltaY = Math.abs(event.clientY - bartenderSwipeStartY);
-    if (deltaX < 0 || deltaY > BARTENDER_SWIPE_VERTICAL_TOLERANCE_PX) {
-        clearBartenderSwipeGesture();
-        return;
-    }
-    bartenderSwipeReady = deltaX >= BARTENDER_SWIPE_TRIGGER_PX;
-    event.currentTarget.classList.toggle("is-bartender-swipe-ready", bartenderSwipeReady);
-    if (deltaX > 12) event.preventDefault();
-}
-
-function endBartenderSwipeGesture(event) {
-    if (event.pointerId !== bartenderSwipePointerId) {
-        return;
-    }
-    const shouldActivate = bartenderSwipeReady;
-    clearBartenderSwipeGesture();
-    if (shouldActivate) {
-        rememberBartenderSwipeHint();
-        navigator.vibrate?.(30);
-        scheduleBartenderSwipeActivation();
-    }
-}
-
-function scheduleBartenderSwipeActivation() {
-    window.clearTimeout(bartenderSwipeActivationTimer);
-    const startedAt = performance.now();
-    let previousHeight = window.visualViewport?.height || window.innerHeight;
-    let stableChecks = 0;
-
-    const activateWhenViewportSettles = () => {
-        const viewportHeight = window.visualViewport?.height || window.innerHeight;
-        if (Math.abs(viewportHeight - previousHeight) < 2) {
-            stableChecks += 1;
-        } else {
-            stableChecks = 0;
-            previousHeight = viewportHeight;
-        }
-
-        if (stableChecks >= 2 || performance.now() - startedAt >= 500) {
-            bartenderSwipeActivationTimer = null;
-            activateBartender();
-            handleViewportResize();
-            window.requestAnimationFrame(() => {
-                updateAppHeight();
-                const chatLog = document.getElementById("chat-log");
-                if (chatLog) scrollToLatestAfterLayout(chatLog, false);
-            });
-            return;
-        }
-
-        bartenderSwipeActivationTimer = window.setTimeout(
-            activateWhenViewportSettles,
-            60,
-        );
-    };
-
-    bartenderSwipeActivationTimer = window.setTimeout(
-        activateWhenViewportSettles,
-        60,
-    );
 }
 
 function setBartenderVisibility(isPrivate) {
@@ -2309,9 +2168,7 @@ function rotateComposerHint(input) {
 
 function setComposerPlaceholder(input) {
     if (input && !input.value && !directRecipient && !bartenderMode) {
-        input.placeholder = showBartenderSwipeHint
-            ? "Смахните вправо для Семёна…"
-            : COMPOSER_HINTS[composerHintIndex];
+        input.placeholder = COMPOSER_HINTS[composerHintIndex];
     }
 }
 
@@ -2374,27 +2231,12 @@ document.getElementById("bartender-public")?.addEventListener("click", () => set
 document.getElementById("bartender-private")?.addEventListener("click", () => setBartenderVisibility(true));
 document.getElementById("cancel-bartender-message")?.addEventListener("click", clearBartenderMode);
 const chatInput = document.getElementById("chat-message-input");
-chatInput?.addEventListener("pointerdown", startBartenderSwipeGesture);
-chatInput?.addEventListener("pointermove", moveBartenderSwipeGesture);
-chatInput?.addEventListener("pointerup", endBartenderSwipeGesture);
-chatInput?.addEventListener("pointercancel", clearBartenderSwipeGesture);
 chatInput?.addEventListener("focus", () => {
     const chatLog = document.getElementById("chat-log");
     followLatestWhileTyping = Boolean(chatLog && isNearBottom(chatLog));
-    if (IS_ANDROID || IS_IPHONE) {
-        mobileViewportBaseline = Math.max(
-            mobileViewportBaseline,
-            window.visualViewport?.height || window.innerHeight,
-        );
-        mobileKeyboardViewportWasReduced = false;
-        handleViewportResize();
-    }
+    setMobileKeyboardMode(true);
     if (followLatestWhileTyping) {
         scrollToLatestAfterLayout(chatLog, false);
-    }
-    if (showBartenderSwipeHint) {
-        rememberBartenderSwipeHint();
-        setComposerPlaceholder(chatInput);
     }
 });
 chatInput?.addEventListener("input", () => {
@@ -2403,10 +2245,6 @@ chatInput?.addEventListener("input", () => {
 });
 chatInput?.addEventListener("blur", () => {
     followLatestWhileTyping = false;
-    clearBartenderSwipeGesture();
-    window.clearTimeout(bartenderSwipeActivationTimer);
-    bartenderSwipeActivationTimer = null;
-    mobileKeyboardViewportWasReduced = false;
     setMobileKeyboardMode(false);
     stopTyping();
 });
