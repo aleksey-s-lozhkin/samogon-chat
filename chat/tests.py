@@ -2100,9 +2100,16 @@ class ChatLayoutViewsTests(TestCase):
         self.assertIn('style.removeProperty("--app-height")', javascript)
         self.assertIn('visualViewport?.addEventListener("resize"', javascript)
         self.assertIn("is-mobile-keyboard-open", css)
+        self.assertIn(".chat-page.is-mobile-keyboard-open .chat-main", css)
+        self.assertIn("grid-template-rows: minmax(0, 1fr) auto", css)
         self.assertIn("function setMobileKeyboardMode", javascript)
+        self.assertIn("setMobileKeyboardMode(true)", javascript)
         self.assertNotIn("is-android-keyboard-open", css)
         self.assertNotIn("inputIsFocused && viewportHeight", javascript)
+        self.assertNotIn("bartenderSwipe", javascript)
+        self.assertNotIn("BARTENDER_SWIPE", javascript)
+        self.assertNotIn("Смахните вправо", javascript)
+        self.assertNotIn("is-bartender-swipe-ready", css)
 
     def test_chat_reconnects_websocket_after_pwa_resume(self):
         with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:

@@ -150,18 +150,24 @@ def assert_composer_inside_viewport(page):
     geometry = page.locator(".chat-composer").evaluate(
         """element => {
             const box = element.getBoundingClientRect();
+            const inputBox = element.querySelector("#chat-message-input")
+                .getBoundingClientRect();
             return {
                 top: box.top,
                 bottom: box.bottom,
-                height: box.height,
+                inputTop: inputBox.top,
+                inputBottom: inputBox.bottom,
+                inputHeight: inputBox.height,
                 viewport: window.innerHeight,
             };
         }"""
     )
     if geometry["top"] < -1 or geometry["bottom"] > geometry["viewport"] + 1:
         raise AssertionError(f"Composer вышел за viewport: {geometry}")
-    if geometry["height"] < 44:
-        raise AssertionError(f"Composer имеет некорректную высоту: {geometry}")
+    if geometry["inputTop"] < -1 or geometry["inputBottom"] > geometry["viewport"] + 1:
+        raise AssertionError(f"Поле ввода вышло за viewport: {geometry}")
+    if geometry["inputHeight"] < 44:
+        raise AssertionError(f"Поле ввода имеет некорректную высоту: {geometry}")
 
 
 def run_chromium_flow(playwright, server):
@@ -175,7 +181,7 @@ def run_chromium_flow(playwright, server):
         if "Смахните вправо" in (
             page.locator("#chat-message-input").get_attribute("placeholder") or ""
         ):
-            raise AssertionError("Desktop ошибочно показывает подсказку мобильного свайпа")
+            raise AssertionError("Поле ввода всё ещё показывает удалённую подсказку свайпа")
 
         message = f"smoke message {time.time_ns()}"
         page.locator("#chat-message-input").fill(message)
@@ -228,29 +234,20 @@ def run_mobile_layout(playwright, server, engine, viewport):
         open_chat(page, "u-stoyki")
         assert_composer_inside_viewport(page)
         input_element = page.locator("#chat-message-input")
-        if "Смахните вправо" not in (input_element.get_attribute("placeholder") or ""):
-            raise AssertionError("Touch-устройство не показывает подсказку свайпа")
+        if "Смахните вправо" in (input_element.get_attribute("placeholder") or ""):
+            raise AssertionError("Поле ввода всё ещё показывает удалённую подсказку свайпа")
         input_element.focus()
-        page.set_viewport_size({"width": viewport["width"], "height": 500})
-        # Playwright меняет viewport не так, как системная клавиатура и в
-        # WebKit на CI не всегда сохраняет прежнюю высоту visualViewport.
-        # Имитируем сохранённую до клавиатуры высоту и проверяем реальный
-        # обработчик, CSS и геометрию формы.
-        page.evaluate(
-            """() => {
-                mobileViewportBaseline = (
-                    window.visualViewport?.height || window.innerHeight
-                ) + 200;
-                handleViewportResize();
-            }"""
-        )
         page.locator(".chat-header").wait_for(state="hidden")
+        page.locator(".room-header").wait_for(state="hidden")
+        page.set_viewport_size({"width": viewport["width"], "height": 500})
+        page.evaluate("handleViewportResize()")
         assert_composer_inside_viewport(page)
         page.set_viewport_size(viewport)
-        page.locator(".chat-header").wait_for(state="visible")
+        page.locator(".chat-header").wait_for(state="hidden")
         input_element.blur()
         page.locator(".chat-header").wait_for(state="visible")
 
+        # Поле больше не перехватывает ни долгое нажатие, ни свайп.
         input_element.fill("")
         pointer = {
             "pointerId": 41,
@@ -259,63 +256,24 @@ def run_mobile_layout(playwright, server, engine, viewport):
             "clientY": 640,
         }
         input_element.dispatch_event("pointerdown", pointer)
-        page.wait_for_timeout(120)
-        input_element.dispatch_event("pointerup", pointer)
-        if not page.locator("#bartender-recipient").evaluate(
-            "element => element.classList.contains('hidden')"
-        ):
-            raise AssertionError("Короткий тап ошибочно вызвал Семёна")
-
-        pointer["pointerId"] = 42
-        input_element.dispatch_event("pointerdown", pointer)
         page.wait_for_timeout(550)
+        pointer["clientX"] = 190
+        input_element.dispatch_event("pointermove", pointer)
         input_element.dispatch_event("pointerup", pointer)
         if not page.locator("#bartender-recipient").evaluate(
             "element => element.classList.contains('hidden')"
         ):
-            raise AssertionError("Долгое нажатие ошибочно вызвало Семёна")
-
-        pointer["pointerId"] = 43
-        input_element.focus()
-        page.set_viewport_size({"width": viewport["width"], "height": 500})
-        page.evaluate(
-            """() => {
-                mobileViewportBaseline = (
-                    window.visualViewport?.height || window.innerHeight
-                ) + 200;
-                handleViewportResize();
-            }"""
-        )
-        page.locator(".chat-header").wait_for(state="hidden")
-        input_element.dispatch_event("pointerdown", pointer)
-        pointer["clientX"] = 190
-        input_element.dispatch_event("pointermove", pointer)
-        input_element.dispatch_event("pointerup", pointer)
-        page.locator("#bartender-recipient").wait_for(state="visible")
-        assert_composer_inside_viewport(page)
-        banner_height = page.locator("#bartender-recipient").evaluate(
-            "element => element.getBoundingClientRect().height"
-        )
-        if banner_height > 52:
-            raise AssertionError(
-                f"Панель Семёна слишком высокая с клавиатурой: {banner_height}"
-            )
-        page.set_viewport_size(viewport)
-        page.locator("#cancel-bartender-message").click()
+            raise AssertionError("Жест по полю ошибочно вызвал Семёна")
         input_element.blur()
+        page.locator(".chat-header").wait_for(state="visible")
 
-        input_element.fill("текст для вставки")
-        pointer["pointerId"] = 44
-        pointer["clientX"] = 120
-        input_element.dispatch_event("pointerdown", pointer)
-        pointer["clientX"] = 190
-        input_element.dispatch_event("pointermove", pointer)
-        input_element.dispatch_event("pointerup", pointer)
-        if not page.locator("#bartender-recipient").evaluate(
-            "element => element.classList.contains('hidden')"
-        ):
-            raise AssertionError("Свайп по тексту ошибочно вызвал Семёна")
-        input_element.fill("")
+        # Штатный вызов Семёна из меню остаётся рабочим.
+        page.get_by_role("button", name="Открыть комнаты").click()
+        page.locator('[data-chat-action="bartender"]').click()
+        page.locator("#bartender-recipient").wait_for(state="visible")
+        page.locator(".chat-header").wait_for(state="hidden")
+        assert_composer_inside_viewport(page)
+        page.locator("#cancel-bartender-message").click()
         input_element.blur()
         page.locator(".chat-header").wait_for(state="visible")
 
