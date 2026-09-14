@@ -2056,17 +2056,6 @@ html[data-theme="light"] .note-attachment-audio {
         0 0 0 3px rgba(198, 117, 58, 0.13);
 }
 
-#chat-message-input.is-bartender-swipe-ready {
-    border-color: var(--amber-light);
-    box-shadow: 0 0 0 3px rgba(225, 161, 75, 0.18);
-}
-
-@media (max-width: 700px) and (pointer: coarse) {
-    #chat-message-input {
-        touch-action: pan-y;
-    }
-}
-
 #chat-message-submit {
     min-width: 112px;
     min-height: 46px;
@@ -4994,6 +4983,10 @@ html[data-theme="light"] .recipient-cancel {
     .chat-page.is-mobile-keyboard-open > .chat-header,
     .chat-page.is-mobile-keyboard-open .room-header {
         display: none;
+    }
+
+    .chat-page.is-mobile-keyboard-open .chat-main {
+        grid-template-rows: minmax(0, 1fr) auto;
     }
 
     .chat-page.is-mobile-keyboard-open .bartender-recipient {
