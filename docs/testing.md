@@ -40,6 +40,20 @@ poetry run python scripts/browser_smoke.py
 записываются. В CI снимки доступны семь дней только как артефакт неуспешного
 запуска.
 
+## Проверка release candidate
+
+Для production подготовлены отдельные безопасные инструменты:
+
+- `scripts/verify_backup_restore.sh` создаёт backup базы и media и проверяет
+  восстановление во временном PostgreSQL;
+- `scripts/performance_audit.py` измеряет HTTP, WebSocket и ответы Семёна с 30
+  активными и 30 неактивными временными клиентами;
+- `scripts/production_smoke.py` проверяет публичные production-маршруты и при
+  наличии временной сессии — авторизованный чат и WebSocket.
+
+Полная последовательность, очистка тестовых данных и ручная проверка описаны в
+[чек-листе release candidate](release-checklist.md).
+
 ## Проверка production-контейнеров
 
 После запуска образа проверьте состояния обоих сервисов:

@@ -1,7 +1,9 @@
 import json
 import tempfile
+from datetime import timedelta
 from io import BytesIO
 from io import StringIO
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 from asgiref.sync import async_to_sync
@@ -10,6 +12,7 @@ from channels.testing import WebsocketCommunicator
 from PIL import Image
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser, Group, Permission
+from django.contrib.sessions.models import Session
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
@@ -723,6 +726,51 @@ class ModeratorSetupCommandTests(TestCase):
                 codename="view_messagereport",
             ).exists()
         )
+
+
+class ReleaseAuditAccountsCommandTests(TestCase):
+    def test_prepare_and_cleanup_are_scoped_to_temporary_audit_data(self):
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            credentials = Path(temporary_directory) / "audit-sessions.json"
+            call_command(
+                "release_audit_accounts",
+                "prepare",
+                credentials=credentials,
+                count=4,
+                room_slug="release-audit-test",
+                confirm="RELEASE-AUDIT-DATA",
+                stdout=StringIO(),
+            )
+
+            records = json.loads(credentials.read_text(encoding="utf-8"))
+            self.assertEqual(len(records), 4)
+            self.assertEqual(credentials.stat().st_mode & 0o777, 0o600)
+            self.assertTrue(all(item["sessionid"] for item in records))
+            room = Room.objects.get(slug="release-audit-test")
+            self.assertEqual(room.members.count(), 4)
+            self.assertEqual(RoomReadState.objects.filter(room=room).count(), 4)
+            session_keys = [item["sessionid"] for item in records]
+            sessions = Session.objects.filter(session_key__in=session_keys)
+            self.assertEqual(sessions.count(), 4)
+            self.assertTrue(all(
+                session.expire_date <= timezone.now() + timedelta(minutes=61)
+                for session in sessions
+            ))
+
+            call_command(
+                "release_audit_accounts",
+                "cleanup",
+                credentials=credentials,
+                room_slug="release-audit-test",
+                confirm="RELEASE-AUDIT-DATA",
+                stdout=StringIO(),
+            )
+
+            self.assertFalse(credentials.exists())
+            self.assertFalse(Room.objects.filter(slug="release-audit-test").exists())
+            self.assertFalse(
+                User.objects.filter(username__startswith="release_audit_").exists()
+            )
 
 
 class MessageReportAdminTests(TestCase):
