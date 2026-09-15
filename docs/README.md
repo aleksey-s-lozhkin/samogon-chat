@@ -6,6 +6,8 @@
 - [Техническое задание и roadmap](product-specification.md) — согласованный объём и статус работ.
 - [Развёртывание](deployment.md) — подготовка окружения, запуск и эксплуатация.
 - [Проверка проекта](testing.md) — серверные и браузерные smoke-тесты.
+- [Проверка release candidate](release-checklist.md) — backup/restore,
+  нагрузка, production smoke и VoiceOver.
 - [Качество Семёна](bartender-quality.md) — аудит диалогов, безопасная выборка и сравнение моделей.
 
 Документация не должна содержать production-секреты, реальные внутренние

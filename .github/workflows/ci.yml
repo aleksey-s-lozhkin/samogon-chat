@@ -30,6 +30,11 @@ jobs:
       - name: Run tests
         run: poetry run python manage.py test
 
+      - name: Check release audit tools
+        run: |
+          poetry run python -m unittest scripts.test_release_tools
+          bash -n scripts/verify_backup_restore.sh
+
   docker:
     name: Build Docker image
     runs-on: ubuntu-latest
