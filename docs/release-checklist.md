@@ -58,6 +58,8 @@ docker run --rm \
   IMAGE_SHA \
   /app/scripts/performance_audit.py \
   --base-url http://samogon-web:8000 \
+  --host-header sam.pyconstrictor.ru \
+  --forwarded-proto https \
   --room release-audit \
   --credentials /run/audit-sessions.json \
   --active-clients 30 \

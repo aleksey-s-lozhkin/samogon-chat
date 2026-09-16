@@ -1,10 +1,17 @@
+import asyncio
 import json
 import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock
 
-from scripts.performance_audit import load_credentials, percentile, websocket_url
+from scripts.performance_audit import (
+    load_credentials,
+    percentile,
+    wait_for_event,
+    websocket_url,
+)
 from scripts.production_smoke import ws_url
 
 
@@ -35,6 +42,14 @@ class PerformanceAuditHelpersTests(unittest.TestCase):
             os.chmod(path, 0o644)
             with self.assertRaisesRegex(ValueError, "must not be readable"):
                 load_credentials(path, 1)
+
+
+class PerformanceAuditAsyncTests(unittest.IsolatedAsyncioTestCase):
+    async def test_websocket_timeout_names_the_waited_event(self):
+        socket = AsyncMock()
+        socket.receive.side_effect = asyncio.TimeoutError
+        with self.assertRaisesRegex(TimeoutError, "WebSocket event history"):
+            await wait_for_event(socket, "history", timeout=0.01)
 
 
 if __name__ == "__main__":
