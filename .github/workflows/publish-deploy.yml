@@ -109,6 +109,55 @@ jobs:
             rollback_image=$previous_web_image
           fi
 
+          image_repository=${image%:*}
+          minimum_free_kb=$((5 * 1024 * 1024))
+
+          available_kb() {
+            df -Pk "$compose_dir" | awk 'NR == 2 {print $4}'
+          }
+
+          prune_old_release_images() {
+            protected_image_id=""
+            if [ -n "$rollback_image" ]; then
+              protected_image_id=$(docker image inspect \
+                --format '{{.Id}}' "$rollback_image" 2>/dev/null || true)
+            fi
+
+            docker builder prune -f >/dev/null || true
+            docker image prune -f >/dev/null || true
+            docker image ls "$image_repository" \
+              --format '{{.Repository}}:{{.Tag}}' |
+            while read -r image_ref; do
+              if [ -z "$image_ref" ] \
+                  || [ "$image_ref" = "$image_repository:<none>" ] \
+                  || [ "$image_ref" = "$image_repository:latest" ] \
+                  || [ "$image_ref" = "$image_repository:rollback" ]; then
+                continue
+              fi
+              image_id=$(docker image inspect \
+                --format '{{.Id}}' "$image_ref" 2>/dev/null || true)
+              if [ -n "$protected_image_id" ] \
+                  && [ "$image_id" = "$protected_image_id" ]; then
+                continue
+              fi
+              docker image rm "$image_ref" >/dev/null 2>&1 || true
+            done
+          }
+
+          if [ "$(available_kb)" -lt "$minimum_free_kb" ]; then
+            echo "Less than 5 GiB is free; pruning old release images before pull."
+            prune_old_release_images
+          fi
+          if [ "$(available_kb)" -lt "$minimum_free_kb" ]; then
+            echo "Deployment requires at least 5 GiB of free disk space." >&2
+            df -h "$compose_dir"
+            exit 1
+          fi
+
+          if [ -n "$rollback_image" ]; then
+            docker image tag "$rollback_image" "$image_repository:rollback"
+          fi
+
           compose_for_image "$image" pull samogon-web samogon-worker
 
           if ! grep -q '^VAPID_PUBLIC_KEY=.' "$env_file" \
@@ -226,6 +275,32 @@ jobs:
           docker exec nginx nginx -t
           docker exec nginx nginx -s reload
           compose_for_image "$image" ps
+
+          # Оставляем текущий образ и тег rollback, остальные старые SHA удаляем.
+          docker image tag "$image" "$image_repository:latest"
+          current_image_id=$(docker image inspect \
+            --format '{{.Id}}' "$image")
+          rollback_image_id=$(docker image inspect \
+            --format '{{.Id}}' "$image_repository:rollback" 2>/dev/null || true)
+          docker image ls "$image_repository" \
+            --format '{{.Repository}}:{{.Tag}}' |
+          while read -r image_ref; do
+            if [ -z "$image_ref" ] \
+                || [ "$image_ref" = "$image_repository:<none>" ] \
+                || [ "$image_ref" = "$image_repository:latest" ] \
+                || [ "$image_ref" = "$image_repository:rollback" ]; then
+              continue
+            fi
+            image_id=$(docker image inspect \
+              --format '{{.Id}}' "$image_ref" 2>/dev/null || true)
+            if [ "$image_id" = "$current_image_id" ] \
+                || [ "$image_id" = "$rollback_image_id" ]; then
+              continue
+            fi
+            docker image rm "$image_ref" >/dev/null 2>&1 || true
+          done
+          docker image prune -f >/dev/null || true
+
           deployment_started=0
           trap - EXIT
           REMOTE
