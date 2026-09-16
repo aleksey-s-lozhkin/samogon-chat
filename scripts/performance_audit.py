@@ -54,12 +54,15 @@ def load_credentials(path, required):
     return data[:required]
 
 
-async def authenticated_session(base_url, credential, timeout):
+async def authenticated_session(base_url, credential, timeout, request_headers):
     jar = aiohttp.CookieJar(unsafe=base_url.startswith("http://"))
     session = aiohttp.ClientSession(
         cookie_jar=jar,
         timeout=aiohttp.ClientTimeout(total=timeout),
-        headers={"User-Agent": "SamogonReleaseAudit/1.0"},
+        headers={
+            "User-Agent": "SamogonReleaseAudit/1.0",
+            **request_headers,
+        },
     )
     if credential.get("sessionid"):
         jar.update_cookies(
@@ -103,7 +106,12 @@ async def wait_for_event(socket, event_type, *, text=None, timeout=30):
         remaining = deadline - asyncio.get_running_loop().time()
         if remaining <= 0:
             raise TimeoutError(f"Timed out waiting for WebSocket event {event_type}")
-        message = await socket.receive(timeout=remaining)
+        try:
+            message = await socket.receive(timeout=remaining)
+        except asyncio.TimeoutError as error:
+            raise TimeoutError(
+                f"Timed out waiting for WebSocket event {event_type}"
+            ) from error
         if message.type == aiohttp.WSMsgType.CLOSE:
             raise RuntimeError("WebSocket closed before the expected event")
         if message.type != aiohttp.WSMsgType.TEXT:
@@ -116,8 +124,19 @@ async def wait_for_event(socket, event_type, *, text=None, timeout=30):
         return payload
 
 
-async def connect_client(base_url, room_slug, credential, timeout):
-    session = await authenticated_session(base_url, credential, timeout)
+async def connect_client(
+    base_url,
+    room_slug,
+    credential,
+    timeout,
+    request_headers,
+):
+    session = await authenticated_session(
+        base_url,
+        credential,
+        timeout,
+        request_headers,
+    )
     started = time.perf_counter()
     try:
         socket = await session.ws_connect(
@@ -172,6 +191,11 @@ async def measure_bartender(socket, samples, timeout):
 
 async def run(args):
     base_url = args.base_url.rstrip("/")
+    request_headers = {}
+    if args.host_header:
+        request_headers["Host"] = args.host_header
+    if args.forwarded_proto:
+        request_headers["X-Forwarded-Proto"] = args.forwarded_proto
     client_count = args.active_clients + args.idle_clients
     credentials = load_credentials(args.credentials, client_count)
     if any(not item.get("sessionid") for item in credentials) \
@@ -194,6 +218,7 @@ async def run(args):
                     args.room,
                     credential,
                     args.timeout,
+                    request_headers,
                 )
                 sessions.append(session)
                 sockets.append(socket)
@@ -205,31 +230,47 @@ async def run(args):
                 await asyncio.sleep(args.connection_interval)
 
         if errors or len(sockets) != client_count:
-            raise RuntimeError("Not all audit clients connected")
+            detail = "; ".join(errors) if errors else "unknown connection error"
+            raise RuntimeError(f"Not all audit clients connected: {detail}")
 
-        http_semaphore = asyncio.Semaphore(args.http_concurrency)
-        http_latencies = await asyncio.gather(*[
-            measure_http(
-                session,
-                f"{base_url}/chat/{args.room}/",
-                http_semaphore,
-            )
-            for session in sessions
-        ])
-        message_latencies = await asyncio.gather(*[
-            active_client(
-                sockets[index],
-                credentials[index]["username"],
-                args.hold_seconds,
-                args.timeout,
-            )
-            for index in range(args.active_clients)
-        ])
-        bartender_latencies = await measure_bartender(
-            sockets[0],
-            args.bartender_samples,
-            args.bartender_timeout,
-        ) if args.bartender_samples else []
+        try:
+            http_semaphore = asyncio.Semaphore(args.http_concurrency)
+            http_latencies = await asyncio.gather(*[
+                measure_http(
+                    session,
+                    f"{base_url}/chat/{args.room}/",
+                    http_semaphore,
+                )
+                for session in sessions
+            ])
+        except Exception as error:
+            raise RuntimeError(
+                f"Authenticated HTTP stage failed: {type(error).__name__}: {error}"
+            ) from error
+        try:
+            message_latencies = await asyncio.gather(*[
+                active_client(
+                    sockets[index],
+                    credentials[index]["username"],
+                    args.hold_seconds,
+                    args.timeout,
+                )
+                for index in range(args.active_clients)
+            ])
+        except Exception as error:
+            raise RuntimeError(
+                f"WebSocket message stage failed: {type(error).__name__}: {error}"
+            ) from error
+        try:
+            bartender_latencies = await measure_bartender(
+                sockets[0],
+                args.bartender_samples,
+                args.bartender_timeout,
+            ) if args.bartender_samples else []
+        except Exception as error:
+            raise RuntimeError(
+                f"Bartender stage failed: {type(error).__name__}: {error}"
+            ) from error
 
         return {
             "status": "ok",
@@ -260,6 +301,15 @@ def parse_args():
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--room", required=True, help="Dedicated private audit room")
     parser.add_argument("--credentials", required=True, type=Path)
+    parser.add_argument(
+        "--host-header",
+        help="Host header for direct container routing",
+    )
+    parser.add_argument(
+        "--forwarded-proto",
+        choices=("http", "https"),
+        help="X-Forwarded-Proto for direct container routing",
+    )
     parser.add_argument("--active-clients", type=int, default=30)
     parser.add_argument("--idle-clients", type=int, default=30)
     parser.add_argument("--connection-interval", type=float, default=1.1)
