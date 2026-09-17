@@ -196,17 +196,24 @@ async def measure_http(session, url, semaphore):
 
 
 async def active_client(socket, events, username, hold_seconds, timeout):
-    marker = f"release-audit:{username}:{uuid.uuid4().hex[:10]}"
-    started = time.perf_counter()
-    await socket.send_json({"message": marker})
-    await wait_for_event(events, "message", text=marker, timeout=timeout)
-    message_latency = time.perf_counter() - started
+    try:
+        marker = f"release-audit:{username}:{uuid.uuid4().hex[:10]}"
+        started = time.perf_counter()
+        await socket.send_json({"message": marker})
+        await wait_for_event(events, "message", text=marker, timeout=timeout)
+        message_latency = time.perf_counter() - started
 
-    deadline = asyncio.get_running_loop().time() + hold_seconds
-    while asyncio.get_running_loop().time() < deadline:
-        await socket.send_json({"type": "presence_ping"})
-        await asyncio.sleep(min(10, max(0, deadline - asyncio.get_running_loop().time())))
-    return message_latency
+        deadline = asyncio.get_running_loop().time() + hold_seconds
+        while asyncio.get_running_loop().time() < deadline:
+            await socket.send_json({"type": "presence_ping"})
+            await asyncio.sleep(
+                min(10, max(0, deadline - asyncio.get_running_loop().time()))
+            )
+        return message_latency
+    except Exception as error:
+        raise RuntimeError(
+            f"Active client {username!r} failed: {type(error).__name__}: {error}"
+        ) from error
 
 
 async def measure_bartender(socket, events, samples, timeout):
