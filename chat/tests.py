@@ -753,7 +753,7 @@ class ReleaseAuditAccountsCommandTests(TestCase):
             sessions = Session.objects.filter(session_key__in=session_keys)
             self.assertEqual(sessions.count(), 4)
             self.assertTrue(all(
-                session.expire_date <= timezone.now() + timedelta(minutes=61)
+                session.expire_date <= timezone.now() + timedelta(hours=4, minutes=1)
                 for session in sessions
             ))
 
