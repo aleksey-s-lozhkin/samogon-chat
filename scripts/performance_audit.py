@@ -139,9 +139,11 @@ async def connect_client(
     )
     started = time.perf_counter()
     try:
+        # Earlier sockets are intentionally idle while the rest of the batch is
+        # connected. An aiohttp heartbeat would close them because no receive
+        # loop is running yet to process Pong frames.
         socket = await session.ws_connect(
             websocket_url(base_url, room_slug),
-            heartbeat=25,
             timeout=aiohttp.ClientWSTimeout(ws_receive=timeout),
         )
         await wait_for_event(socket, "history", timeout=timeout)
