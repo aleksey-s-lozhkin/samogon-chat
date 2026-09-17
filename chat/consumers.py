@@ -537,12 +537,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def send_to_private_room(self, event):
-        """Доставляет реплику всем участникам закрытой беседы."""
-        for user_id in await self.get_room_member_ids():
-            await self.channel_layer.group_send(
-                f"chat_user_{user_id}",
-                event,
-            )
+        """Доставляет реплику допущенным соединениям закрытой беседы."""
+        await self.channel_layer.group_send(self.room_group_name, event)
 
     async def room_access_revoked(self, event):
         """Закрывает открытую вкладку после выхода или исключения из беседы."""

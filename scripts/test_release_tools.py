@@ -4,9 +4,13 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
+
+import aiohttp
 
 from scripts.performance_audit import (
+    collect_events,
+    connect_client,
     load_credentials,
     percentile,
     wait_for_event,
@@ -45,11 +49,58 @@ class PerformanceAuditHelpersTests(unittest.TestCase):
 
 
 class PerformanceAuditAsyncTests(unittest.IsolatedAsyncioTestCase):
-    async def test_websocket_timeout_names_the_waited_event(self):
+    async def test_connect_starts_reader_before_waiting_for_history(self):
+        session = AsyncMock()
         socket = AsyncMock()
-        socket.receive.side_effect = asyncio.TimeoutError
+        session.ws_connect.return_value = socket
+        events = asyncio.Queue()
+
+        with (
+            patch(
+                "scripts.performance_audit.authenticated_session",
+                AsyncMock(return_value=session),
+            ),
+            patch(
+                "scripts.performance_audit.collect_events",
+                AsyncMock(side_effect=lambda _socket, queue: queue.put_nowait({
+                    "type": "history",
+                })),
+            ),
+        ):
+            _session, _socket, events, reader, _latency = await connect_client(
+                "http://samogon-web:8000",
+                "release-audit",
+                {"username": "audit", "sessionid": "secret"},
+                30,
+                {},
+            )
+
+        self.assertEqual(session.ws_connect.await_args.kwargs["heartbeat"], 25)
+        self.assertIsInstance(events, asyncio.Queue)
+        await reader
+
+    async def test_collector_routes_text_events_to_queue(self):
+        socket = AsyncMock()
+        socket.receive.side_effect = [
+            aiohttp.WSMessage(
+                aiohttp.WSMsgType.TEXT,
+                '{"type":"history"}',
+                None,
+            ),
+            aiohttp.WSMessage(aiohttp.WSMsgType.CLOSE, None, None),
+        ]
+        socket.close_code = 1000
+        events = asyncio.Queue()
+
+        await collect_events(socket, events)
+
+        self.assertEqual(await events.get(), {"type": "history"})
+        self.assertRegex(str(await events.get()), "closed with code 1000")
+
+    async def test_websocket_timeout_names_the_waited_event(self):
+        events = asyncio.Queue()
         with self.assertRaisesRegex(TimeoutError, "WebSocket event history"):
-            await wait_for_event(socket, "history", timeout=0.01)
+            await wait_for_event(events, "history", timeout=0.01)
 
 
 if __name__ == "__main__":
