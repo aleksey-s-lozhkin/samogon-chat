@@ -4,9 +4,10 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from scripts.performance_audit import (
+    connect_client,
     load_credentials,
     percentile,
     wait_for_event,
@@ -45,6 +46,31 @@ class PerformanceAuditHelpersTests(unittest.TestCase):
 
 
 class PerformanceAuditAsyncTests(unittest.IsolatedAsyncioTestCase):
+    async def test_connect_does_not_close_idle_clients_while_batch_is_created(self):
+        session = AsyncMock()
+        socket = AsyncMock()
+        session.ws_connect.return_value = socket
+
+        with (
+            patch(
+                "scripts.performance_audit.authenticated_session",
+                AsyncMock(return_value=session),
+            ),
+            patch(
+                "scripts.performance_audit.wait_for_event",
+                AsyncMock(),
+            ),
+        ):
+            await connect_client(
+                "http://samogon-web:8000",
+                "release-audit",
+                {"username": "audit", "sessionid": "secret"},
+                30,
+                {},
+            )
+
+        self.assertNotIn("heartbeat", session.ws_connect.await_args.kwargs)
+
     async def test_websocket_timeout_names_the_waited_event(self):
         socket = AsyncMock()
         socket.receive.side_effect = asyncio.TimeoutError
