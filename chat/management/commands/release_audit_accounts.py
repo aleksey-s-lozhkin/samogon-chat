@@ -93,7 +93,7 @@ class Command(BaseCommand):
                         "django.contrib.auth.backends.ModelBackend"
                     )
                     session[HASH_SESSION_KEY] = user.get_session_auth_hash()
-                    session.set_expiry(3600)
+                    session.set_expiry(4 * 60 * 60)
                     session.create()
                     records.append({
                         "username": user.username,

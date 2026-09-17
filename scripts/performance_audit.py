@@ -100,23 +100,51 @@ async def authenticated_session(base_url, credential, timeout, request_headers):
     return session
 
 
-async def wait_for_event(socket, event_type, *, text=None, timeout=30):
+class WebSocketClosedError(RuntimeError):
+    pass
+
+
+async def collect_events(socket, events):
+    try:
+        while True:
+            message = await socket.receive()
+            if message.type == aiohttp.WSMsgType.TEXT:
+                try:
+                    await events.put(json.loads(message.data))
+                except json.JSONDecodeError:
+                    continue
+            elif message.type in {
+                aiohttp.WSMsgType.CLOSE,
+                aiohttp.WSMsgType.CLOSED,
+                aiohttp.WSMsgType.CLOSING,
+            }:
+                raise WebSocketClosedError(
+                    f"WebSocket closed with code {socket.close_code}"
+                )
+            elif message.type == aiohttp.WSMsgType.ERROR:
+                raise WebSocketClosedError(
+                    f"WebSocket failed: {socket.exception()!r}"
+                )
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        await events.put(error)
+
+
+async def wait_for_event(events, event_type, *, text=None, timeout=30):
     deadline = asyncio.get_running_loop().time() + timeout
     while True:
         remaining = deadline - asyncio.get_running_loop().time()
         if remaining <= 0:
             raise TimeoutError(f"Timed out waiting for WebSocket event {event_type}")
         try:
-            message = await socket.receive(timeout=remaining)
+            payload = await asyncio.wait_for(events.get(), timeout=remaining)
         except asyncio.TimeoutError as error:
             raise TimeoutError(
                 f"Timed out waiting for WebSocket event {event_type}"
             ) from error
-        if message.type == aiohttp.WSMsgType.CLOSE:
-            raise RuntimeError("WebSocket closed before the expected event")
-        if message.type != aiohttp.WSMsgType.TEXT:
-            continue
-        payload = json.loads(message.data)
+        if isinstance(payload, Exception):
+            raise payload
         if payload.get("type") != event_type:
             continue
         if text is not None and payload.get("message") != text:
@@ -138,19 +166,23 @@ async def connect_client(
         request_headers,
     )
     started = time.perf_counter()
+    events = asyncio.Queue()
+    reader = None
     try:
-        # Earlier sockets are intentionally idle while the rest of the batch is
-        # connected. An aiohttp heartbeat would close them because no receive
-        # loop is running yet to process Pong frames.
         socket = await session.ws_connect(
             websocket_url(base_url, room_slug),
+            heartbeat=25,
             timeout=aiohttp.ClientWSTimeout(ws_receive=timeout),
         )
-        await wait_for_event(socket, "history", timeout=timeout)
+        reader = asyncio.create_task(collect_events(socket, events))
+        await wait_for_event(events, "history", timeout=timeout)
     except Exception:
+        if reader is not None:
+            reader.cancel()
+            await asyncio.gather(reader, return_exceptions=True)
         await session.close()
         raise
-    return session, socket, time.perf_counter() - started
+    return session, socket, events, reader, time.perf_counter() - started
 
 
 async def measure_http(session, url, semaphore):
@@ -163,28 +195,35 @@ async def measure_http(session, url, semaphore):
         return time.perf_counter() - started
 
 
-async def active_client(socket, username, hold_seconds, timeout):
-    marker = f"release-audit:{username}:{uuid.uuid4().hex[:10]}"
-    started = time.perf_counter()
-    await socket.send_json({"message": marker})
-    await wait_for_event(socket, "message", text=marker, timeout=timeout)
-    message_latency = time.perf_counter() - started
+async def active_client(socket, events, username, hold_seconds, timeout):
+    try:
+        marker = f"release-audit:{username}:{uuid.uuid4().hex[:10]}"
+        started = time.perf_counter()
+        await socket.send_json({"message": marker})
+        await wait_for_event(events, "message", text=marker, timeout=timeout)
+        message_latency = time.perf_counter() - started
 
-    deadline = asyncio.get_running_loop().time() + hold_seconds
-    while asyncio.get_running_loop().time() < deadline:
-        await socket.send_json({"type": "presence_ping"})
-        await asyncio.sleep(min(10, max(0, deadline - asyncio.get_running_loop().time())))
-    return message_latency
+        deadline = asyncio.get_running_loop().time() + hold_seconds
+        while asyncio.get_running_loop().time() < deadline:
+            await socket.send_json({"type": "presence_ping"})
+            await asyncio.sleep(
+                min(10, max(0, deadline - asyncio.get_running_loop().time()))
+            )
+        return message_latency
+    except Exception as error:
+        raise RuntimeError(
+            f"Active client {username!r} failed: {type(error).__name__}: {error}"
+        ) from error
 
 
-async def measure_bartender(socket, samples, timeout):
+async def measure_bartender(socket, events, samples, timeout):
     latencies = []
     for index in range(samples):
         marker = f"@Семён, ответь словом готово. Проверка {uuid.uuid4().hex[:8]}-{index}"
         started = time.perf_counter()
         await socket.send_json({"message": marker, "bartender_private": True})
         while True:
-            payload = await wait_for_event(socket, "message", timeout=timeout)
+            payload = await wait_for_event(events, "message", timeout=timeout)
             if payload.get("username") == "Семён":
                 latencies.append(time.perf_counter() - started)
                 break
@@ -208,6 +247,8 @@ async def run(args):
         )
     sessions = []
     sockets = []
+    event_queues = []
+    readers = []
     connect_latencies = []
     errors = []
 
@@ -215,7 +256,7 @@ async def run(args):
     try:
         for index, credential in enumerate(credentials):
             try:
-                session, socket, latency = await connect_client(
+                session, socket, events, reader, latency = await connect_client(
                     base_url,
                     args.room,
                     credential,
@@ -224,6 +265,8 @@ async def run(args):
                 )
                 sessions.append(session)
                 sockets.append(socket)
+                event_queues.append(events)
+                readers.append(reader)
                 connect_latencies.append(latency)
             except Exception as error:
                 errors.append(f"client-{index + 1}: {type(error).__name__}: {error}")
@@ -253,6 +296,7 @@ async def run(args):
             message_latencies = await asyncio.gather(*[
                 active_client(
                     sockets[index],
+                    event_queues[index],
                     credentials[index]["username"],
                     args.hold_seconds,
                     args.timeout,
@@ -266,6 +310,7 @@ async def run(args):
         try:
             bartender_latencies = await measure_bartender(
                 sockets[0],
+                event_queues[0],
                 args.bartender_samples,
                 args.bartender_timeout,
             ) if args.bartender_samples else []
@@ -292,6 +337,9 @@ async def run(args):
             *[socket.close() for socket in sockets],
             return_exceptions=True,
         )
+        for reader in readers:
+            reader.cancel()
+        await asyncio.gather(*readers, return_exceptions=True)
         await asyncio.gather(
             *[session.close() for session in sessions],
             return_exceptions=True,

@@ -753,7 +753,7 @@ class ReleaseAuditAccountsCommandTests(TestCase):
             sessions = Session.objects.filter(session_key__in=session_keys)
             self.assertEqual(sessions.count(), 4)
             self.assertTrue(all(
-                session.expire_date <= timezone.now() + timedelta(minutes=61)
+                session.expire_date <= timezone.now() + timedelta(hours=4, minutes=1)
                 for session in sessions
             ))
 
@@ -2684,6 +2684,19 @@ class ChatConsumerTests(TransactionTestCase):
         )
 
         consumer.close.assert_not_awaited()
+
+    def test_private_room_message_uses_single_authorized_room_broadcast(self):
+        consumer = ChatConsumer()
+        consumer.room_group_name = "chat_release-audit"
+        consumer.channel_layer = AsyncMock()
+        event = {"type": "chat_message", "message": "Проверка"}
+
+        async_to_sync(consumer.send_to_private_room)(event)
+
+        consumer.channel_layer.group_send.assert_awaited_once_with(
+            "chat_release-audit",
+            event,
+        )
 
     def test_uninvited_user_cannot_connect_to_private_room(self):
         outsider = User.objects.create_user(username="maria")
