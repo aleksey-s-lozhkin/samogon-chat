@@ -337,6 +337,47 @@ def check_auth_entry(playwright, server):
             browser.close()
 
 
+def check_registration_retry(playwright, server):
+    for engine in (playwright.chromium, playwright.webkit):
+        browser = engine.launch()
+        try:
+            page = browser.new_page(viewport={"width": 390, "height": 844})
+            page.goto(f"{server.base_url}/accounts/signup/")
+            page.locator("#register-username").fill("retry-visitor")
+            page.locator("#register-email").fill("retry@example.invalid")
+            page.locator("#register-password").fill(PASSWORD)
+            # Mock only the external challenge; exercise real HTMX requests/events.
+            page.evaluate("""() => {
+                const widget = document.createElement('div');
+                widget.className = 'cf-turnstile';
+                document.querySelector('#register-form').append(widget);
+                window.challengeResets = 0;
+                window.turnstile = {reset: () => window.challengeResets++};
+            }""")
+            statuses = [200, 400, 403, 429, 500, 0, 200]
+            for index, status in enumerate(statuses):
+                def respond(route, request, status=status, index=index):
+                    if status == 0:
+                        route.abort()
+                    else:
+                        headers = {"HX-Redirect": "/users/profile/"} if index == 6 else {}
+                        route.fulfill(status=status, content_type="text/html", headers=headers,
+                                      body="" if index == 6 else "Ошибка заполнения формы")
+                page.route("**/users/register/", respond)
+                page.locator('#register-form button[type="submit"]').click()
+                if index == 6:
+                    page.wait_for_url(f"{server.base_url}/accounts/login/?next=/users/profile/")
+                else:
+                    page.wait_for_function("(count) => window.challengeResets === count", arg=index + 1)
+                    assert page.locator('#register-form button[type="submit"]').is_enabled()
+                    assert page.locator('#register-error').inner_text().strip()
+                    assert page.locator('#register-username').input_value() == "retry-visitor"
+                    assert page.locator('#register-password').input_value() == PASSWORD
+                page.unroute("**/users/register/", respond)
+        finally:
+            browser.close()
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="samogon-browser-smoke-") as temporary:
         environment = os.environ.copy()
@@ -358,6 +399,7 @@ def main():
             from playwright.sync_api import sync_playwright
 
             with sync_playwright() as playwright:
+                check_registration_retry(playwright, server)
                 check_auth_entry(playwright, server)
                 run_chromium_flow(playwright, server)
                 run_mobile_layout(
