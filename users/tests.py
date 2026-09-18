@@ -622,6 +622,34 @@ class AuthenticationHtmxTests(TestCase):
         )
         self.htmx_headers = {"HTTP_HX_REQUEST": "true"}
 
+    def test_profile_guest_gets_styled_login_and_returns_after_login(self):
+        response = self.client.get("/users/profile/", follow=True)
+        self.assertTemplateUsed(response, "users/entry.html")
+        self.assertContains(response, "chat/css/chat.css")
+        self.assertContains(response, 'value="/users/profile/"')
+        response = self.client.post("/users/login/", {
+            "identifier": "alex", "password": "test-password", "next": "/users/profile/"
+        }, **self.htmx_headers)
+        self.assertEqual(response["HX-Redirect"], "/users/profile/")
+
+    def test_account_entry_rejects_external_return_url(self):
+        response = self.client.get("/accounts/login/?next=https://example.com/")
+        self.assertEqual(response.context["auth_next"], "/chat/")
+
+    def test_legacy_signup_uses_our_form_and_rejects_direct_post(self):
+        response = self.client.get("/accounts/signup/")
+        self.assertTemplateUsed(response, "users/entry.html")
+        self.assertTrue(response.context["auth_register"])
+        self.assertContains(response, 'hx-post="/users/register/"')
+        self.assertEqual(self.client.post("/accounts/signup/", {}).status_code, 405)
+
+    def test_legacy_password_reset_uses_styled_rate_limited_view(self):
+        response = self.client.get("/accounts/password/reset/")
+        self.assertTemplateUsed(response, "users/password_reset_form.html")
+        with patch("users.views.request_is_allowed", return_value=False):
+            response = self.client.post("/accounts/password/reset/", {"email": "alex@example.com"})
+        self.assertEqual(response.status_code, 429)
+
     def test_invalid_login_replaces_error_fragment(self):
         response = self.client.post(
             "/users/login/",

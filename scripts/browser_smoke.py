@@ -314,6 +314,29 @@ def run_mobile_layout(playwright, server, engine, viewport):
         browser.close()
 
 
+def check_auth_entry(playwright, server):
+    for engine in (playwright.chromium, playwright.webkit):
+        browser = engine.launch()
+        try:
+            page = browser.new_page(viewport={"width": 390, "height": 844})
+            page.goto(f"{server.base_url}/users/profile/")
+            page.locator("#login-username").wait_for()
+            assert "/accounts/login/" in page.url
+            assert page.locator('#login-form input[name="next"]').input_value() == "/users/profile/"
+            page.locator("#login-username").fill(USERNAME)
+            page.locator("#login-password").fill(PASSWORD)
+            page.locator('#login-form button[type="submit"]').click()
+            page.wait_for_url(f"{server.base_url}/users/profile/")
+            page.context.clear_cookies()
+            page.goto(f"{server.base_url}/accounts/signup/")
+            page.locator("#register-username").wait_for()
+            assert not page.locator("#login-username").is_visible()
+            page.goto(f"{server.base_url}/accounts/password/reset/")
+            page.locator("#id_email").wait_for()
+        finally:
+            browser.close()
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="samogon-browser-smoke-") as temporary:
         environment = os.environ.copy()
@@ -335,6 +358,7 @@ def main():
             from playwright.sync_api import sync_playwright
 
             with sync_playwright() as playwright:
+                check_auth_entry(playwright, server)
                 run_chromium_flow(playwright, server)
                 run_mobile_layout(
                     playwright,
