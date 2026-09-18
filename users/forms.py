@@ -44,6 +44,11 @@ class RegistrationForm(forms.ModelForm):
             "password",
         )
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if settings.REGISTRATION_OPEN:
+            self.fields.pop("invite_code", None)
+
     def clean_email(self):
         email = self.cleaned_data["email"].strip().lower()
         if User.objects.filter(email__iexact=email).exists():
@@ -66,6 +71,9 @@ class RegistrationForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
+
+        if settings.REGISTRATION_OPEN:
+            return cleaned_data
 
         invite_code = cleaned_data.get("invite_code", "")
         expected_code = settings.REGISTRATION_INVITE_CODE

@@ -290,6 +290,7 @@ def run_mobile_layout(playwright, server, engine, viewport):
 
         if not is_android:
             page.goto(f"{server.base_url}/users/profile/")
+            page.locator(".push-diagnostic-details summary").click()
             page.locator("[data-push-diagnostics]").wait_for()
             page.get_by_text(
                 "На iPhone и iPad откройте Самогон с экрана «Домой»",

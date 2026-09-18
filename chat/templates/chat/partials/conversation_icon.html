@@ -1,0 +1,9 @@
+<svg class="conversation-symbol" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" focusable="false" aria-hidden="true">
+{% if icon_room.is_private %}<path d="M6 28V5h18v23M10 28V9h10v19M15 18h1M4 28h23"/><path d="M24 17v-2a3 3 0 0 1 6 0v2m-7 0h8v8h-8z"/>
+{% elif icon_room.slug == "u-stoyki" %}<path d="M4 13h24M7 13v14m18-14v14M11 20h10M16 3v3m-5 5 2-5h6l2 5z"/><path d="M4 29h24"/>
+{% elif icon_room.slug == "vozle-bilyarda" %}<path d="m5 27 22-22M23 5l4 4"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M24 21v8m-4-4h8"/>
+{% elif icon_room.slug == "kurilka" %}<path d="M5 21h22v5H5zM22 21v5M10 16c-5-5 5-5 0-10m7 10c-5-5 5-5 0-10"/>
+{% elif icon_room.slug == "podval" %}<path d="M5 28V9a11 11 0 0 1 22 0v19M5 28h22M9 24h14v-5h-9v-5h9M16 4v3"/>
+{% elif icon_room.slug == "posle-zakrytiya" %}<path d="M22 5a11 11 0 1 0 5 17A12 12 0 0 1 22 5ZM7 6V2M5 4h4"/>
+{% else %}<path d="M5 5h22v18H13l-8 5zM10 11h12M10 16h8"/>{% endif %}
+</svg>
