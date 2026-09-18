@@ -127,6 +127,7 @@
                     >
                     <span id="register-error-email" class="field-error" aria-live="polite"></span>
                 </div>
+                {% if not registration_open %}
                 <div class="form-group">
                     <label for="register-invite-code">Код приглашения</label>
                     <input
@@ -139,6 +140,7 @@
                     >
                     <span id="register-error-invite_code" class="field-error" aria-live="polite"></span>
                 </div>
+                {% endif %}
                 <div class="form-group">
                     <label for="register-password">Пароль</label>
                     <div class="password-field">

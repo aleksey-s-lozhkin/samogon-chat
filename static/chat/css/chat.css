@@ -5009,3 +5009,27 @@ html[data-theme="light"] .recipient-cancel {
         flex: 1;
     }
 }
+
+/* Beta visual identity: shared room symbols and restrained amber surfaces. */
+.site-brand-icon { vertical-align:middle; border-radius:8px; margin-right:5px; }
+.conversation-symbol { display:block; width:100%; height:100%; }
+.room-icon { width:58px; height:58px; border-radius:18px 18px 18px 5px; background:var(--primary-soft); }
+.room-icon .conversation-symbol { width:38px; height:38px; }
+.room-navigation-icon .conversation-symbol { width:27px; height:27px; }
+.room-title-icon .conversation-symbol { width:28px; height:28px; }
+.room-navigation-item { min-height:46px; gap:12px; }
+.room-navigation-item.active { box-shadow:inset 3px 0 var(--primary); }
+.room-card { border-radius:18px; border-left:3px solid var(--primary); }
+.room-info h3 { font-family:Georgia,serif; font-size:20px; font-weight:500; }
+.room-info p { line-height:1.5; }
+.modal-content { background-image:radial-gradient(ellipse at top left, var(--primary-soft), transparent 65%); }
+.oauth-button { min-height:46px; border-color:var(--text-muted); }
+.message-text { line-height:1.55; }
+@media (max-width:600px) {
+    .room-icon { width:48px; height:48px; }
+    .room-icon .conversation-symbol { width:32px; height:32px; }
+    .room-info h3 { font-size:18px; }
+}
+
+.message.from-bartender .message-content { border-color:var(--primary); background:linear-gradient(135deg,var(--primary-soft),transparent),var(--message-surface); }
+@media (min-width:701px) { .message { max-width:min(82%, 640px); } }

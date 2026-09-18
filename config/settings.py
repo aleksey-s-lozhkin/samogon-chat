@@ -93,6 +93,7 @@ TEMPLATES = [
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
                 'users.context_processors.turnstile',
+                'users.context_processors.registration',
                 'users.context_processors.oauth_providers',
             ],
         },
@@ -242,6 +243,7 @@ else:
         },
     }
 
+REGISTRATION_OPEN = os.getenv("REGISTRATION_OPEN", "0") == "1"
 REGISTRATION_INVITE_CODE = os.getenv("REGISTRATION_INVITE_CODE", "")
 RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "60"))
 LOGIN_RATE_LIMIT = int(os.getenv("LOGIN_RATE_LIMIT", "10"))

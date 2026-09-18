@@ -697,6 +697,38 @@ class AuthenticationHtmxTests(TestCase):
 
         self.assertEqual(response["HX-Redirect"], "/")
 
+    @override_settings(DEBUG=False, REGISTRATION_OPEN=True, REGISTRATION_INVITE_CODE="old-code")
+    def test_open_registration_accepts_no_invite_in_production(self):
+        response = self.client.post(
+            "/users/register/",
+            {"username": "open-user", "email": "open@example.com", "password": "safe-password"},
+            **self.htmx_headers,
+        )
+        self.assertEqual(response["HX-Redirect"], "/")
+        self.assertTrue(User.objects.filter(username="open-user").exists())
+        self.assertNotContains(self.client.get("/"), 'name="invite_code"')
+
+    @override_settings(REGISTRATION_OPEN=True)
+    def test_open_registration_hides_invite_for_anonymous_visitor(self):
+        self.assertNotContains(self.client.get("/"), 'name="invite_code"')
+
+    @override_settings(DEBUG=False, REGISTRATION_OPEN=False, REGISTRATION_INVITE_CODE="")
+    def test_closed_production_without_code_still_rejects_registration(self):
+        form = RegistrationForm(data={
+            "username": "closed-user", "email": "closed@example.com", "password": "safe-password"
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("invite_code", form.errors)
+
+    @override_settings(REGISTRATION_OPEN=True)
+    @patch("users.views.verify_turnstile", return_value=False)
+    def test_open_registration_still_checks_turnstile(self, verify):
+        self.client.post("/users/register/", {
+            "username": "blocked-user", "email": "blocked@example.com", "password": "safe-password"
+        }, **self.htmx_headers)
+        verify.assert_called_once()
+        self.assertFalse(User.objects.filter(username="blocked-user").exists())
+
     def test_registration_username_is_limited_to_32_characters(self):
         form = RegistrationForm(
             data={

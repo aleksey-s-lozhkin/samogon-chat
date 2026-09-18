@@ -1,3 +1,4 @@
+{% load static %}
 <header class="chat-header">
     <div class="brand">
         {% if show_sidebar_toggle %}
@@ -13,7 +14,7 @@
         {% endif %}
 
         <div>
-            <h1>🍺 Самогон</h1>
+            <h1><img class="site-brand-icon" src="{% static 'pwa/icon.svg' %}" alt="" width="28" height="28"> Самогон</h1>
             <p id="brand-tagline">{{ header_tagline }}</p>
         </div>
     </div>

@@ -18,3 +18,8 @@ def oauth_providers(request):
             and settings.GOOGLE_OAUTH_CLIENT_SECRET
         ),
     }
+
+
+def registration(request):
+    """Режим регистрации без раскрытия кода приглашения."""
+    return {"registration_open": settings.REGISTRATION_OPEN}
