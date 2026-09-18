@@ -87,9 +87,7 @@ document.querySelectorAll("#login-form, #register-form").forEach((form) => {
     });
 });
 
-document.body.addEventListener("htmx:afterRequest", (event) => {
-    const form = event.detail.elt;
-    if (!form?.matches?.("#login-form, #register-form")) return;
+function finishAuthRequest(form) {
     const button = form.querySelector('button[type="submit"]');
     if (button) {
         button.textContent = button.dataset.defaultText || button.textContent;
@@ -97,7 +95,57 @@ document.body.addEventListener("htmx:afterRequest", (event) => {
         button.removeAttribute("aria-busy");
     }
     delete form.dataset.submitting;
+}
+
+function showAuthRequestError(form, status) {
+    const error = form.querySelector(".form-error");
+    if (!error) return;
+    const messages = {
+        400: form.id === "register-form"
+            ? "Не удалось подтвердить проверку безопасности. Дождитесь новой проверки и повторите отправку."
+            : "Не удалось войти. Проверьте логин и пароль.",
+        403: "Сессия страницы устарела. Обновите страницу и попробуйте снова.",
+        429: "Слишком много попыток. Подождите минуту и попробуйте снова.",
+    };
+    error.textContent = messages[status] || (status >= 500
+        ? "Сервер временно недоступен. Попробуйте позже."
+        : "Не удалось связаться с сервером. Проверьте соединение и попробуйте снова.");
+    error.setAttribute("tabindex", "-1");
+    error.focus({ preventScroll: true });
+}
+
+function resetRegistrationChallenge(form) {
+    const widget = form.querySelector(".cf-turnstile");
+    if (widget && window.turnstile) {
+        try {
+            window.turnstile.reset(widget);
+        } catch (_error) {
+            window.handleTurnstileError?.();
+        }
+    }
+}
+
+document.body.addEventListener("htmx:afterRequest", (event) => {
+    const form = event.detail.elt;
+    if (!form?.matches?.("#login-form, #register-form")) return;
+    finishAuthRequest(form);
+    const xhr = event.detail.xhr;
+    if (xhr?.getResponseHeader("HX-Redirect")) return;
+    if (!xhr || xhr.status === 0 || xhr.status >= 400) {
+        showAuthRequestError(form, xhr?.status || 0);
+    }
+    // Even a 200 validation error has consumed the one-use Turnstile token.
+    if (form.id === "register-form") resetRegistrationChallenge(form);
 });
+
+for (const eventName of ["htmx:sendError", "htmx:timeout"]) {
+    document.body.addEventListener(eventName, (event) => {
+        const form = event.detail.elt;
+        if (!form?.matches?.("#login-form, #register-form")) return;
+        finishAuthRequest(form);
+        showAuthRequestError(form, 0);
+    });
+}
 
 document.body.addEventListener("htmx:afterSwap", (event) => {
     if (!event.detail.target?.matches?.("#login-error, #register-error")) return;
