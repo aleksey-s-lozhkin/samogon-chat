@@ -3,7 +3,7 @@
     class="modal {% if user.is_authenticated or modal_hidden %}hidden{% endif %}"
 >
     <div class="modal-content">
-        <section id="login-container">
+        <section id="login-container"{% if auth_register %} class="hidden"{% endif %}>
             <header class="modal-header">
                 <h2>Вход в чат</h2>
                 <p>Войдите, чтобы продолжить</p>
@@ -14,14 +14,14 @@
                     {% if github_oauth_enabled %}
                         <form method="post" action="{% url 'github_login' %}">
                             {% csrf_token %}
-                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <input type="hidden" name="next" value="{{ auth_next|default:request.get_full_path }}">
                             <button class="oauth-button" type="submit"><span aria-hidden="true">GH</span>Продолжить с GitHub</button>
                         </form>
                     {% endif %}
                     {% if google_oauth_enabled %}
                         <form method="post" action="{% url 'google_login' %}">
                             {% csrf_token %}
-                            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                            <input type="hidden" name="next" value="{{ auth_next|default:request.get_full_path }}">
                             <button class="oauth-button" type="submit"><span aria-hidden="true">G</span>Продолжить с Google</button>
                         </form>
                     {% endif %}
@@ -36,7 +36,7 @@
                 hx-swap="innerHTML"
             >
                 {% csrf_token %}
-                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <input type="hidden" name="next" value="{{ auth_next|default:request.get_full_path }}">
                 <div class="form-group">
                     <label for="login-username">Логин или email</label>
                     <input
@@ -83,7 +83,7 @@
             </div>
         </section>
 
-        <section id="register-container" class="hidden">
+        <section id="register-container"{% if not auth_register %} class="hidden"{% endif %}>
             <header class="modal-header">
                 <h2>Создание аккаунта</h2>
                 <p>Заполните данные для регистрации</p>
@@ -96,7 +96,7 @@
                 hx-swap="innerHTML"
             >
                 {% csrf_token %}
-                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <input type="hidden" name="next" value="{{ auth_next|default:request.get_full_path }}">
                 <div class="form-group">
                     <label for="register-username">Имя в чате</label>
                     <input
