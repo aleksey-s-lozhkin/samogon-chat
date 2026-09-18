@@ -142,6 +142,21 @@ def authentication_success(request, user):
     )
 
 
+@require_GET
+def auth_entry(request, mode="login"):
+    target = request.GET.get("next", "").strip()
+    if not target or not url_has_allowed_host_and_scheme(
+        target, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
+        target = reverse("chat:rooms")
+    if request.user.is_authenticated:
+        return redirect(target)
+    return render(request, "users/entry.html", {
+        "auth_next": target,
+        "auth_register": mode == "register",
+    })
+
+
 @require_POST
 def login_view(request):
     if not request_is_allowed(
