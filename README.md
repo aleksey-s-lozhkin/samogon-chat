@@ -86,6 +86,7 @@ docs/                 Архитектура, ТЗ, API и эксплуатац�
 - [Оглавление](docs/README.md)
 - [Архитектура](docs/architecture.md)
 - [Техническое задание и roadmap](docs/product-specification.md)
+- [Текущий статус релиза](docs/release-status.md)
 - [Развёртывание](docs/deployment.md)
 
 После обновления старых заметок с вложениями один раз выполните

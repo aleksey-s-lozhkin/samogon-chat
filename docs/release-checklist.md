@@ -1,35 +1,59 @@
 # Проверка release candidate
 
-Чек-лист выполняется на production-хосте до финального merge. Команды не
-выводят пароли, cookies и содержимое сообщений в отчёты. Временная комната и
-учётные записи нагрузки удаляются сразу после замера.
+Чек-лист выполняется на production-хосте один раз для задеплоенного кандидата.
+Секреты, cookies и тексты сообщений не копируются в отчёт. Не повторяйте
+успешный этап без изменения затрагивающего его кода или конфигурации.
 
-## 1. Резервная копия и пробное восстановление
+## 0. Быстрый preflight
 
-Скрипт читает рабочую базу, сохраняет dump PostgreSQL и архив media, затем
-восстанавливает dump во временный PostgreSQL-контейнер. Production-база при
-этом не изменяется.
+Зафиксируйте точный образ и убедитесь, что сервисы готовы:
 
 ```bash
+docker inspect samogon-web --format '{{.Config.Image}}'
+docker ps --format 'table {{.Names}}\t{{.Status}}' \
+  --filter name=samogon-web \
+  --filter name=samogon-worker \
+  --filter name=postgres \
+  --filter name=redis
+curl -fsS https://sam.pyconstrictor.ru/health/live/
+curl -fsS https://sam.pyconstrictor.ru/health/ready/
+```
+
+Если readiness не возвращает `status: ok`, остальные проверки не запускаются.
+
+## 1. Backup и пробное восстановление
+
+Сценарий читает production-базу, сохраняет dump PostgreSQL и media, затем
+восстанавливает dump в отдельный временный PostgreSQL-контейнер. Production-БД
+не изменяется.
+
+Получите сценарий из уже запущенного образа, чтобы не держать checkout
+репозитория на сервере:
+
+```bash
+docker cp \
+  samogon-web:/app/scripts/verify_backup_restore.sh \
+  /tmp/verify-samogon-backup.sh
+chmod 700 /tmp/verify-samogon-backup.sh
 sudo install -d -m 700 /srv/backups/samogon
-cd /srv/compose/samogon
-bash /path/to/repository/scripts/verify_backup_restore.sh \
+sudo /tmp/verify-samogon-backup.sh \
   --source-container postgres \
   --database samogon \
   --media-dir /srv/data/samogon/media \
   --output-dir /srv/backups/samogon
 ```
 
-Успешный результат заканчивается строкой
-`Backup and isolated restore verified`. После проверки нужно перенести dump,
-media-архив и файл SHA-256 на отдельный защищённый носитель. Копия на том же
-сервере не защищает от потери самого сервера.
+Успех заканчивается строкой `Backup and isolated restore verified`. Dump,
+media-архив и SHA-256 нужно перенести на отдельный защищённый носитель: копия
+на production-хосте не защищает от потери самого сервера.
 
-## 2. Подготовка временных клиентов нагрузки
+## 2. Временные клиенты нагрузки
 
-Команда создаёт закрытую комнату `release-audit`, 60 пользователей с
-непригодными для входа паролями и короткоживущие Django-сессии. Файл сессий
-создаётся с правами `0600`.
+Файл `/tmp/release-audit-sessions.json` находится внутри контейнера и исчезает
+при каждом deploy. Постоянная защищённая копия между deploy хранится только на
+хосте: `/srv/config/release-audit-sessions.json` с правами `0600`.
+
+### Если audit-комната ещё не создавалась
 
 ```bash
 docker exec samogon-web python manage.py release_audit_accounts prepare \
@@ -44,18 +68,40 @@ sudo docker cp \
 sudo chmod 600 /srv/config/release-audit-sessions.json
 ```
 
-## 3. Нагрузочный замер
+Audit-пользователи имеют непригодные для входа пароли. Созданные сессии
+действуют четыре часа.
 
-Запускать генератор отдельным контейнером, чтобы его CPU/RAM не попали в
-метрики `samogon-web`. Укажите точный SHA-образ текущего релиза вместо
-`IMAGE_SHA`.
+### Если после подготовки выполнялся deploy
+
+Не создавайте пользователей повторно. Верните защищённый файл с хоста в новый
+контейнер и проверьте сессии:
+
+```bash
+sudo docker cp \
+  /srv/config/release-audit-sessions.json \
+  samogon-web:/tmp/release-audit-sessions.json
+
+docker exec samogon-web python manage.py shell -c \
+'import json; from django.contrib.sessions.models import Session; from django.utils import timezone; d=json.load(open("/tmp/release-audit-sessions.json")); keys=[x["sessionid"] for x in d]; print("Всего:",len(keys),"действующих:",Session.objects.filter(session_key__in=keys,expire_date__gt=timezone.now()).count())'
+```
+
+Продолжайте только при `Всего: 60 действующих: 60`. Если файл отсутствует на
+хосте или сессии истекли, сначала выполните cleanup по сохранившемуся файлу,
+затем один раз повторите prepare.
+
+## 3. Нагрузка 30 + 30
+
+Нагрузочный контейнер запускается отдельно, чтобы его CPU/RAM не попали в
+метрики приложения. Вместо `CURRENT_IMAGE` подставьте точный результат команды
+из preflight. Семён в этот замер не включается: модель проверяется отдельным
+коротким запуском и не должна маскировать пропускную способность чата.
 
 ```bash
 docker run --rm \
   --network infra \
   --entrypoint python \
   --volume /srv/config/release-audit-sessions.json:/run/audit-sessions.json:ro \
-  IMAGE_SHA \
+  CURRENT_IMAGE \
   /app/scripts/performance_audit.py \
   --base-url http://samogon-web:8000 \
   --host-header sam.pyconstrictor.ru \
@@ -64,24 +110,88 @@ docker run --rm \
   --credentials /run/audit-sessions.json \
   --active-clients 30 \
   --idle-clients 30 \
+  --connection-interval 0.25 \
   --hold-seconds 60 \
-  --bartender-samples 3
+  --bartender-samples 0 \
+  --timeout 30
 ```
 
-Во втором терминале во время замера сохранить показатели контейнеров:
+Во втором терминале во время удержания соединений:
 
 ```bash
-docker stats --no-stream samogon-web samogon-worker postgres redis
+docker stats --no-stream samogon-web samogon-worker postgres redis nginx
+docker inspect samogon-web \
+  --format 'restarts={{.RestartCount}} oom={{.State.OOMKilled}} health={{.State.Health.Status}}'
 ```
 
-Отчёт должен содержать `status: ok`, 60 успешных подключений и p50/p95 для
-HTTP, WebSocket-соединения, сообщений и Семёна. Результаты и снимок
-`docker stats` сохраняются в журнале релиза. Если узкое место не подтверждено,
-Redis-кэш истории и профилей перед релизом не добавляется.
+Критерий прохождения: `status: ok`, 60 подключений, `errors: []`, без restart,
+OOM и потери readiness. p50/p95 и снимок ресурсов сохраняются в журнале релиза.
+Если тест не прошёл, не повторяйте его вслепую: один раз сохраните JSON ошибки,
+`docker logs --since 10m samogon-web` и `docker stats`, затем исправляйте
+конкретный этап.
 
-## 4. Удаление тестовых данных
+## 4. Отдельная проверка Семёна
+
+После успешных 30 + 30 выполните короткий запуск одним клиентом:
 
 ```bash
+docker run --rm \
+  --network infra \
+  --entrypoint python \
+  --volume /srv/config/release-audit-sessions.json:/run/audit-sessions.json:ro \
+  CURRENT_IMAGE \
+  /app/scripts/performance_audit.py \
+  --base-url http://samogon-web:8000 \
+  --host-header sam.pyconstrictor.ru \
+  --forwarded-proto https \
+  --room release-audit \
+  --credentials /run/audit-sessions.json \
+  --active-clients 1 \
+  --idle-clients 0 \
+  --connection-interval 0 \
+  --hold-seconds 0 \
+  --bartender-samples 3 \
+  --bartender-timeout 180
+```
+
+## 5. Production smoke
+
+Публичную и авторизованную границу проверяйте тем же образом релиза:
+
+```bash
+docker run --rm \
+  --network infra \
+  --entrypoint python \
+  --volume /srv/config/release-audit-sessions.json:/run/audit-sessions.json:ro \
+  CURRENT_IMAGE \
+  /app/scripts/production_smoke.py \
+  --base-url https://sam.pyconstrictor.ru \
+  --room release-audit \
+  --credentials /run/audit-sessions.json
+```
+
+Затем в двух обычных аккаунтах проверьте только критический маршрут:
+
+1. Общая, личная и закрытая беседа.
+2. Ответ Семёна и состояние фонового задания.
+3. Изображение или документ, одно аудиосообщение, реакция и ответ.
+4. Одно Web Push на реальном устройстве.
+5. Мобильная клавиатура: composer остаётся видимым после ввода и закрытия.
+6. Последние логи web/worker не содержат новой необработанной ошибки.
+
+OAuth, Turnstile и полная матрица Push повторяются только после изменения их
+кода или production-конфигурации.
+
+## 6. Cleanup
+
+После всех проверок файл с хоста нужно вернуть в контейнер, потому что `/tmp`
+мог исчезнуть при deploy:
+
+```bash
+sudo docker cp \
+  /srv/config/release-audit-sessions.json \
+  samogon-web:/tmp/release-audit-sessions.json
+
 docker exec samogon-web python manage.py release_audit_accounts cleanup \
   --credentials /tmp/release-audit-sessions.json \
   --room-slug release-audit \
@@ -90,47 +200,14 @@ docker exec samogon-web python manage.py release_audit_accounts cleanup \
 sudo rm -- /srv/config/release-audit-sessions.json
 ```
 
-После команд убедиться, что оба файла с сессиями исчезли. Они не размещаются
-в каталоге media и не могут быть отданы веб-сервером.
+Cleanup удаляет только комнату `release-audit`, временных audit-пользователей,
+их сессии и защищённый файл. После него production smoke выполняется только в
+публичном режиме либо с обычным тестовым аккаунтом.
 
-## 5. Production smoke-test
+## 7. VoiceOver
 
-Сначала выполнить безопасные проверки публичной границы:
-
-```bash
-python scripts/production_smoke.py --base-url https://sam.pyconstrictor.ru
-```
-
-Для проверки авторизованной страницы и WebSocket временно подготовить audit
-сессии, как в пункте 2, и выполнить скрипт из сети `infra` либо передать ему
-защищённый файл сессий:
-
-```bash
-python scripts/production_smoke.py \
-  --base-url https://sam.pyconstrictor.ru \
-  --room release-audit \
-  --credentials /secure/path/audit-sessions.json
-```
-
-Затем вручную проверить в двух обычных аккаунтах:
-
-1. GitHub OAuth и Google OAuth с возвратом в исходную комнату.
-2. Регистрацию с Turnstile и восстановление пароля.
-3. Общую комнату, личное сообщение и закрытую беседу.
-4. Ответ Семёна и состояние его фонового задания.
-5. Вложение изображения и документа, реакцию, ответ и жалобу.
-6. Web Push при заблокированном экране Android и iPhone PWA.
-7. Установку/повторный запуск PWA и работу мобильной клавиатуры.
-8. `/health/live/`, `/health/ready/`, состояние web/worker и последние логи.
-
-## 6. VoiceOver
-
-VoiceOver — встроенное чтение экрана Apple. На iPhone оно включается в
-`Настройки → Универсальный доступ → VoiceOver`; на Mac — сочетанием
-`Command+F5`.
-
-Не глядя на экран, пройти вход, регистрацию и восстановление пароля. Проверить,
-что VoiceOver называет каждое поле и кнопку, сообщает об ошибках, переводит
-фокус к первой ошибке и позволяет исправить её. Отдельно проверить показ
-пароля, Caps Lock, переключение вход/регистрация и OAuth-кнопки. Результат
-записать в журнал релиза: устройство, версия ОС, сценарий и найденные дефекты.
+Один раз до открытой беты включите VoiceOver на iPhone или Mac и без взгляда
+на экран пройдите вход, регистрацию и восстановление пароля. Проверяются
+названия полей и кнопок, сообщение об ошибке, переход к первой ошибке,
+исправление значения, показ пароля и OAuth-кнопки. Найденный блокирующий дефект
+исправляется до релиза; косметический заносится в post-beta backlog.
