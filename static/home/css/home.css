@@ -251,3 +251,13 @@ body.is-ios .install-platform[data-platform="android"] { display: none; }
     0%, 100% { opacity: .35; }
     50% { opacity: 1; }
 }
+
+/* A warm, consistent identity across the welcome screen. */
+.brand-mark { padding:0; border:0; background:#211d19; border-radius:11px; }
+.bar-card { border-top:2px solid var(--amber); background:var(--home-surface); }
+.feature { background:var(--home-surface); border-radius:16px; }
+.feature-icon { color:var(--amber-light); }
+.button, .install-dialog-close { min-height:44px; }
+.install-dialog-close { min-width:44px; }
+
+.feature-icon { display:inline; float:right; font-size:20px; margin-left:8px; }

@@ -1,12 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Самогон">
-  <rect width="512" height="512" rx="112" fill="#252525"/>
-  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <path d="m137 153-65 103 65 103" stroke="#f2e5d4" stroke-width="30"/>
-    <path d="m375 153 65 103-65 103" stroke="#f2e5d4" stroke-width="30"/>
-    <g stroke="#c6753a" stroke-width="22">
-      <path d="M216 199c-15-14-45-14-53 7-8 23 9 36 31 44 24 8 34 26 26 48-9 26-42 31-62 13"/>
-      <path d="m235 322 25-132 25 132M244 274h32"/>
-      <path d="M307 322V190l27 72 27-72v132"/>
-    </g>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><rect width="512" height="512" fill="#211d19"/><path d="M216 139v-15a40 40 0 0 1 80 0v15" fill="none" stroke="#edb66d" stroke-width="22"/><path d="m182 169 30-30h88l30 30 17 185H165z" fill="#e6a552"/><path d="M194 187h124l12 145H182z" fill="#302820"/><path d="m218 231 27 25-27 25m48 0h30" fill="none" stroke="#ffe6ae" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/><path d="M164 368h184" stroke="#edb66d" stroke-width="22" stroke-linecap="round"/></svg>

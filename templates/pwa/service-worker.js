@@ -1,8 +1,10 @@
 {% load static %}
 
-const CACHE_NAME = "samogon-public-v3";
+const CACHE_NAME = "samogon-public-v4";
 const APP_SHELL = [
     "/offline/",
+    "{% static 'pwa/icon.svg' %}",
+    "{% static 'pwa/badge-96.png' %}",
     "{% static 'pwa/icon-192.png' %}",
     "{% static 'pwa/icon-512.png' %}",
     "{% static 'chat/images/favicon.svg' %}",
@@ -65,7 +67,7 @@ self.addEventListener("push", (event) => {
         {
             body: payload.body || "В Самогоне ждёт новая реплика.",
             icon: "{% static 'pwa/icon-192.png' %}",
-            badge: "{% static 'pwa/icon-192.png' %}",
+            badge: "{% static 'pwa/badge-96.png' %}",
             tag: payload.tag || "samogon-notification",
             renotify: true,
             data: {url: payload.url || "/chat/"},

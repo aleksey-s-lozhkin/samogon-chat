@@ -21,12 +21,7 @@
                 @click="roomsOpen = false"
             >
                 <span class="room-navigation-icon" aria-hidden="true">
-                    {% if chat_room.slug == "u-stoyki" %}<svg viewBox="0 0 24 24" focusable="false"><path d="M4 8h16M6 8v11m12-11v11M8 13h8"/></svg>
-                    {% elif chat_room.slug == "vozle-bilyarda" %}<svg viewBox="0 0 24 24" focusable="false"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
-                    {% elif chat_room.slug == "kurilka" %}<svg viewBox="0 0 24 24" focusable="false"><path d="M4 15h13v4H4zM17 15h3v4h-3zM7 12c0-2 2-2 2-4s-2-2-2-4M12 12c0-2 2-2 2-4"/></svg>
-                    {% elif chat_room.slug == "podval" %}<svg viewBox="0 0 24 24" focusable="false"><path d="M5 5h14v14H5zM8 8h8M8 12h5M8 16h3"/></svg>
-                    {% elif chat_room.slug == "posle-zakrytiya" %}<svg viewBox="0 0 24 24" focusable="false"><path d="M17.5 15.5A7 7 0 0 1 9 6a7 7 0 1 0 8.5 9.5Z"/></svg>
-                    {% else %}<svg viewBox="0 0 24 24" focusable="false"><path d="M5 5h14v11H9l-4 3V5Z"/></svg>{% endif %}
+                    {% include "chat/partials/conversation_icon.html" with icon_room=chat_room %}
                 </span>
                 <span>{{ chat_room.name }}</span>
                 {% if chat_room.unread_count %}
@@ -49,7 +44,7 @@
                         data-room-slug="{{ chat_room.slug }}"
                         @click="roomsOpen = false"
                     >
-                        <span class="room-navigation-icon" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M7 10V8a5 5 0 0 1 10 0v2m-9 0h8a2 2 0 0 1 2 2v7H6v-7a2 2 0 0 1 2-2Z"/></svg></span>
+                        <span class="room-navigation-icon" aria-hidden="true">{% include "chat/partials/conversation_icon.html" with icon_room=chat_room %}</span>
                         <span class="room-navigation-copy">
                             <span>{{ chat_room.name }}</span>
                             <small>

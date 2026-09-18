@@ -866,6 +866,7 @@ function addMessage(data) {
 
     const message = document.createElement("div");
     message.className = "message";
+    message.classList.toggle("from-bartender", normalizeUsername(data.username) === normalizeUsername(BARTENDER_USERNAME));
     if (data.id) {
         message.dataset.messageId = String(data.id);
     }
