@@ -9,6 +9,8 @@ from django.utils import timezone
 from chat.models import BartenderJob, Message, MessageReport, Room
 from users.models import User
 
+from .storage import SamogonManifestStaticFilesStorage
+
 
 class AdminDiagnosticsTests(TestCase):
     @classmethod
@@ -90,6 +92,14 @@ class AdminDiagnosticsTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertIn(reverse("admin:login"), response.url)
+
+    def test_admin_index_renders(self):
+        self.client.force_login(self.superuser)
+
+        response = self.client.get(reverse("admin:index"), secure=True)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Самогон")
 
     def test_admin_login_returns_to_admin(self):
         response = self.client.post(
@@ -187,3 +197,16 @@ class AdminDiagnosticsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, reverse("admin_export_messages"))
+
+
+class AdminStaticStorageTests(TestCase):
+    def test_jazzmin_theme_directory_does_not_require_manifest_entry(self):
+        storage = SamogonManifestStaticFilesStorage(
+            location="/tmp/samogon-static-storage-test",
+            base_url="/static/",
+        )
+
+        self.assertEqual(
+            storage.url("vendor/bootswatch"),
+            "/static/vendor/bootswatch",
+        )

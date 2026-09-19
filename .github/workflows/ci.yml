@@ -27,6 +27,15 @@ jobs:
       - name: Check Django configuration
         run: poetry run python manage.py check
 
+      - name: Check production static manifest
+        env:
+          DEBUG: "0"
+          ALLOWED_HOSTS: testserver
+          SECRET_KEY: ci-only-static-manifest-secret-key-with-sufficient-length
+        run: |
+          poetry run python manage.py collectstatic --noinput --clear
+          poetry run python manage.py test config.test_admin.AdminDiagnosticsTests.test_admin_index_renders
+
       - name: Run tests
         run: poetry run python manage.py test
 
