@@ -351,6 +351,9 @@ def check_registration_retry(playwright, server):
                 const widget = document.createElement('div');
                 widget.className = 'cf-turnstile';
                 document.querySelector('#register-form').append(widget);
+                const token = document.createElement('input');
+                token.type = 'hidden'; token.name = 'cf-turnstile-response'; token.value = 'test-token';
+                document.querySelector('#register-form').append(token);
                 window.challengeResets = 0;
                 window.turnstile = {reset: () => window.challengeResets++};
             }""")
@@ -378,6 +381,37 @@ def check_registration_retry(playwright, server):
             browser.close()
 
 
+def check_auth_without_htmx(playwright, server):
+    for engine in (playwright.chromium, playwright.webkit):
+        browser = engine.launch()
+        try:
+            for javascript in (False, True):
+                context = browser.new_context(java_script_enabled=javascript, viewport={"width": 390, "height": 844})
+                page = context.new_page()
+                page.route("**/vendor/htmx/**", lambda route: route.abort())
+                requests = []
+                page.on("request", lambda request: requests.append((request.method, request.url)))
+                page.goto(f"{server.base_url}/accounts/login/?next=/users/profile/")
+                page.locator("#login-username").fill(USERNAME)
+                page.locator("#login-password").fill(PASSWORD)
+                page.locator('#login-form button[type="submit"]').click()
+                page.wait_for_url(f"{server.base_url}/users/profile/")
+                assert any(method == "POST" and url.endswith("/users/login/") for method, url in requests)
+                assert all(PASSWORD not in url and "password=" not in url for _, url in requests)
+                context.clear_cookies()
+                page.goto(f"{server.base_url}/accounts/signup/")
+                page.locator("#register-username").fill(f"native-{engine.name}-{javascript}")
+                page.locator("#register-email").fill(f"native-{engine.name}-{javascript}@example.invalid")
+                page.locator("#register-password").fill(PASSWORD)
+                page.locator('#register-form button[type="submit"]').click()
+                page.wait_for_url(f"{server.base_url}/chat/")
+                assert any(method == "POST" and url.endswith("/users/register/") for method, url in requests)
+                assert all("password=" not in url and "email=" not in url for _, url in requests)
+                context.close()
+        finally:
+            browser.close()
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix="samogon-browser-smoke-") as temporary:
         environment = os.environ.copy()
@@ -388,6 +422,7 @@ def main():
                 "DATABASE_URL": "",
                 "REDIS_URL": "",
                 "DEBUG": "1",
+                "REGISTRATION_OPEN": "1",
                 "VAPID_PUBLIC_KEY": "smoke-public-key",
                 "VAPID_PRIVATE_KEY": "smoke-private-key",
             }
@@ -399,6 +434,7 @@ def main():
             from playwright.sync_api import sync_playwright
 
             with sync_playwright() as playwright:
+                check_auth_without_htmx(playwright, server)
                 check_registration_retry(playwright, server)
                 check_auth_entry(playwright, server)
                 run_chromium_flow(playwright, server)

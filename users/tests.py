@@ -622,6 +622,45 @@ class AuthenticationHtmxTests(TestCase):
         )
         self.htmx_headers = {"HTTP_HX_REQUEST": "true"}
 
+    def test_native_login_uses_post_and_redirects_without_htmx(self):
+        response = self.client.get("/accounts/login/")
+        self.assertContains(response, 'method="post"')
+        self.assertContains(response, 'action="/users/login/"')
+        self.assertContains(response, 'action="/users/register/"')
+        self.assertNotContains(response, "unpkg.com")
+        response = self.client.post("/users/login/", {
+            "identifier": "alex", "password": "test-password", "next": "/users/profile/"
+        }, HTTP_ACCEPT="text/html")
+        self.assertRedirects(response, "/users/profile/")
+
+    def test_native_login_error_is_styled_and_does_not_echo_password(self):
+        response = self.client.post("/users/login/", {
+            "identifier": "alex", "password": "private-wrong-password"
+        }, HTTP_ACCEPT="text/html")
+        self.assertEqual(response.status_code, 400)
+        self.assertTemplateUsed(response, "users/entry.html")
+        self.assertNotContains(response, "private-wrong-password", status_code=400)
+
+    @override_settings(REGISTRATION_OPEN=True)
+    @patch("users.views.verify_turnstile", return_value=True)
+    def test_native_registration_redirects_without_htmx(self, verify):
+        response = self.client.post("/users/register/", {
+            "username": "native-user", "email": "native@example.invalid",
+            "password": "Safe-new-password-2026", "next": "/users/profile/"
+        }, HTTP_ACCEPT="text/html")
+        self.assertRedirects(response, "/users/profile/")
+        verify.assert_called_once()
+
+    @patch("users.views.verify_turnstile", return_value=False)
+    def test_native_registration_still_requires_challenge(self, verify):
+        response = self.client.post("/users/register/", {
+            "username": "native-user", "email": "native@example.invalid",
+            "password": "Safe-new-password-2026"
+        }, HTTP_ACCEPT="text/html")
+        self.assertEqual(response.status_code, 400)
+        self.assertTemplateUsed(response, "users/entry.html")
+        self.assertFalse(User.objects.filter(username="native-user").exists())
+
     def test_profile_guest_gets_styled_login_and_returns_after_login(self):
         response = self.client.get("/users/profile/", follow=True)
         self.assertTemplateUsed(response, "users/entry.html")
