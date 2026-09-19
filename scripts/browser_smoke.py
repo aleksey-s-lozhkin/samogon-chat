@@ -16,6 +16,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ARTIFACTS_DIR = PROJECT_ROOT / "test-results" / "browser-smoke"
 USERNAME = "smoke-owner"
 PASSWORD = "Smoke-test-only-2026"
+ADMIN_USERNAME = "smoke-admin"
 
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -91,6 +92,11 @@ def prepare_database(environment):
         password=PASSWORD,
         welcome_pending=False,
     )
+    User.objects.create_superuser(
+        username=ADMIN_USERNAME,
+        email="smoke-admin@example.invalid",
+        password=PASSWORD,
+    )
     invited_by = User.objects.create_user(
         username="smoke-host",
         password=PASSWORD,
@@ -142,6 +148,54 @@ def login(page, base_url):
     page.locator("#login-form button[type=submit]").click()
     page.wait_for_url(f"{base_url}/chat/?auth=login")
     page.locator("#login-modal").wait_for(state="detached")
+
+
+def run_admin_flow(playwright, server):
+    """Проверяет кастомную админку на обычной и мобильной ширине."""
+    browser = playwright.chromium.launch()
+    context = browser.new_context(viewport={"width": 1440, "height": 900})
+    page = context.new_page()
+    try:
+        page.goto(f"{server.base_url}/admin/")
+        page.locator('input[name="username"]').fill(ADMIN_USERNAME)
+        page.locator('input[name="password"]').fill(PASSWORD)
+        with page.expect_navigation():
+            page.locator('button[type="submit"], input[type="submit"]').click()
+        if page.url != f"{server.base_url}/admin/":
+            raise AssertionError(f"Вход в админку перенаправил на неожиданный адрес: {page.url}")
+
+        page.goto(f"{server.base_url}/admin/diagnostics/")
+        page.get_by_role("heading", name="Статистика и диагностика").wait_for()
+        page.get_by_text("Активность за 14 дней", exact=True).wait_for()
+        page.get_by_role("link", name="Выгрузить сообщения").wait_for()
+
+        colors = page.locator(".samogon-metric-card").first.evaluate(
+            "element => ({background: getComputedStyle(element).backgroundColor, "
+            "border: getComputedStyle(element).borderColor})"
+        )
+        if colors["background"] == "rgba(0, 0, 0, 0)":
+            raise AssertionError("Карточки статистики потеряли фон темы")
+
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.wait_for_timeout(100)
+        geometry = page.locator(".samogon-admin-page").evaluate(
+            "element => ({right: element.getBoundingClientRect().right, viewport: innerWidth, "
+            "scrollWidth: document.documentElement.scrollWidth})"
+        )
+        if geometry["right"] > geometry["viewport"] + 1 or geometry["scrollWidth"] > geometry["viewport"] + 1:
+            raise AssertionError(f"Админка вышла за мобильный viewport: {geometry}")
+
+        page.get_by_role("link", name="Выгрузить сообщения").click()
+        page.get_by_role("heading", name="Выгрузка сообщений").wait_for()
+        page.get_by_label("Добавить текст сообщений").check()
+        page.get_by_label("Скрыть email, IP, ссылки и упоминания").check()
+    except Exception:
+        ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=ARTIFACTS_DIR / "admin-failure.png", full_page=True)
+        raise
+    finally:
+        context.close()
+        browser.close()
 
 
 def open_chat(page, room_slug):
@@ -459,6 +513,7 @@ def main():
                 check_auth_without_htmx(playwright, server)
                 check_registration_retry(playwright, server)
                 check_auth_entry(playwright, server)
+                run_admin_flow(playwright, server)
                 run_chromium_flow(playwright, server)
                 run_mobile_layout(
                     playwright,
