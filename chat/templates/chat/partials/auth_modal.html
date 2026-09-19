@@ -14,14 +14,14 @@
                     {% if github_oauth_enabled %}
                         <form method="post" action="{% url 'github_login' %}">
                             {% csrf_token %}
-                            <input type="hidden" name="next" value="{{ auth_next|default:request.get_full_path }}">
+                            <input type="hidden" name="next" value="{{ auth_next|default:request.path }}">
                             <button class="oauth-button" type="submit"><span aria-hidden="true">GH</span>Продолжить с GitHub</button>
                         </form>
                     {% endif %}
                     {% if google_oauth_enabled %}
                         <form method="post" action="{% url 'google_login' %}">
                             {% csrf_token %}
-                            <input type="hidden" name="next" value="{{ auth_next|default:request.get_full_path }}">
+                            <input type="hidden" name="next" value="{{ auth_next|default:request.path }}">
                             <button class="oauth-button" type="submit"><span aria-hidden="true">G</span>Продолжить с Google</button>
                         </form>
                     {% endif %}
@@ -31,12 +31,14 @@
 
             <form
                 id="login-form"
+                method="post"
+                action="{% url 'login' %}"
                 hx-post="{% url 'login' %}"
                 hx-target="#login-error"
                 hx-swap="innerHTML"
             >
                 {% csrf_token %}
-                <input type="hidden" name="next" value="{{ auth_next|default:request.get_full_path }}">
+                <input type="hidden" name="next" value="{{ auth_next|default:request.path }}">
                 <div class="form-group">
                     <label for="login-username">Логин или email</label>
                     <input
@@ -68,7 +70,7 @@
                     </div>
                     <p class="caps-lock-warning hidden" data-caps-lock role="status">Включён Caps Lock</p>
                 </div>
-                <div id="login-error" class="form-error" role="alert" aria-live="polite"></div>
+                <div id="login-error" class="form-error" role="alert" aria-live="polite">{{ auth_error }}</div>
                 <button type="submit" class="primary-button" data-pending-text="Входим…">Войти</button>
             </form>
 
@@ -77,9 +79,9 @@
 
             <div class="modal-footer">
                 Нет аккаунта?
-                <button type="button" id="show-register" class="link-button">
+                <a href="{% url 'account_signup' %}" id="show-register" class="link-button">
                     Зарегистрироваться
-                </button>
+                </a>
             </div>
         </section>
 
@@ -91,12 +93,14 @@
 
             <form
                 id="register-form"
+                method="post"
+                action="{% url 'register' %}"
                 hx-post="{% url 'register' %}"
                 hx-target="#register-error"
                 hx-swap="innerHTML"
             >
                 {% csrf_token %}
-                <input type="hidden" name="next" value="{{ auth_next|default:request.get_full_path }}">
+                <input type="hidden" name="next" value="{{ auth_next|default:request.path }}">
                 <div class="form-group">
                     <label for="register-username">Имя в чате</label>
                     <input
@@ -169,9 +173,13 @@
                         data-theme="dark"
                         data-retry="never"
                         data-error-callback="handleTurnstileError"
+                        data-callback="handleTurnstileSuccess"
+                        data-expired-callback="handleTurnstileExpired"
                     ></div>
+                    <p id="turnstile-status" role="status" aria-live="polite">Загружаем проверку безопасности…</p>
+                    <noscript><p>Для проверки безопасности включите JavaScript в браузере.</p></noscript>
                 {% endif %}
-                <div id="register-error" class="form-error" role="alert" aria-live="polite"></div>
+                <div id="register-error" class="form-error" role="alert" aria-live="polite">{{ auth_error }}</div>
                 <button type="submit" class="primary-button" data-pending-text="Создаём…">Создать аккаунт</button>
             </form>
 
@@ -182,7 +190,7 @@
 
             <div class="modal-footer">
                 Уже есть аккаунт?
-                <button type="button" id="show-login" class="link-button">Войти</button>
+                <a href="{% url 'account_login' %}" id="show-login" class="link-button">Войти</a>
             </div>
         </section>
     </div>
@@ -190,15 +198,29 @@
 
 {% if turnstile_site_key %}
     <script>
+        window.handleTurnstileSuccess = function () {
+            document.getElementById("turnstile-status").textContent = "Проверка безопасности пройдена.";
+        };
+        window.handleTurnstileExpired = function () {
+            document.getElementById("turnstile-status").textContent = "Проверка устарела. Дождитесь повторной проверки.";
+        };
         window.handleTurnstileError = function () {
+            document.getElementById("turnstile-status").textContent = "Проверка безопасности не загрузилась. Проверьте соединение или блокировщик содержимого и обновите страницу.";
             const error = document.getElementById("register-error");
             if (error) {
                 error.textContent = "Проверка безопасности временно недоступна. Обновите страницу или попробуйте позже.";
             }
             return true;
         };
+        window.setTimeout(function () {
+            const token = document.querySelector('[name="cf-turnstile-response"]');
+            if (!window.turnstile && !token?.value) {
+                window.handleTurnstileError();
+            }
+        }, 15000);
     </script>
     <script
+        onerror="handleTurnstileError()"
         src="https://challenges.cloudflare.com/turnstile/v0/api.js"
         async
         defer
