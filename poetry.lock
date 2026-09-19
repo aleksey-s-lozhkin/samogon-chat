@@ -1034,6 +1034,21 @@ socialaccount = ["oauthlib (>=3.3.0,<4)", "pyjwt[crypto] (>=2.0,<3)", "requests 
 steam = ["python3-openid (>=3.0.8,<4)"]
 
 [[package]]
+name = "django-jazzmin"
+version = "3.0.5"
+description = "Drop-in theme for django admin, that utilises AdminLTE 3 & Bootstrap 5 to make yo' admin look jazzy"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "django_jazzmin-3.0.5-py3-none-any.whl", hash = "sha256:578fb1fc0a1b7e3b8472d2692ace60b1584ccd937c3828e2c9a89bdf94067f94"},
+    {file = "django_jazzmin-3.0.5.tar.gz", hash = "sha256:7e39b029bddbb60f3aaf9897bd009f39f8f2bdc8a7d86beed1e943706dd79692"},
+]
+
+[package.dependencies]
+django = ">=4.2"
+
+[[package]]
 name = "djangorestframework"
 version = "3.18.0"
 description = "Web APIs for Django, made easy."
@@ -2869,4 +2884,4 @@ testing = ["coverage[toml]", "zope.event", "zope.testing"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.14"
-content-hash = "2d5db41fb664b8b03859f55abdfc66c19cc331ff260fe86650c29005607eab09"
+content-hash = "bfda5d79abcacb72360dbf902959c1b97ba14074e3198d5af8136e38c1ebcf07"

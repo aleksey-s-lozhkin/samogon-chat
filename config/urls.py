@@ -7,6 +7,7 @@ from users.views import auth_entry, ComfortablePasswordResetView
 from django.contrib.auth import views as auth_views
 
 from config import settings
+from config.admin_views import admin_diagnostics, export_messages
 from config.views import (
     health_live,
     health_ready,
@@ -21,6 +22,16 @@ from config.views import (
 urlpatterns = [
     path("health/live/", health_live, name="health_live"),
     path("health/ready/", health_ready, name="health_ready"),
+    path(
+        "admin/diagnostics/",
+        admin.site.admin_view(admin_diagnostics),
+        name="admin_diagnostics",
+    ),
+    path(
+        "admin/exports/messages/",
+        admin.site.admin_view(export_messages),
+        name="admin_export_messages",
+    ),
     path("admin/", admin.site.urls),
     path("api/schema/", SpectacularAPIView.as_view(), name="api_schema"),
     path(

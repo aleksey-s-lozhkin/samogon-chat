@@ -1,0 +1,40 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+    &rsaquo; <a href="{% url 'admin_diagnostics' %}">Статистика</a>
+    &rsaquo; Выгрузка сообщений
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="samogon-admin-page samogon-export-page">
+    <div class="samogon-page-heading">
+        <div>
+            <p class="samogon-eyebrow">Файл для анализа</p>
+            <h1>{{ title }}</h1>
+            <p>По умолчанию выгружаются только метрики публичных сообщений без текста.</p>
+        </div>
+    </div>
+
+    <form method="post" class="samogon-export-form">
+        {% csrf_token %}
+        {% if form.non_field_errors %}<div class="errornote">{{ form.non_field_errors }}</div>{% endif %}
+        {% for field in form %}
+            <div class="samogon-form-row{% if field.widget_type == 'checkbox' %} samogon-checkbox-row{% endif %}">
+                {{ field.errors }}
+                {{ field }}
+                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                {% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}
+            </div>
+        {% endfor %}
+        <div class="samogon-privacy-note">
+            <strong>Важно:</strong> даже обезличенный файл с текстом сообщений следует считать чувствительным.
+            Файл формируется в памяти и скачивается браузером — на сервере копия не сохраняется.
+        </div>
+        <button class="button samogon-primary-action" type="submit">Сформировать и скачать</button>
+    </form>
+</div>
+{% endblock %}

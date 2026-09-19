@@ -4,6 +4,7 @@ from django.utils import timezone
 from .models import (
     Attachment,
     AtmosphereLine,
+    BartenderJob,
     Message,
     MessageReaction,
     MessageReport,
@@ -60,6 +61,9 @@ class RoomAdmin(admin.ModelAdmin):
 class MessageAdmin(admin.ModelAdmin):
     list_display = ("user", "room", "text", "hidden_at", "created_at")
     list_filter = ("room",)
+    search_fields = ("text", "user__username", "recipient__username")
+    list_select_related = ("user", "room", "recipient")
+    change_list_template = "admin/chat/message/change_list.html"
     actions = ("hide_messages", "restore_messages")
 
     @admin.action(description="Скрыть выбранные сообщения")
@@ -241,3 +245,49 @@ class ModerationEventAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+@admin.register(BartenderJob)
+class BartenderJobAdmin(admin.ModelAdmin):
+    """Очередь и ошибки Семёна доступны для диагностики без ручного редактирования."""
+
+    list_display = (
+        "created_at",
+        "status",
+        "error_code",
+        "user",
+        "room",
+        "private",
+        "duration_ms",
+    )
+    list_filter = ("status", "error_code", "private", "created_at")
+    search_fields = ("user__username", "room__name", "error_code")
+    list_select_related = ("user", "room", "question", "response")
+    readonly_fields = (
+        "id",
+        "user",
+        "room",
+        "question",
+        "response",
+        "private",
+        "status",
+        "error_code",
+        "created_at",
+        "started_at",
+        "finished_at",
+    )
+
+    @admin.display(description="Время, мс")
+    def duration_ms(self, job):
+        if not job.started_at or not job.finished_at:
+            return "—"
+        return round((job.finished_at - job.started_at).total_seconds() * 1000)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
