@@ -62,6 +62,8 @@ db.sqlite3
 db.sqlite3-journal
 # Пользовательские загрузки живут в volume/хранилище, а не в репозитории.
 media/
+# Результат collectstatic создаётся при запуске контейнера и в CI.
+staticfiles/
 
 # Flask stuff:
 instance/
