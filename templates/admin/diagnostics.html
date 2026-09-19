@@ -1,0 +1,97 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">{% translate 'Home' %}</a>
+    &rsaquo; Статистика
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="samogon-admin-page">
+    <div class="samogon-page-heading">
+        <div>
+            <p class="samogon-eyebrow">Состояние приложения</p>
+            <h1>{{ title }}</h1>
+            <p>Данные строятся по сохранённым записям. Системные исключения смотрите в Docker-логах.</p>
+        </div>
+        {% if can_export %}
+            <a class="button samogon-primary-action" href="{% url 'admin_export_messages' %}">
+                Выгрузить сообщения
+            </a>
+        {% endif %}
+    </div>
+
+    <section class="samogon-metric-grid" aria-label="Основные показатели">
+        {% for label, value in metrics %}
+            <article class="samogon-metric-card">
+                <span>{{ label }}</span>
+                <strong>{{ value }}</strong>
+            </article>
+        {% endfor %}
+    </section>
+
+    <div class="samogon-dashboard-grid">
+        <section class="samogon-panel">
+            <h2>Активность за 14 дней</h2>
+            <div class="samogon-activity-chart">
+                {% for item in activity %}
+                    <div class="samogon-activity-row">
+                        <time datetime="{{ item.day|date:'Y-m-d' }}">{{ item.day|date:"d.m" }}</time>
+                        <span class="samogon-activity-track">
+                            <span style="width: {{ item.width }}%"></span>
+                        </span>
+                        <strong>{{ item.count }}</strong>
+                    </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="samogon-panel">
+            <h2>Комнаты за 7 дней</h2>
+            <table class="samogon-table">
+                <thead><tr><th>Комната</th><th>Сообщения</th></tr></thead>
+                <tbody>
+                    {% for room in top_rooms %}
+                        <tr><td>{{ room.name }}</td><td>{{ room.recent_messages }}</td></tr>
+                    {% empty %}
+                        <tr><td colspan="2">Активности пока нет</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+
+        <section class="samogon-panel">
+            <h2>Семён за 7 дней</h2>
+            <dl class="samogon-status-list">
+                <div><dt>Готово</dt><dd>{{ job_counts.succeeded }}</dd></div>
+                <div><dt>В очереди</dt><dd>{{ job_counts.queued }}</dd></div>
+                <div><dt>Выполняется</dt><dd>{{ job_counts.started }}</dd></div>
+                <div><dt>Ошибки</dt><dd>{{ job_counts.failed }}</dd></div>
+            </dl>
+            <a href="{% url 'admin:chat_bartenderjob_changelist' %}?status__exact=failed">
+                Открыть журнал заданий
+            </a>
+        </section>
+
+        <section class="samogon-panel">
+            <h2>Последние ошибки Семёна</h2>
+            <table class="samogon-table">
+                <thead><tr><th>Время</th><th>Код</th><th>Комната</th></tr></thead>
+                <tbody>
+                    {% for job in recent_failures %}
+                        <tr>
+                            <td>{{ job.created_at|date:"d.m H:i" }}</td>
+                            <td><code>{{ job.error_code|default:"internal_error" }}</code></td>
+                            <td>{{ job.room.name }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="3">Ошибок за неделю нет</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+    </div>
+</div>
+{% endblock %}

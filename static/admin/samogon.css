@@ -1,0 +1,248 @@
+:root {
+    --samogon-ink: #f4e7d2;
+    --samogon-muted: #b9a58f;
+    --samogon-bg: #171311;
+    --samogon-panel: #251e1a;
+    --samogon-panel-soft: #30251f;
+    --samogon-border: #584536;
+    --samogon-amber: #c6753a;
+    --samogon-amber-bright: #e6a15f;
+}
+
+.main-header.navbar,
+.main-sidebar,
+.brand-link,
+.login-page {
+    background-color: var(--samogon-bg) !important;
+}
+
+.content-wrapper,
+body {
+    background: #1d1815 !important;
+}
+
+.brand-link,
+.nav-sidebar .nav-link,
+.navbar-nav .nav-link {
+    color: var(--samogon-ink) !important;
+}
+
+.nav-sidebar .nav-link.active,
+.btn-primary,
+.button.default,
+.samogon-primary-action {
+    border-color: var(--samogon-amber) !important;
+    background: var(--samogon-amber) !important;
+    color: #1c120c !important;
+}
+
+.nav-sidebar .nav-link:hover,
+.navbar-nav .nav-link:hover {
+    color: var(--samogon-amber-bright) !important;
+}
+
+.samogon-admin-page {
+    color: var(--samogon-ink);
+}
+
+.samogon-page-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.samogon-page-heading h1 {
+    margin: 0.15rem 0 0.4rem;
+    color: var(--samogon-ink);
+}
+
+.samogon-page-heading p {
+    margin: 0;
+    color: var(--samogon-muted);
+}
+
+.samogon-eyebrow {
+    color: var(--samogon-amber-bright) !important;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.samogon-primary-action {
+    display: inline-flex !important;
+    align-items: center;
+    min-height: 2.5rem;
+    border-radius: 0.6rem !important;
+    padding: 0.55rem 1rem !important;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.samogon-metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    gap: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.samogon-metric-card,
+.samogon-panel,
+.samogon-export-form {
+    border: 1px solid var(--samogon-border);
+    border-radius: 0.85rem;
+    background: var(--samogon-panel);
+    box-shadow: 0 14px 35px rgba(0, 0, 0, 0.18);
+}
+
+.samogon-metric-card {
+    padding: 1rem;
+}
+
+.samogon-metric-card span {
+    display: block;
+    color: var(--samogon-muted);
+    font-size: 0.8rem;
+}
+
+.samogon-metric-card strong {
+    display: block;
+    margin-top: 0.35rem;
+    color: var(--samogon-amber-bright);
+    font-size: 1.7rem;
+}
+
+.samogon-dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.samogon-panel {
+    padding: 1rem;
+}
+
+.samogon-panel h2 {
+    margin: 0 0 0.9rem;
+    color: var(--samogon-ink);
+    font-size: 1rem;
+}
+
+.samogon-activity-row {
+    display: grid;
+    grid-template-columns: 3rem minmax(4rem, 1fr) 2.5rem;
+    align-items: center;
+    gap: 0.65rem;
+    margin: 0.4rem 0;
+    color: var(--samogon-muted);
+}
+
+.samogon-activity-track {
+    height: 0.55rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: var(--samogon-panel-soft);
+}
+
+.samogon-activity-track span {
+    display: block;
+    min-width: 2px;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--samogon-amber);
+}
+
+.samogon-table {
+    width: 100%;
+    color: var(--samogon-ink);
+}
+
+.samogon-table th,
+.samogon-table td {
+    padding: 0.55rem;
+    border-bottom: 1px solid var(--samogon-border);
+    text-align: left;
+}
+
+.samogon-status-list div {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.45rem 0;
+    border-bottom: 1px solid var(--samogon-border);
+}
+
+.samogon-status-list dd {
+    color: var(--samogon-amber-bright);
+    font-weight: 700;
+}
+
+.samogon-export-form {
+    max-width: 760px;
+    padding: 1.2rem;
+}
+
+.samogon-form-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) minmax(220px, 1.4fr);
+    gap: 0.35rem 1rem;
+    align-items: center;
+    padding: 0.8rem 0;
+    border-bottom: 1px solid var(--samogon-border);
+}
+
+.samogon-form-row label {
+    grid-column: 1;
+    grid-row: 1;
+    color: var(--samogon-ink);
+    font-weight: 600;
+}
+
+.samogon-form-row select,
+.samogon-form-row input:not([type="checkbox"]) {
+    grid-column: 2;
+    min-height: 2.5rem;
+}
+
+.samogon-checkbox-row input {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: start;
+}
+
+.samogon-form-row .help {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--samogon-muted);
+}
+
+.samogon-privacy-note {
+    margin: 1rem 0;
+    border-left: 3px solid var(--samogon-amber);
+    padding: 0.75rem 1rem;
+    background: var(--samogon-panel-soft);
+    color: var(--samogon-muted);
+}
+
+@media (max-width: 760px) {
+    .samogon-dashboard-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .samogon-page-heading {
+        flex-direction: column;
+    }
+
+    .samogon-form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .samogon-form-row label,
+    .samogon-form-row select,
+    .samogon-form-row input:not([type="checkbox"]),
+    .samogon-checkbox-row input {
+        grid-column: 1;
+        grid-row: auto;
+    }
+}

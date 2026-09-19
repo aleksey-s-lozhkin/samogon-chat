@@ -32,6 +32,7 @@ CSRF_TRUSTED_ORIGINS = [
 
 INSTALLED_APPS = [
     'daphne',
+    'jazzmin',
 
     'django.contrib.admin',
     'django.contrib.auth',
@@ -51,6 +52,48 @@ INSTALLED_APPS = [
     'chat',
     'users',
 ]
+
+JAZZMIN_SETTINGS = {
+    "site_title": "Самогон — управление",
+    "site_header": "Самогон",
+    "site_brand": "Самогон",
+    "site_logo": "pwa/lantern.svg",
+    "login_logo": "pwa/lantern.svg",
+    "welcome_sign": "Управление Самогоном",
+    "copyright": "Самогон",
+    "search_model": ["users.User", "chat.Message"],
+    "topmenu_links": [
+        {"name": "Статистика", "url": "admin_diagnostics", "permissions": ["chat.view_message"]},
+        {"name": "Открыть чат", "url": "chat:rooms", "new_window": True},
+    ],
+    "show_sidebar": True,
+    "navigation_expanded": True,
+    "order_with_respect_to": [
+        "users",
+        "chat",
+        "chat.MessageReport",
+        "chat.Message",
+        "chat.BartenderJob",
+        "chat.Room",
+    ],
+    "icons": {
+        "users.User": "fas fa-users",
+        "users.PushSubscription": "fas fa-bell",
+        "chat.Room": "fas fa-comments",
+        "chat.Message": "fas fa-comment-dots",
+        "chat.MessageReport": "fas fa-flag",
+        "chat.ModerationEvent": "fas fa-shield-alt",
+        "chat.BartenderJob": "fas fa-robot",
+        "chat.Attachment": "fas fa-paperclip",
+        "chat.MessageReaction": "fas fa-heart",
+        "chat.AtmosphereLine": "fas fa-quote-left",
+    },
+    "custom_css": "admin/samogon.css",
+    "show_ui_builder": False,
+    "show_theme_chooser": False,
+    "changeform_format": "collapsible",
+    "related_modal_active": False,
+}
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
