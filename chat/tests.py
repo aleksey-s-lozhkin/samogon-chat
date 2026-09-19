@@ -1539,6 +1539,44 @@ class ChatApiTests(TestCase):
 
         self.assertEqual([item["message"] for item in response.json()["messages"]], ["public"])
 
+    def test_history_api_paginates_older_messages_without_gaps(self):
+        Message.objects.bulk_create([
+            Message(user=self.user, room=self.room, text=f"message-{index}")
+            for index in range(120)
+        ])
+        self.client.force_login(self.user)
+
+        first = self.client.get("/api/v1/chat/rooms/general/messages/?limit=50")
+        self.assertEqual(first.status_code, 200)
+        first_data = first.json()
+        self.assertTrue(first_data["has_more"])
+        self.assertEqual(
+            [item["message"] for item in first_data["messages"]],
+            [f"message-{index}" for index in range(70, 120)],
+        )
+
+        before = first_data["messages"][0]["id"]
+        second = self.client.get(
+            f"/api/v1/chat/rooms/general/messages/?limit=50&before={before}"
+        )
+        second_data = second.json()
+        self.assertTrue(second_data["has_more"])
+        self.assertEqual(
+            [item["message"] for item in second_data["messages"]],
+            [f"message-{index}" for index in range(20, 70)],
+        )
+
+        before = second_data["messages"][0]["id"]
+        third = self.client.get(
+            f"/api/v1/chat/rooms/general/messages/?limit=50&before={before}"
+        )
+        third_data = third.json()
+        self.assertFalse(third_data["has_more"])
+        self.assertEqual(
+            [item["message"] for item in third_data["messages"]],
+            [f"message-{index}" for index in range(20)],
+        )
+
     def test_api_creates_reply_and_inherits_direct_recipient(self):
         source = Message.objects.create(
             user=self.other,
@@ -1564,6 +1602,10 @@ class ChatApiTests(TestCase):
         self.client.force_login(self.user)
         self.assertEqual(
             self.client.get("/api/v1/chat/rooms/general/messages/?limit=101").status_code,
+            400,
+        )
+        self.assertEqual(
+            self.client.get("/api/v1/chat/rooms/general/messages/?before=bad").status_code,
             400,
         )
         response = self.client.post(
@@ -2983,6 +3025,7 @@ class ChatConsumerTests(TransactionTestCase):
                         "reply_to": None,
                     }
                 ],
+                "has_more": False,
             },
         )
         self.assertEqual(

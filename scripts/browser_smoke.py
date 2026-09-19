@@ -81,7 +81,7 @@ def prepare_database(environment):
     django.setup()
 
     from django.core.management import call_command
-    from chat.models import Room
+    from chat.models import Message, Room
     from users.models import User
 
     call_command("migrate", verbosity=0, interactive=False)
@@ -101,13 +101,17 @@ def prepare_database(environment):
         password=PASSWORD,
         welcome_pending=False,
     )
-    Room.objects.update_or_create(
+    main_room, _ = Room.objects.update_or_create(
         slug="u-stoyki",
         defaults={
             "name": "У стойки",
             "description": "Основная тестовая беседа.",
         },
     )
+    Message.objects.bulk_create([
+        Message(user=owner, room=main_room, text=f"history-{index:03d}")
+        for index in range(120)
+    ])
     Room.objects.update_or_create(
         slug="vozle-bilyarda",
         defaults={
@@ -178,6 +182,24 @@ def run_chromium_flow(playwright, server):
         login(page, server.base_url)
         open_chat(page, "u-stoyki")
         assert_composer_inside_viewport(page)
+        page.wait_for_function("() => document.querySelectorAll('.message').length === 50")
+        oldest_visible = page.locator(".message-text", has_text="history-070")
+        before_top = page.locator("#chat-log").evaluate("""element => {
+            element.scrollTop = 0;
+            return [...document.querySelectorAll('.message-text')]
+                .find(item => item.textContent === 'history-070')
+                .getBoundingClientRect().top;
+        }""")
+        page.wait_for_function("() => document.querySelectorAll('.message').length === 100")
+        after_top = oldest_visible.bounding_box()["y"]
+        if abs(after_top - before_top) > 5:
+            raise AssertionError(
+                "Подгрузка истории сдвинула читаемое сообщение: "
+                f"before={before_top}, after={after_top}"
+            )
+        page.locator("#chat-log").evaluate("element => { element.scrollTop = 0; }")
+        page.wait_for_function("() => document.querySelectorAll('.message').length === 120")
+        page.get_by_text("Это начало переписки", exact=True).wait_for()
         if "Смахните вправо" in (
             page.locator("#chat-message-input").get_attribute("placeholder") or ""
         ):

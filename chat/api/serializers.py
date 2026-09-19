@@ -36,6 +36,7 @@ class MessagesResponseSerializer(serializers.Serializer):
     api_version = serializers.CharField()
     room = RoomSerializer()
     messages = MessageSerializer(many=True)
+    has_more = serializers.BooleanField(required=False)
 
 
 class MessageCreateSerializer(serializers.Serializer):
