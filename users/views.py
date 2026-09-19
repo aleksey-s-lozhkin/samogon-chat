@@ -63,11 +63,25 @@ def registration_error_message(form):
     return " ".join(errors)
 
 
+def wants_auth_html(request):
+    return "text/html" in request.headers.get("Accept", "")
+
+
+def auth_html_error(request, message, status):
+    return render(request, "users/entry.html", {
+        "auth_next": get_safe_return_url(request),
+        "auth_register": request.path == reverse("register"),
+        "auth_error": message,
+    }, status=status)
+
+
 def rate_limit_error(request, message):
     """Возвращает понятную ошибку, не раскрывая детали лимита."""
     if is_htmx_request(request):
         return htmx_error(request, message, status=429)
 
+    if wants_auth_html(request):
+        return auth_html_error(request, message, 429)
     return JsonResponse({"success": False, "error": message}, status=429)
 
 
@@ -75,6 +89,8 @@ def authentication_error(request, message, status=400):
     """Возвращает ошибку формы в формате, который ждёт текущий клиент."""
     if is_htmx_request(request):
         return htmx_error(request, message, status=status)
+    if wants_auth_html(request):
+        return auth_html_error(request, message, status)
     return JsonResponse({"success": False, "error": message}, status=status)
 
 
@@ -133,6 +149,8 @@ def authentication_success(request, user):
     return_url = get_safe_return_url(request)
     if is_htmx_request(request):
         return HttpResponse(headers={"HX-Redirect": return_url})
+    if wants_auth_html(request):
+        return redirect(return_url)
     return JsonResponse(
         {
             "success": True,
@@ -185,6 +203,8 @@ def login_view(request):
         if is_htmx_request(request):
             return htmx_error(request, "Неверный логин или пароль")
 
+        if wants_auth_html(request):
+            return auth_html_error(request, "Неверный логин или пароль", 400)
         return JsonResponse(
             {
                 "success": False,
@@ -248,6 +268,9 @@ def register_view(request):
     if not form.is_valid():
         if is_htmx_request(request):
             return registration_form_error(request, form)
+
+        if wants_auth_html(request):
+            return auth_html_error(request, registration_error_message(form), 400)
 
         errors = {}
 

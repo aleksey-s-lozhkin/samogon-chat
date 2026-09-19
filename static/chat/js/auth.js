@@ -23,13 +23,15 @@ function csrfToken() {
     return document.querySelector("[name=csrfmiddlewaretoken]")?.value;
 }
 
-document.getElementById("show-register")?.addEventListener("click", () => {
+document.getElementById("show-register")?.addEventListener("click", (event) => {
+    event.preventDefault();
     document.getElementById("login-container").classList.add("hidden");
     document.getElementById("register-container").classList.remove("hidden");
     document.getElementById("register-username")?.focus();
 });
 
-document.getElementById("show-login")?.addEventListener("click", () => {
+document.getElementById("show-login")?.addEventListener("click", (event) => {
+    event.preventDefault();
     document.getElementById("register-container").classList.add("hidden");
     document.getElementById("login-container").classList.remove("hidden");
     document.getElementById("login-username")?.focus();
@@ -71,6 +73,12 @@ document.querySelectorAll("#login-form, #register-form").forEach((form) => {
             event.preventDefault();
             return;
         }
+        if (form.id === "register-form" && form.querySelector(".cf-turnstile")
+            && !form.querySelector('[name="cf-turnstile-response"]')?.value) {
+            event.preventDefault();
+            form.querySelector(".form-error").textContent = "Дождитесь проверки безопасности. Если она не появляется, проверьте соединение и обновите страницу.";
+            return;
+        }
         const button = form.querySelector('button[type="submit"]');
         if (!button) return;
         form.querySelectorAll(".field-error, .form-error").forEach((error) => {
@@ -85,6 +93,16 @@ document.querySelectorAll("#login-form, #register-form").forEach((form) => {
         button.disabled = true;
         button.setAttribute("aria-busy", "true");
     });
+});
+
+document.body.addEventListener("htmx:beforeRequest", (event) => {
+    const form = event.detail.elt;
+    if (form?.id === "register-form" && form.querySelector(".cf-turnstile")
+        && !form.querySelector('[name="cf-turnstile-response"]')?.value) {
+        event.preventDefault();
+        finishAuthRequest(form);
+        form.querySelector(".form-error").textContent = "Дождитесь проверки безопасности. Если она не появляется, проверьте соединение и обновите страницу.";
+    }
 });
 
 function finishAuthRequest(form) {
