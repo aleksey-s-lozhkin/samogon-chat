@@ -439,7 +439,7 @@ if not DEBUG:
         },
         "staticfiles": {
             "BACKEND": (
-                "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
+                "config.storage.SamogonManifestStaticFilesStorage"
             ),
         },
     }
