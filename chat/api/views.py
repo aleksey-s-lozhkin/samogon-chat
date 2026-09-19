@@ -92,7 +92,10 @@ def api_rooms(request):
     get=extend_schema(
         tags=("chat",),
         auth=({"cookieAuth": []},),
-        parameters=[OpenApiParameter("limit", int, required=False, description="1–100, default 50")],
+        parameters=[
+            OpenApiParameter("limit", int, required=False, description="1–100, default 50"),
+            OpenApiParameter("before", int, required=False, description="Return messages older than this message ID"),
+        ],
         responses={200: MessagesResponseSerializer, 400: ChatApiErrorSerializer, 401: ChatApiErrorSerializer, 403: ChatApiErrorSerializer, 404: ChatApiErrorSerializer},
     ),
     post=extend_schema(
@@ -116,8 +119,30 @@ def api_room_messages(request, room_slug):
             return JsonResponse({"error": "invalid_limit"}, status=400)
         if not 1 <= limit <= 100:
             return JsonResponse({"error": "invalid_limit"}, status=400)
+        before = request.GET.get("before")
+        if before is not None:
+            try:
+                before = int(before)
+            except (TypeError, ValueError):
+                return JsonResponse({"error": "invalid_before"}, status=400)
+            if before < 1:
+                return JsonResponse({"error": "invalid_before"}, status=400)
         MessageService.mark_room_as_read(room=room, user_id=request.user.id)
-        return JsonResponse({"api_version": "v1", "room": room_data(room, request.user), "messages": MessageService.get_room_messages(room, viewer_id=request.user.id, limit=limit)})
+        messages = MessageService.get_room_messages(
+            room,
+            viewer_id=request.user.id,
+            limit=limit + 1,
+            before_message_id=before,
+        )
+        has_more = len(messages) > limit
+        if has_more:
+            messages = messages[-limit:]
+        return JsonResponse({
+            "api_version": "v1",
+            "room": room_data(room, request.user),
+            "messages": messages,
+            "has_more": has_more,
+        })
 
     if not is_allowed(
         identifier=f"user:{request.user.id}",

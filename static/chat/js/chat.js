@@ -8,6 +8,7 @@ const {
     messageDeleteTemplate,
     messageReportTemplate,
     noteCreateUrl,
+    messagesApiUrl,
     focusMessageId,
 } = chatConfig;
 const MESSAGE_MAX_LENGTH = 1000;
@@ -29,6 +30,8 @@ let bartenderMode = false;
 let bartenderPrivate = false;
 let noteMode = false;
 let loadingHistory = false;
+let loadingOlderMessages = false;
+let historyHasMore = false;
 let lastMessageDay = null;
 let presenceUsers = [];
 let presenceOnlineUsers = [];
@@ -403,6 +406,7 @@ function collectViewportDiagnostics(panel) {
 function handleServerEvent(data) {
     if (data.type === "history") {
         loadingHistory = true;
+        historyHasMore = Boolean(data.has_more);
         lastMessageDay = null;
         clearHistorySkeleton();
         const chatLog = document.getElementById("chat-log");
@@ -410,6 +414,7 @@ function handleServerEvent(data) {
             .forEach((element) => element.remove());
         data.messages.forEach(addMessage);
         loadingHistory = false;
+        updateHistoryLoader();
         finishHistoryLoading();
     }
 
@@ -849,16 +854,16 @@ function updateBartenderMode() {
     document.getElementById("bartender-private")?.classList.toggle("selected", bartenderPrivate);
 }
 
-function addMessage(data) {
-    const chatLog = document.getElementById("chat-log");
+function addMessage(data, options = {}) {
+    const chatLog = options.chatLog || document.getElementById("chat-log");
     if (!chatLog) {
         return;
     }
 
-    const wasNearBottom = isNearBottom(chatLog) || (
+    const wasNearBottom = !options.suppressScroll && (isNearBottom(chatLog) || (
         followLatestWhileTyping
         && document.activeElement?.id === "chat-message-input"
-    );
+    ));
     clearHistorySkeleton();
     chatLog.querySelector(".chat-empty-state")?.remove();
     const timestamp = data.timestamp || data.created_at;
@@ -991,7 +996,8 @@ function addMessage(data) {
     chatLog.append(message);
 
     if (
-        pendingAttachmentUpload
+        !options.historical
+        && pendingAttachmentUpload
         && message.classList.contains("own")
         && data.id
     ) {
@@ -1000,10 +1006,13 @@ function addMessage(data) {
         uploadMessageAttachments(data.id, files);
     }
 
-    if (data.username === BARTENDER_USERNAME) {
+    if (!options.historical && data.username === BARTENDER_USERNAME) {
         setBartenderTyping(false);
     }
 
+    if (options.suppressScroll) {
+        return;
+    }
     if (loadingHistory) {
         scrollToLatest(chatLog, false);
     } else if (wasNearBottom) {
@@ -1011,6 +1020,74 @@ function addMessage(data) {
         keepLatestAfterImages(content, chatLog);
     } else if (!message.classList.contains("own")) {
         document.getElementById("scroll-to-latest")?.classList.remove("hidden");
+    }
+}
+
+function updateHistoryLoader(message = "") {
+    const loader = document.getElementById("history-loader");
+    const button = document.getElementById("load-older-messages");
+    const status = document.getElementById("history-loader-status");
+    if (!loader || !button || !status) return;
+
+    loader.classList.toggle("hidden", !historyHasMore && !message);
+    button.classList.toggle("hidden", !historyHasMore);
+    button.classList.toggle("history-loading", loadingOlderMessages);
+    button.disabled = loadingOlderMessages;
+    status.textContent = loadingOlderMessages ? "Загружаем предыдущие сообщения…" : message;
+}
+
+async function loadOlderMessages() {
+    if (!historyHasMore || loadingOlderMessages) return;
+    const chatLog = document.getElementById("chat-log");
+    const firstMessage = chatLog?.querySelector(".message[data-message-id]");
+    if (!chatLog || !firstMessage) return;
+
+    loadingOlderMessages = true;
+    updateHistoryLoader();
+    let anchorViewportOffset = null;
+    let finalMessage = "";
+    try {
+        const url = new URL(messagesApiUrl, window.location.origin);
+        url.searchParams.set("limit", "50");
+        url.searchParams.set("before", firstMessage.dataset.messageId);
+        const response = await fetch(url, {
+            credentials: "same-origin",
+            headers: {Accept: "application/json"},
+        });
+        if (!response.ok) throw new Error(`history:${response.status}`);
+        const data = await response.json();
+        const messages = Array.isArray(data.messages) ? data.messages : [];
+        anchorViewportOffset = firstMessage.offsetTop - chatLog.scrollTop;
+        let anchor = chatLog.querySelector(".day-divider, .message");
+        const previousDay = lastMessageDay;
+        const fragment = document.createDocumentFragment();
+        lastMessageDay = null;
+        messages.forEach((message) => addMessage(message, {
+            chatLog: fragment,
+            historical: true,
+            suppressScroll: true,
+        }));
+        lastMessageDay = previousDay;
+
+        const existingDivider = anchor?.classList.contains("day-divider") ? anchor : null;
+        const loadedDividers = fragment.querySelectorAll(".day-divider");
+        const loadedLastDivider = loadedDividers[loadedDividers.length - 1];
+        if (existingDivider && loadedLastDivider
+            && existingDivider.textContent === loadedLastDivider.textContent) {
+            anchor = existingDivider.nextSibling;
+            existingDivider.remove();
+        }
+        chatLog.insertBefore(fragment, anchor || null);
+        historyHasMore = Boolean(data.has_more);
+        finalMessage = historyHasMore ? "" : "Это начало переписки";
+    } catch (error) {
+        finalMessage = "Не удалось загрузить историю. Попробуйте ещё раз.";
+    } finally {
+        loadingOlderMessages = false;
+        updateHistoryLoader(finalMessage);
+        if (anchorViewportOffset !== null) {
+            chatLog.scrollTop = firstMessage.offsetTop - anchorViewportOffset;
+        }
     }
 }
 
@@ -2270,8 +2347,12 @@ document.getElementById("scroll-to-latest")?.addEventListener("click", () => {
     }
     document.getElementById("scroll-to-latest")?.classList.add("hidden");
 });
+document.getElementById("load-older-messages")?.addEventListener("click", loadOlderMessages);
 window.addEventListener("pagehide", releaseAudioStream);
 document.getElementById("chat-log")?.addEventListener("scroll", (event) => {
+    if (event.currentTarget.scrollTop <= 80) {
+        loadOlderMessages();
+    }
     document
         .getElementById("scroll-to-latest")
         ?.classList.toggle("hidden", isNearBottom(event.currentTarget));

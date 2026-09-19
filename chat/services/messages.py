@@ -216,6 +216,7 @@ class MessageService:
         viewer_id: int | None = None,
         limit: int | None = None,
         focus_message_id: int | None = None,
+        before_message_id: int | None = None,
     ) -> list[dict]:
         # Личные сообщения видят только отправитель и получатель.
         messages = (
@@ -233,6 +234,17 @@ class MessageService:
             .prefetch_related("attachments", "reactions")
             .order_by("created_at")
         )
+
+        if before_message_id is not None:
+            cursor = messages.filter(pk=before_message_id).values(
+                "created_at", "pk",
+            ).first()
+            if cursor is None:
+                return []
+            messages = messages.filter(
+                Q(created_at__lt=cursor["created_at"])
+                | Q(created_at=cursor["created_at"], pk__lt=cursor["pk"])
+            )
 
         if limit is not None:
             visible_messages = messages

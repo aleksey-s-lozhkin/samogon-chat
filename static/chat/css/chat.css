@@ -1110,6 +1110,41 @@ a {
     min-height: 0;
 }
 
+.history-loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 0 0.75rem;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    text-align: center;
+}
+
+.history-loader button {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0.45rem 0.8rem;
+    background: var(--surface);
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.history-loader button:hover,
+.history-loader button:focus-visible {
+    border-color: var(--primary);
+    color: var(--text);
+}
+
+.history-loader button.history-loading {
+    visibility: hidden;
+}
+
+.history-loader span {
+    min-height: 1em;
+}
+
 .day-divider {
     align-self: center;
 
