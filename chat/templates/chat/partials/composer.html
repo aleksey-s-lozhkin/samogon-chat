@@ -1,6 +1,10 @@
 <div class="chat-log-area">
     <div id="chat-log" class="chat-log">
         {% if user.is_authenticated %}
+            <div id="history-loader" class="history-loader hidden" role="status" aria-live="polite">
+                <button id="load-older-messages" type="button">Показать предыдущие сообщения</button>
+                <span id="history-loader-status"></span>
+            </div>
             <div class="chat-history-skeleton" role="status" aria-label="Загружаем историю сообщений">
                 <span class="visually-hidden">Загружаем историю сообщений…</span>
                 {% for position in "12345" %}

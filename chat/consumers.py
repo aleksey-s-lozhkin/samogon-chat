@@ -89,9 +89,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             if focus_values and focus_values[0].isdigit()
             else None
         )
-        messages = await self.get_messages(focus_message_id)
+        messages, has_more = await self.get_messages(focus_message_id)
         await self.send(
-            text_data=json.dumps({"type": "history", "messages": messages})
+            text_data=json.dumps({
+                "type": "history",
+                "messages": messages,
+                "has_more": has_more,
+            })
         )
 
         users = await online_users.connect(
@@ -644,12 +648,24 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_messages(self, focus_message_id=None):
-        return MessageService.get_room_messages(
+        if focus_message_id:
+            messages = MessageService.get_room_messages(
+                self.room,
+                viewer_id=self.user.id,
+                limit=HISTORY_LIMIT,
+                focus_message_id=focus_message_id,
+            )
+            return messages, len(messages) > HISTORY_LIMIT
+        messages = MessageService.get_room_messages(
             self.room,
             viewer_id=self.user.id,
-            limit=HISTORY_LIMIT,
+            limit=HISTORY_LIMIT + 1,
             focus_message_id=focus_message_id,
         )
+        has_more = len(messages) > HISTORY_LIMIT
+        if has_more:
+            messages = messages[-HISTORY_LIMIT:]
+        return messages, has_more
 
     @database_sync_to_async
     def toggle_reaction(self, message_id, emoji):
