@@ -43,13 +43,15 @@ from .selectors import get_published_atmosphere_lines, get_visible_rooms
 
 
 def add_unread_counts(rooms, user):
-    """Добавляет в объекты комнат число непрочитанных сообщений."""
+    """Добавляет в объекты комнат виды непрочитанных сообщений."""
     for room in rooms:
-        room.unread_count = (
-            MessageService.get_unread_count(room=room, user_id=user.id)
+        unread = (
+            MessageService.get_unread_state(room=room, user_id=user.id)
             if user.is_authenticated
-            else 0
+            else {"general": False, "personal": False}
         )
+        room.unread_general = unread["general"]
+        room.unread_personal = unread["personal"]
     return rooms
 
 

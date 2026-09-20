@@ -640,6 +640,24 @@ a {
     font-weight: 800;
 }
 
+.room-unread-marker {
+    flex: 0 0 auto;
+    width: 11px;
+    height: 11px;
+    margin-left: auto;
+    border-radius: 50%;
+    background: var(--primary);
+    box-shadow: 0 0 0 3px rgba(198, 117, 58, 0.16);
+}
+
+.room-unread-marker.is-personal {
+    border: 2px solid #8ecbff;
+    border-radius: 3px;
+    background: transparent;
+    box-shadow: 0 0 0 3px rgba(91, 174, 242, 0.15);
+    transform: rotate(45deg);
+}
+
 .room-navigation-item:hover {
     background: rgba(255, 255, 255, 0.045);
 
@@ -860,6 +878,19 @@ a {
     font-weight: 600;
     letter-spacing: normal;
     text-transform: none;
+}
+
+.presence-sidebar-status {
+    margin: 0 12px 14px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.025);
+}
+
+.presence-sidebar-status select {
+    width: 100%;
+    max-width: none;
 }
 
 .room-title {
@@ -1085,7 +1116,7 @@ a {
     overflow-x: hidden;
     overflow-y: auto;
 
-    padding: 24px 28px;
+    padding: 24px 28px 64px;
 
     display: flex;
     flex-direction: column;
@@ -2247,11 +2278,21 @@ html[data-theme="light"] .note-attachment-audio {
 }
 
 .typing-indicator {
+    position: absolute;
+    left: 16px;
+    bottom: 14px;
+    z-index: 2;
+
+    max-width: calc(100% - 92px);
     width: fit-content;
-    margin: 10px 16px 0;
+    margin: 0;
     padding: 8px 14px;
 
     font-style: italic;
+    overflow: hidden;
+    pointer-events: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .scroll-to-latest {

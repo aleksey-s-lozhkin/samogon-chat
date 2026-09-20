@@ -423,8 +423,12 @@ function handleServerEvent(data) {
         if (!data.room_slug || data.room_slug === roomSlug) {
             addMessage(data);
         } else {
-            increaseUnreadCount(data);
+            showUnreadMarker(data);
         }
+    }
+
+    if (data.type === "room_activity") {
+        showUnreadMarker(data);
     }
 
     if (data.type === "attachments" && data.room_slug === roomSlug) {
@@ -551,9 +555,9 @@ function clearHistorySkeleton() {
     document.querySelector("#chat-log .chat-history-skeleton")?.remove();
 }
 
-function increaseUnreadCount(data) {
+function showUnreadMarker(data) {
     const isIncoming = normalizeUsername(data.username) !== normalizeUsername(currentUsername);
-    if (!isIncoming || !(data.private || data.room_private)) {
+    if (!isIncoming || !data.room_slug || data.room_slug === roomSlug) {
         return;
     }
 
@@ -564,17 +568,23 @@ function increaseUnreadCount(data) {
         return;
     }
 
-    const badge = roomLink.querySelector(".room-unread-count");
-    const currentCount = Number.parseInt(badge?.textContent || "0", 10);
-    if (badge) {
-        badge.textContent = String(currentCount + 1);
-        return;
+    const kind = data.personal || data.private ? "personal" : "general";
+    let marker = roomLink.querySelector(".room-unread-marker");
+    if (!marker) {
+        marker = document.createElement("span");
+        marker.className = "room-unread-marker";
+        marker.role = "status";
+        roomLink.append(marker);
     }
-
-    const unread = document.createElement("span");
-    unread.className = "room-unread-count";
-    unread.textContent = "1";
-    roomLink.append(unread);
+    const effectiveKind = marker.dataset.unreadKind === "personal" ? "personal" : kind;
+    marker.dataset.unreadKind = effectiveKind;
+    marker.classList.toggle("is-personal", effectiveKind === "personal");
+    marker.classList.toggle("is-general", effectiveKind === "general");
+    const label = effectiveKind === "personal"
+        ? "Есть новое личное сообщение"
+        : "Есть новые общие сообщения";
+    marker.ariaLabel = label;
+    marker.title = label;
 }
 
 function updateUserPresence(users, online) {

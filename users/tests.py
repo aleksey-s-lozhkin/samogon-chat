@@ -651,6 +651,16 @@ class AuthenticationHtmxTests(TestCase):
         self.assertRedirects(response, "/users/profile/")
         verify.assert_called_once()
 
+    @override_settings(REGISTRATION_OPEN=True)
+    @patch("users.views.verify_turnstile", return_value=True)
+    def test_native_registration_without_next_redirects_to_room_list(self, _verify):
+        response = self.client.post("/users/register/", {
+            "username": "room-list-user", "email": "rooms@example.invalid",
+            "password": "Safe-new-password-2026",
+        }, HTTP_ACCEPT="text/html")
+
+        self.assertRedirects(response, "/chat/")
+
     @patch("users.views.verify_turnstile", return_value=False)
     def test_native_registration_still_requires_challenge(self, verify):
         response = self.client.post("/users/register/", {
@@ -771,7 +781,7 @@ class AuthenticationHtmxTests(TestCase):
             {"username": "open-user", "email": "open@example.com", "password": "safe-password"},
             **self.htmx_headers,
         )
-        self.assertEqual(response["HX-Redirect"], "/")
+        self.assertEqual(response["HX-Redirect"], "/chat/")
         self.assertTrue(User.objects.filter(username="open-user").exists())
         self.assertNotContains(self.client.get("/"), 'name="invite_code"')
 
@@ -822,7 +832,7 @@ class AuthenticationHtmxTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["HX-Redirect"], "/")
+        self.assertEqual(response["HX-Redirect"], "/chat/")
         user = User.objects.get(username="new-user")
         self.assertTrue(user.welcome_pending)
 
@@ -857,7 +867,7 @@ class AuthenticationHtmxTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["HX-Redirect"], "/")
+        self.assertEqual(response["HX-Redirect"], "/chat/")
 
     @override_settings(REGISTRATION_INVITE_CODE="bar-secret")
     def test_registration_requires_unique_email(self):

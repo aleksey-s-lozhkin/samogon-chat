@@ -94,7 +94,7 @@ def authentication_error(request, message, status=400):
     return JsonResponse({"success": False, "error": message}, status=status)
 
 
-def get_safe_return_url(request):
+def get_safe_return_url(request, *, default_url=None):
     """Возвращает только локальный адрес, переданный формой авторизации."""
     return_url = request.POST.get("next", "").strip()
     if return_url and url_has_allowed_host_and_scheme(
@@ -103,7 +103,7 @@ def get_safe_return_url(request):
         require_https=request.is_secure(),
     ):
         return return_url
-    return reverse("home")
+    return default_url or reverse("home")
 
 
 def find_login_username(identifier):
@@ -145,8 +145,8 @@ class ComfortablePasswordResetView(PasswordResetView):
         return super().post(request, *args, **kwargs)
 
 
-def authentication_success(request, user):
-    return_url = get_safe_return_url(request)
+def authentication_success(request, user, *, default_url=None):
+    return_url = get_safe_return_url(request, default_url=default_url)
     if is_htmx_request(request):
         return HttpResponse(headers={"HX-Redirect": return_url})
     if wants_auth_html(request):
@@ -292,7 +292,7 @@ def register_view(request):
         user,
         backend="django.contrib.auth.backends.ModelBackend",
     )
-    return authentication_success(request, user)
+    return authentication_success(request, user, default_url=reverse("chat:rooms"))
 
 
 @login_required

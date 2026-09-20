@@ -1228,6 +1228,39 @@ class MessageServiceTests(TestCase):
 
         self.assertEqual(unread_count, 1)
 
+    def test_unread_state_separates_general_and_personal_messages(self):
+        sender = User.objects.create_user(username="unread-sender")
+        outsider = User.objects.create_user(username="unread-outsider")
+        RoomReadState.objects.create(
+            room=self.room,
+            user=self.user,
+            last_read_at=timezone.now(),
+        )
+        MessageService.create_message(
+            user_id=sender.id,
+            room=self.room,
+            text="Общее новое",
+        )
+        MessageService.create_message(
+            user_id=sender.id,
+            room=self.room,
+            text="Личное новое",
+            recipient_id=self.user.id,
+        )
+        MessageService.create_message(
+            user_id=sender.id,
+            room=self.room,
+            text="Чужая личка",
+            recipient_id=outsider.id,
+        )
+
+        unread = MessageService.get_unread_state(
+            room=self.room,
+            user_id=self.user.id,
+        )
+
+        self.assertEqual(unread, {"general": True, "personal": True})
+
 
 class PrivateRoomViewsTests(TestCase):
     def setUp(self):
@@ -2018,7 +2051,7 @@ class ChatLayoutViewsTests(TestCase):
         self.assertContains(response, 'data-chat-action="bartender"')
         self.assertNotContains(response, 'id="bartender-trigger"')
 
-    def test_chat_header_has_current_presence_status_control(self):
+    def test_people_panel_has_current_presence_status_control(self):
         self.user.presence_status = User.PresenceStatus.READING
         self.user.save(update_fields=("presence_status",))
         self.client.force_login(self.user)
@@ -2026,12 +2059,28 @@ class ChatLayoutViewsTests(TestCase):
         response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
 
         self.assertContains(response, 'id="presence-status-select"')
+        self.assertContains(response, 'class="presence-status-control presence-sidebar-status"')
         self.assertContains(response, "Читаю, но не отвечаю")
         self.assertContains(
             response,
             '<option value="reading" selected>',
             html=False,
         )
+
+    def test_room_list_marks_personal_unread_with_distinct_marker(self):
+        sender = User.objects.create_user(username="marker-sender")
+        Message.objects.create(
+            room=self.room,
+            user=sender,
+            recipient=self.user,
+            text="Лично",
+        )
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("chat:rooms"))
+
+        self.assertContains(response, 'class="room-unread-marker is-personal"')
+        self.assertContains(response, 'data-unread-kind="personal"')
 
     def test_only_moderator_sees_pending_report_counter(self):
         author = User.objects.create_user(username="reported-author")
@@ -2738,6 +2787,23 @@ class ChatConsumerTests(TransactionTestCase):
         consumer.channel_layer.group_send.assert_awaited_once_with(
             "chat_release-audit",
             event,
+        )
+
+    def test_public_room_activity_is_broadcast_to_presence_group(self):
+        consumer = ChatConsumer()
+        consumer.room = self.room
+        consumer.user = self.user
+        consumer.channel_layer = AsyncMock()
+
+        async_to_sync(consumer.broadcast_room_activity)()
+
+        consumer.channel_layer.group_send.assert_awaited_once_with(
+            "chat_presence",
+            {
+                "type": "room_activity",
+                "username": self.user.username,
+                "room_slug": self.room.slug,
+            },
         )
 
     def test_uninvited_user_cannot_connect_to_private_room(self):
