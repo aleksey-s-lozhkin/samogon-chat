@@ -20,6 +20,10 @@
         {% endif %}
     </div>
 
+    <div id="typing-indicator" class="typing-indicator hidden" aria-live="polite">
+        Кто-то набирает сообщение…
+    </div>
+
     <button id="scroll-to-latest" class="scroll-to-latest hidden" type="button" aria-label="Перейти к последнему сообщению" title="К последнему сообщению">
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg>
     </button>
@@ -57,10 +61,6 @@
 </div>
 
 <section class="chat-composer">
-    <div id="typing-indicator" class="typing-indicator hidden" aria-live="polite">
-        Кто-то набирает сообщение…
-    </div>
-
     <div id="error-message" class="error" role="alert" aria-live="polite"></div>
 
     <div id="reply-recipient" class="direct-recipient hidden">

@@ -302,6 +302,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.send_to_private_room(event)
         else:
             await self.channel_layer.group_send(self.room_group_name, event)
+        await self.broadcast_room_activity()
 
         if bartender_question:
             await self.enqueue_bartender_job(message, private=False)
@@ -311,6 +312,35 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def direct_message(self, event):
         await self.send_message(event)
+
+    async def room_activity(self, event):
+        """Сообщает другим вкладкам о новой общей реплике в комнате."""
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "room_activity",
+                    "username": event["username"],
+                    "room_slug": event["room_slug"],
+                    "personal": False,
+                }
+            )
+        )
+
+    async def broadcast_room_activity(self):
+        event = {
+            "type": "room_activity",
+            "username": self.user.username,
+            "room_slug": self.room.slug,
+        }
+        if self.room.is_private:
+            group_names = [
+                f"chat_user_{user_id}"
+                for user_id in await self.get_room_member_ids()
+            ]
+        else:
+            group_names = [PRESENCE_GROUP_NAME]
+        for group_name in set(group_names):
+            await self.channel_layer.group_send(group_name, event)
 
     async def send_message(self, event):
         """Преобразует событие Channels в формат сообщения клиента."""

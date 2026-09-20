@@ -24,9 +24,7 @@
                     {% include "chat/partials/conversation_icon.html" with icon_room=chat_room %}
                 </span>
                 <span>{{ chat_room.name }}</span>
-                {% if chat_room.unread_count %}
-                    <span class="room-unread-count">{{ chat_room.unread_count }}</span>
-                {% endif %}
+                {% include "chat/partials/unread_marker.html" with chat_room=chat_room %}
             </a>
         {% empty %}
             <span class="rooms-empty">Бесед пока нет</span>
@@ -51,9 +49,7 @@
                                 {% if chat_room.owner_id == user.id %}Вы создатель{% else %}Создал(а) {{ chat_room.owner.username }}{% endif %}
                             </small>
                         </span>
-                        {% if chat_room.unread_count %}
-                            <span class="room-unread-count">{{ chat_room.unread_count }}</span>
-                        {% endif %}
+                        {% include "chat/partials/unread_marker.html" with chat_room=chat_room %}
                     </a>
                 {% endfor %}
                 <a href="{% url 'chat:rooms' %}#closed-conversations" class="room-navigation-item sidebar-utility">

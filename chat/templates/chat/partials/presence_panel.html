@@ -18,11 +18,23 @@
         </button>
     </div>
 
+    {% if user.is_authenticated %}
+        <label class="presence-status-control presence-sidebar-status" for="presence-status-select">
+            <span>Мой статус</span>
+            <select id="presence-status-select" aria-label="Мой статус">
+                <option value="" {% if not user.presence_status %}selected{% endif %}>Без статуса</option>
+                {% for value, label in presence_status_choices %}
+                    <option value="{{ value }}" {% if user.presence_status == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+    {% endif %}
+
     <section class="online-users user-presence-panel">
         <div class="presence-panel-title">
             <div class="online-title">
                 <span class="online-dot"></span>
-                За стойкой
+                Другие гости онлайн
             </div>
             <span id="online-users-count" class="presence-count">0</span>
         </div>

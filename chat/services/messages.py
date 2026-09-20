@@ -370,3 +370,20 @@ class MessageService:
         if not room.is_private:
             messages = messages.filter(recipient_id=user_id)
         return messages.count()
+
+    @staticmethod
+    def get_unread_state(*, room: Room, user_id: int) -> dict[str, bool]:
+        """Возвращает виды новых видимых сообщений без раскрытия чужой лички."""
+        read_state = RoomReadState.objects.filter(
+            room=room,
+            user_id=user_id,
+        ).only("last_read_at").first()
+        messages = room.messages.filter(hidden_at__isnull=True).exclude(user_id=user_id)
+        if read_state:
+            messages = messages.filter(created_at__gt=read_state.last_read_at)
+
+        visible = messages.filter(Q(recipient__isnull=True) | Q(recipient_id=user_id))
+        return {
+            "general": visible.filter(recipient__isnull=True).exists(),
+            "personal": visible.filter(recipient_id=user_id).exists(),
+        }
