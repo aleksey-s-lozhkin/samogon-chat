@@ -1586,7 +1586,7 @@ function updateComposerSubmitMode() {
     if (!button || audioRecorder?.state === "recording") {
         return;
     }
-    const voiceMode = !composerHasText();
+    const voiceMode = !composerHasText() && !selectedAttachments.length;
     button.classList.toggle("is-voice-mode", voiceMode);
     button.querySelector(".submit-icon")?.classList.toggle("hidden", voiceMode);
     button.querySelector(".microphone-icon")?.classList.toggle("hidden", !voiceMode);
@@ -1597,7 +1597,7 @@ function updateComposerSubmitMode() {
 }
 
 function startAudioGesture(event) {
-    if (composerHasText() || audioRecorder) {
+    if (composerHasText() || selectedAttachments.length || audioRecorder) {
         return;
     }
     event.preventDefault();
@@ -2010,6 +2010,7 @@ function renderSelectedAttachments() {
     }
     container.replaceChildren();
     container.classList.toggle("hidden", !selectedAttachments.length);
+    updateComposerSubmitMode();
 
     selectedAttachments.forEach((file, index) => {
         const item = document.createElement("div");
@@ -2316,7 +2317,7 @@ function createMessageAction(className, title, icon) {
 
 const composerSubmit = document.getElementById("chat-message-submit");
 composerSubmit?.addEventListener("click", () => {
-    if (composerHasText()) {
+    if (composerHasText() || selectedAttachments.length) {
         sendMessage();
     }
 });
