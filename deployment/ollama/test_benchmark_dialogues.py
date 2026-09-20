@@ -61,6 +61,20 @@ class BenchmarkDialoguesTests(unittest.TestCase):
             self.assertIn("category", scenario)
             self.assertTrue(scenario.get("rubric"))
 
+    def test_role_scenarios_file_is_valid_and_unique(self):
+        scenarios = benchmark.load_scenarios(
+            Path(__file__).with_name("benchmark-role-dialogues.json")
+        )
+
+        identifiers = [scenario["id"] for scenario in scenarios]
+        self.assertEqual(len(identifiers), len(set(identifiers)))
+        self.assertGreaterEqual(len(scenarios), 12)
+        for scenario in scenarios:
+            self.assertTrue(scenario["messages"])
+            self.assertIn("description", scenario)
+            self.assertIn("category", scenario)
+            self.assertTrue(scenario.get("rubric"))
+
     def test_select_scenarios_keeps_file_order(self):
         scenarios = [
             {"id": "first"},

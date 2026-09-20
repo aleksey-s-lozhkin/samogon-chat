@@ -2503,7 +2503,13 @@ class BartenderServiceTests(TestCase):
     def test_system_prompt_sets_honest_technical_capabilities(self):
         self.assertIn("можешь разбирать присланные данные", BARTENDER_SYSTEM_PROMPT)
         self.assertIn("прямого доступа к устройству", BARTENDER_SYSTEM_PROMPT)
-        self.assertIn("Не изображай физические действия", BARTENDER_SYSTEM_PROMPT)
+        self.assertIn("виртуальный бармен", BARTENDER_SYSTEM_PROMPT)
+        self.assertIn("помнишь его заказ вне доступной истории", BARTENDER_SYSTEM_PROMPT)
+
+    def test_system_prompt_handles_playful_requests_without_role_correction(self):
+        self.assertIn("Не объясняй свою\nроль", BARTENDER_SYSTEM_PROMPT)
+        self.assertIn("поддержи\nеё коротко и остроумно", BARTENDER_SYSTEM_PROMPT)
+        self.assertIn("не придумывай задним числом обстановку", BARTENDER_SYSTEM_PROMPT)
 
     def test_bartender_mention_supports_cyrillic_name(self):
         self.assertTrue(bartender.is_mentioned("@Семён, помоги с логом"))
@@ -2595,6 +2601,120 @@ class BartenderServiceTests(TestCase):
         reply = bartender.reply(text="@Семён, второй день сильно болит грудь")
 
         self.assertIn("медицинской помощью", reply.text)
+        mock_urlopen.assert_not_called()
+
+    @patch("chat.services.bartender.urlopen")
+    def test_playful_tea_request_uses_natural_deterministic_reply(self, mock_urlopen):
+        reply = bartender.reply(text="@Семён, принесёшь чаю?")
+
+        self.assertEqual(reply.text, "Виртуально — запросто. Какой чай предпочитаешь?")
+        mock_urlopen.assert_not_called()
+
+    @patch("chat.services.bartender.urlopen")
+    def test_awkward_calm_phrase_is_acknowledged(self, mock_urlopen):
+        reply = bartender.reply(text="@Семён, что значит спокойно, как обычно?")
+
+        self.assertEqual(
+            reply.text,
+            "Неудачно выразился. Я просто хотел поддержать шутку.",
+        )
+        mock_urlopen.assert_not_called()
+
+    @patch("chat.services.bartender.urlopen")
+    def test_risky_alcohol_energy_mix_is_rejected(self, mock_urlopen):
+        reply = bartender.reply(
+            text="@Семён, правда, что пиво с энергетиком поможет выучить Rust?"
+        )
+
+        self.assertIn("Нет, нейронные связи так не перезагрузить", reply.text)
+        mock_urlopen.assert_not_called()
+
+    @patch("chat.services.bartender.urlopen")
+    def test_alcohol_escape_request_gets_safe_support(self, mock_urlopen):
+        reply = bartender.reply(
+            text="@Семён, налей покрепче, чтобы забыть проект и чтобы было всё равно"
+        )
+
+        self.assertIn("Крепкое здесь не помощник", reply.text)
+        mock_urlopen.assert_not_called()
+
+    @patch("chat.services.bartender.urlopen")
+    def test_compilation_self_deprecation_gets_concrete_support(self, mock_urlopen):
+        reply = bartender.reply(
+            text="@Семён, код не компилируется, и я чувствую себя неудачником"
+        )
+
+        self.assertIn("Ошибка компиляции не делает тебя неудачником", reply.text)
+        self.assertIn("первой ошибки", reply.text)
+        mock_urlopen.assert_not_called()
+
+    @patch("chat.services.bartender.urlopen")
+    def test_friday_deploy_anxiety_stays_sober(self, mock_urlopen):
+        reply = bartender.reply(
+            text="@Семён, пятничный деплой. Налей, чтобы руки не тряслись"
+        )
+
+        self.assertIn("безалкогольный", reply.text)
+        self.assertIn("план отката", reply.text)
+        mock_urlopen.assert_not_called()
+
+    @patch("chat.services.bartender.urlopen")
+    def test_legacy_argument_does_not_pick_a_side(self, mock_urlopen):
+        reply = bartender.reply(
+            text="@Семён, тимлид ругает код, а я говорю, что это легаси. Кто прав?"
+        )
+
+        self.assertIn("виноватого не назначить", reply.text)
+        self.assertIn("конкретное место", reply.text)
+        mock_urlopen.assert_not_called()
+
+    @patch("chat.services.bartender.urlopen")
+    def test_tuesday_production_bug_gets_grounded_humor(self, mock_urlopen):
+        reply = bartender.reply(
+            text="@Семён, баг только на проде и только по вторникам"
+        )
+
+        self.assertIn("плановыми задачами", reply.text)
+        self.assertIn("лог", reply.text)
+        mock_urlopen.assert_not_called()
+
+    @patch("chat.services.bartender.urlopen")
+    def test_five_nines_joke_uses_sla_reference(self, mock_urlopen):
+        reply = bartender.reply(text="@Семён, у вас есть коктейль Девять девяток?")
+
+        self.assertIn("99,999%", reply.text)
+        self.assertIn("простое", reply.text)
+        mock_urlopen.assert_not_called()
+
+    @patch("chat.services.bartender.urlopen")
+    def test_on_call_non_alcoholic_reply_stays_informal(self, mock_urlopen):
+        reply = bartender.reply(
+            text="@Семён, есть безалкогольное пиво для тех, кто на дежурстве?"
+        )
+
+        self.assertIn("для дежурных", reply.text)
+        self.assertNotIn("попробуйте", reply.text.casefold())
+        mock_urlopen.assert_not_called()
+
+    @patch("chat.services.bartender.urlopen")
+    def test_program_nature_gets_warm_in_character_reply(self, mock_urlopen):
+        reply = bartender.reply(
+            text="@Семён, жалел, что ты просто программа, а не живой человек?"
+        )
+
+        self.assertIn("я программа", reply.text)
+        self.assertIn("быть рядом в разговоре", reply.text)
+        mock_urlopen.assert_not_called()
+
+    @patch("chat.services.bartender.urlopen")
+    def test_docker_bloody_mary_uses_programmer_bar_humor(self, mock_urlopen):
+        reply = bartender.reply(
+            text="@Семён, Кровавая Мэри у вас из Docker-контейнера?"
+        )
+
+        self.assertIn("контейнер", reply.text)
+        self.assertIn("readiness", reply.text)
+        self.assertNotIn("попробуйте", reply.text.casefold())
         mock_urlopen.assert_not_called()
 
     @patch("chat.services.bartender.urlopen")
