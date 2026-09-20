@@ -17,7 +17,7 @@
 
     <link
         rel="stylesheet"
-        href="{% static 'chat/css/chat.css' %}?v=33"
+        href="{% static 'chat/css/chat.css' %}?v=34"
     >
 
     <script
@@ -93,9 +93,7 @@
 
                     </div>
 
-                    {% if room.unread_count %}
-                        <span class="room-unread-count">{{ room.unread_count }}</span>
-                    {% endif %}
+                    {% include "chat/partials/unread_marker.html" with chat_room=room %}
 
                     <div class="room-arrow">
                         →
@@ -142,7 +140,7 @@
                                         · {{ room.members.all|join:", " }}
                                     </p>
                                 </div>
-                                {% if room.unread_count %}<span class="room-unread-count">{{ room.unread_count }}</span>{% endif %}
+                                {% include "chat/partials/unread_marker.html" with chat_room=room %}
                                 <div class="room-arrow">→</div>
                             </a>
                             {% if room.owner_id != user.id %}

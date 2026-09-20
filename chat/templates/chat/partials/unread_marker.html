@@ -1,0 +1,9 @@
+{% if chat_room.unread_personal or chat_room.unread_general %}
+    <span
+        class="room-unread-marker {% if chat_room.unread_personal %}is-personal{% else %}is-general{% endif %}"
+        data-unread-kind="{% if chat_room.unread_personal %}personal{% else %}general{% endif %}"
+        role="status"
+        aria-label="{% if chat_room.unread_personal and chat_room.unread_general %}Есть новые общие и личные сообщения{% elif chat_room.unread_personal %}Есть новое личное сообщение{% else %}Есть новые общие сообщения{% endif %}"
+        title="{% if chat_room.unread_personal and chat_room.unread_general %}Новые общие и личные сообщения{% elif chat_room.unread_personal %}Новое личное сообщение{% else %}Новые сообщения{% endif %}"
+    ></span>
+{% endif %}

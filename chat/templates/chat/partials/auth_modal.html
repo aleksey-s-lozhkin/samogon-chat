@@ -170,6 +170,7 @@
                     <div
                         class="cf-turnstile"
                         data-sitekey="{{ turnstile_site_key }}"
+                        data-size="flexible"
                         data-theme="dark"
                         data-retry="never"
                         data-error-callback="handleTurnstileError"
@@ -205,10 +206,10 @@
             document.getElementById("turnstile-status").textContent = "Проверка устарела. Дождитесь повторной проверки.";
         };
         window.handleTurnstileError = function () {
-            document.getElementById("turnstile-status").textContent = "Проверка безопасности не загрузилась. Проверьте соединение или блокировщик содержимого и обновите страницу.";
+            document.getElementById("turnstile-status").textContent = "Проверку Cloudflare заблокировал браузер, DNS или фильтр. Откройте страницу в Chrome или Safari либо разрешите challenges.cloudflare.com.";
             const error = document.getElementById("register-error");
             if (error) {
-                error.textContent = "Проверка безопасности временно недоступна. Обновите страницу или попробуйте позже.";
+                error.textContent = "Не удалось загрузить проверку Cloudflare. Откройте страницу в Chrome или Safari, отключите блокировку для сайта и обновите страницу.";
             }
             return true;
         };

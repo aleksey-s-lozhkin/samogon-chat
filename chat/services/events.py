@@ -42,3 +42,20 @@ def broadcast_message(message):
     channel_layer = get_channel_layer()
     for group_name in message_group_names(message):
         async_to_sync(channel_layer.group_send)(group_name, event)
+
+    if message.recipient_id:
+        return
+    activity = {
+        "type": "room_activity",
+        "username": message.user.username,
+        "room_slug": message.room.slug,
+    }
+    if message.room.is_private:
+        activity_groups = {
+            f"chat_user_{user_id}"
+            for user_id in message.room.memberships.values_list("user_id", flat=True)
+        }
+    else:
+        activity_groups = {"chat_presence"}
+    for group_name in activity_groups:
+        async_to_sync(channel_layer.group_send)(group_name, activity)
