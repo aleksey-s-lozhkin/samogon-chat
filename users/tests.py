@@ -692,6 +692,13 @@ class AuthenticationHtmxTests(TestCase):
         self.assertContains(response, 'hx-post="/users/register/"')
         self.assertEqual(self.client.post("/accounts/signup/", {}).status_code, 405)
 
+    @override_settings(TURNSTILE_SITE_KEY="production-site-key")
+    def test_registration_uses_responsive_turnstile(self):
+        response = self.client.get("/accounts/signup/")
+
+        self.assertContains(response, 'class="cf-turnstile"')
+        self.assertContains(response, 'data-size="flexible"')
+
     def test_legacy_password_reset_uses_styled_rate_limited_view(self):
         response = self.client.get("/accounts/password/reset/")
         self.assertTemplateUsed(response, "users/password_reset_form.html")

@@ -2214,6 +2214,17 @@ class ChatLayoutViewsTests(TestCase):
         self.assertNotContains(service_worker, 'url.pathname.startsWith("/chat/")')
         self.assertEqual(offline.status_code, 200)
 
+    def test_authenticated_home_keeps_welcome_phrase_together(self):
+        self.client.force_login(self.user)
+
+        response = self.client.get(reverse("home"))
+
+        self.assertContains(
+            response,
+            '<span class="welcome-greeting">С возвращением,</span>',
+            html=True,
+        )
+
     def test_chat_script_renders_time_before_attachments(self):
         with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
             source = script.read()

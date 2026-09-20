@@ -2965,6 +2965,15 @@ body.is-audio-recording * {
     font-size: 13px;
 }
 
+.cf-turnstile {
+    width: 100%;
+    min-width: 0;
+}
+
+.cf-turnstile iframe {
+    max-width: 100%;
+}
+
 
 /* =========================================================
    FORMS
