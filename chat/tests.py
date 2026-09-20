@@ -45,7 +45,13 @@ from .services.attachments import (
 from .services.welcome import WELCOME_TEXT, ensure_welcome_message
 from .services.messages import MessageService
 from .services.presence import OnlineUsersService
-from .services.bartender import BARTENDER_LANGUAGE_FALLBACK, BartenderReply, BartenderUnavailable, bartender
+from .services.bartender import (
+    BARTENDER_LANGUAGE_FALLBACK,
+    BARTENDER_SYSTEM_PROMPT,
+    BartenderReply,
+    BartenderUnavailable,
+    bartender,
+)
 from .services.bartender_context import build_bartender_conversation
 from .tasks import process_bartender_job
 from .validators import validate_message
@@ -428,6 +434,60 @@ class AttachmentUploadViewTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
+
+
+class AttachmentOnlyMessageViewTests(TestCase):
+    def setUp(self):
+        self.media_directory = tempfile.TemporaryDirectory()
+        self.settings_override = override_settings(MEDIA_ROOT=self.media_directory.name)
+        self.settings_override.enable()
+        self.author = User.objects.create_user(username="attachment-author")
+        self.recipient = User.objects.create_user(username="attachment-recipient")
+        self.room = Room.objects.create(name="General", slug="attachment-general")
+        self.url = reverse("chat:create_attachment_message", args=[self.room.slug])
+        self.client.force_login(self.author)
+
+    def tearDown(self):
+        self.settings_override.disable()
+        self.media_directory.cleanup()
+
+    @patch("chat.views.broadcast_message")
+    def test_can_send_files_without_text(self, broadcast):
+        response = self.client.post(
+            self.url,
+            {"files": [SimpleUploadedFile("notes.txt", b"content")]},
+        )
+
+        self.assertEqual(response.status_code, 201)
+        message = Message.objects.get(user=self.author, room=self.room)
+        self.assertEqual(message.text, "")
+        self.assertEqual(message.attachments.count(), 1)
+        self.assertEqual(response.json()["attachments"][0]["name"], "notes.txt")
+        broadcast.assert_called_once()
+
+    @patch("chat.views.broadcast_message")
+    def test_attachment_only_message_can_be_personal(self, broadcast):
+        response = self.client.post(
+            self.url,
+            {
+                "recipient": self.recipient.username,
+                "files": [SimpleUploadedFile("private.txt", b"private")],
+            },
+        )
+
+        self.assertEqual(response.status_code, 201)
+        message = Message.objects.get(user=self.author, room=self.room)
+        self.assertEqual(message.recipient, self.recipient)
+        self.assertTrue(response.json()["private"])
+        broadcast.assert_called_once()
+
+    @patch("chat.views.broadcast_message")
+    def test_invalid_upload_does_not_leave_empty_message(self, broadcast):
+        response = self.client.post(self.url, {"files": []})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Message.objects.filter(user=self.author, room=self.room).exists())
+        broadcast.assert_not_called()
 
 
 class AudioMessageViewTests(TestCase):
@@ -2429,6 +2489,11 @@ class MessageValidationTests(TestCase):
 
 
 class BartenderServiceTests(TestCase):
+    def test_system_prompt_sets_honest_technical_capabilities(self):
+        self.assertIn("можешь разбирать присланные данные", BARTENDER_SYSTEM_PROMPT)
+        self.assertIn("прямого доступа к устройству", BARTENDER_SYSTEM_PROMPT)
+        self.assertIn("Не изображай физические действия", BARTENDER_SYSTEM_PROMPT)
+
     def test_bartender_mention_supports_cyrillic_name(self):
         self.assertTrue(bartender.is_mentioned("@Семён, помоги с логом"))
         self.assertTrue(bartender.is_mentioned("@семен привет"))

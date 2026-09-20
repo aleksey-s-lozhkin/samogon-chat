@@ -309,6 +309,82 @@ def add_message_attachments(request, message_id):
 
 
 @login_required
+def create_attachment_message(request, room_slug):
+    """Атомарно создаёт реплику из файлов без обязательной подписи."""
+    if request.method != "POST":
+        raise Http404("Маршрут загрузки не найден")
+    if not is_allowed(
+        identifier=f"user:{request.user.id}",
+        bucket="attachment",
+        limit=settings.ATTACHMENT_RATE_LIMIT,
+        window_seconds=settings.RATE_LIMIT_WINDOW_SECONDS,
+    ):
+        return JsonResponse(
+            {"error": "Слишком много загрузок. Подождите минуту."},
+            status=429,
+        )
+
+    room = get_object_or_404(Room, slug=room_slug)
+    if room.is_private and not room.memberships.filter(user=request.user).exists():
+        raise Http404("Беседа не найдена")
+
+    recipient = None
+    recipient_username = request.POST.get("recipient", "").strip()
+    if recipient_username:
+        recipient = User.objects.filter(username__iexact=recipient_username).first()
+        if recipient is None or recipient.pk == request.user.pk:
+            return JsonResponse({"error": "Получатель недоступен."}, status=400)
+        if room.is_private and not room.memberships.filter(user=recipient).exists():
+            return JsonResponse({"error": "Получатель не участвует в беседе."}, status=400)
+
+    reply_to = None
+    reply_to_value = request.POST.get("reply_to", "").strip()
+    if reply_to_value:
+        try:
+            reply_to_id = int(reply_to_value)
+        except ValueError:
+            return JsonResponse({"error": "Исходная реплика указана некорректно."}, status=400)
+        reply_to = Message.objects.filter(pk=reply_to_id, room=room).first()
+        if reply_to is None or not MessageService.can_view_message(
+            message=reply_to,
+            user=request.user,
+        ):
+            return JsonResponse({"error": "Исходная реплика недоступна."}, status=400)
+        if reply_to.recipient_id:
+            other_id = (
+                reply_to.recipient_id
+                if reply_to.user_id == request.user.id
+                else reply_to.user_id
+            )
+            recipient = User.objects.filter(pk=other_id).first()
+
+    try:
+        with transaction.atomic():
+            message = MessageService.create_message(
+                user_id=request.user.id,
+                room=room,
+                text="",
+                recipient_id=recipient.id if recipient else None,
+                reply_to_id=reply_to.id if reply_to else None,
+            )
+            create_attachments(
+                message=message,
+                uploaded_files=request.FILES.getlist("files"),
+            )
+    except AttachmentValidationError as error:
+        return JsonResponse({"error": str(error)}, status=400)
+
+    message = Message.objects.select_related("room", "user", "recipient").prefetch_related(
+        "attachments", "reactions",
+    ).get(pk=message.pk)
+    broadcast_message(message)
+    return JsonResponse(
+        MessageService.serialize_message(message, viewer_id=request.user.id),
+        status=201,
+    )
+
+
+@login_required
 def create_audio_message(request, room_slug):
     """Атомарно создаёт самостоятельную аудиореплику без фиктивного текста."""
     if request.method != "POST":

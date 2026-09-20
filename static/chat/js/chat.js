@@ -4,6 +4,7 @@ const {
     username: currentUsername,
     canModerateMessages,
     attachmentUploadTemplate,
+    attachmentMessageUrl,
     audioMessageUrl,
     messageDeleteTemplate,
     messageReportTemplate,
@@ -37,6 +38,7 @@ let presenceUsers = [];
 let presenceOnlineUsers = [];
 let selectedAttachments = [];
 let pendingAttachmentUpload = null;
+let attachmentMessageUploadInProgress = false;
 let selectedMessageElement = null;
 let replyTarget = null;
 let pendingDeletionMessageId = null;
@@ -1920,19 +1922,7 @@ function showSuccess(message) {
 function sendMessage() {
     const input = document.getElementById("chat-message-input");
     const message = replaceTextEmoticons(input?.value.trim() || "");
-    if (!message) {
-        if (selectedAttachments.length) {
-            showError("Добавьте короткую подпись к файлам перед отправкой.");
-        }
-        return;
-    }
-
-    if (input && input.value !== message) {
-        input.value = message;
-        updateInputSize();
-    }
-
-    if (pendingAttachmentUpload) {
+    if (pendingAttachmentUpload || attachmentMessageUploadInProgress) {
         showError("Подождите, пока предыдущие файлы попадут в сообщение.");
         return;
     }
@@ -1944,6 +1934,18 @@ function sendMessage() {
         }
         saveNote();
         return;
+    }
+
+    if (!message) {
+        if (selectedAttachments.length) {
+            createAttachmentMessage();
+        }
+        return;
+    }
+
+    if (input && input.value !== message) {
+        input.value = message;
+        updateInputSize();
     }
 
     if (message.length > MESSAGE_MAX_LENGTH) {
@@ -2059,6 +2061,42 @@ async function uploadMessageAttachments(messageId, files) {
     }
 }
 
+async function createAttachmentMessage() {
+    const files = [...selectedAttachments];
+    if (!files.length || attachmentMessageUploadInProgress) {
+        return;
+    }
+    attachmentMessageUploadInProgress = true;
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files", file));
+    if (directRecipient) {
+        formData.append("recipient", directRecipient);
+    }
+    if (replyTarget?.id) {
+        formData.append("reply_to", String(replyTarget.id));
+    }
+
+    try {
+        const response = await fetch(attachmentMessageUrl, {
+            method: "POST",
+            body: formData,
+            headers: {"X-CSRFToken": getCsrfToken()},
+            credentials: "same-origin",
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || "Не удалось отправить файлы.");
+        }
+        selectedAttachments = [];
+        renderSelectedAttachments();
+        clearReply();
+    } catch (error) {
+        showError(error.message || "Не удалось отправить файлы.");
+    } finally {
+        attachmentMessageUploadInProgress = false;
+    }
+}
+
 function getCsrfToken() {
     const cookie = document.cookie
         .split("; ")
@@ -2082,7 +2120,7 @@ function renderTypingIndicator() {
         return;
     }
     if (bartenderTyping) {
-        indicator.textContent = "Семён протирает стакан и подбирает слова…";
+        indicator.textContent = "Семён подбирает слова…";
         indicator.classList.remove("hidden");
         return;
     }
