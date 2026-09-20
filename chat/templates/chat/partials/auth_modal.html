@@ -199,6 +199,10 @@
 
 {% if turnstile_site_key %}
     <script>
+        const turnstileWidget = document.querySelector(".cf-turnstile");
+        if (turnstileWidget && window.matchMedia("(max-width: 390px)").matches) {
+            turnstileWidget.dataset.size = "compact";
+        }
         window.handleTurnstileSuccess = function () {
             document.getElementById("turnstile-status").textContent = "Проверка безопасности пройдена.";
         };

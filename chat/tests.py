@@ -2236,6 +2236,19 @@ class ChatLayoutViewsTests(TestCase):
             source.index("renderMessageAttachments(content, data.attachments || []);"),
         )
 
+    def test_selected_attachment_switches_composer_to_send_mode(self):
+        with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
+            source = script.read()
+
+        self.assertIn(
+            "const voiceMode = !composerHasText() && !selectedAttachments.length;",
+            source,
+        )
+        self.assertIn(
+            "if (composerHasText() || selectedAttachments.length) {\n        sendMessage();",
+            source,
+        )
+
     def test_composer_uses_short_external_hint_set(self):
         self.client.force_login(self.user)
         response = self.client.get(reverse("chat:chat", args=[self.room.slug]))

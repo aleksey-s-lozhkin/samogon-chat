@@ -698,6 +698,8 @@ class AuthenticationHtmxTests(TestCase):
 
         self.assertContains(response, 'class="cf-turnstile"')
         self.assertContains(response, 'data-size="flexible"')
+        self.assertContains(response, 'window.matchMedia("(max-width: 390px)")')
+        self.assertContains(response, 'turnstileWidget.dataset.size = "compact"')
 
     def test_legacy_password_reset_uses_styled_rate_limited_view(self):
         response = self.client.get("/accounts/password/reset/")
