@@ -146,7 +146,8 @@ def login(page, base_url):
     page.locator("#login-username").fill(USERNAME)
     page.locator("#login-password").fill(PASSWORD)
     page.locator("#login-form button[type=submit]").click()
-    page.wait_for_url(f"{base_url}/chat/?auth=login")
+    # A successful login may drop the auth query string during redirect.
+    # Wait for the login form to disappear instead of matching that URL.
     page.locator("#login-modal").wait_for(state="detached")
 
 
