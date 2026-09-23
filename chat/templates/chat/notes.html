@@ -9,7 +9,7 @@
     {% include "chat/partials/theme_head.html" %}
     <link rel="icon" href="{% static 'chat/images/favicon.svg' %}" type="image/svg+xml">
     {% include "pwa/head.html" %}
-    <link rel="stylesheet" href="{% static 'chat/css/chat.css' %}?v=32">
+    <link rel="stylesheet" href="{% static 'chat/css/chat.css' %}?v=52">
 </head>
 <body>
     <main class="notes-page">
@@ -36,6 +36,16 @@
             </div>
 
             {% if notes %}
+                <div class="notes-search" id="notes-search-controls" hidden>
+                    <label for="notes-search-input">Найти в заметках</label>
+                    <input
+                        id="notes-search-input"
+                        type="search"
+                        placeholder="Текст, автор или название файла"
+                        autocomplete="off"
+                    >
+                    <span id="notes-search-status" role="status" aria-live="polite"></span>
+                </div>
                 <div class="notes-list">
                     {% for note in notes %}
                         <article class="note-card">
@@ -64,6 +74,7 @@
                                         {% elif attachment.kind == "audio" %}
                                             <audio
                                                 class="note-attachment-audio"
+                                                aria-label="{{ attachment.original_name }}"
                                                 controls
                                                 preload="metadata"
                                                 src="{% url 'chat:note_attachment' attachment.id %}"
@@ -92,6 +103,10 @@
                         </article>
                     {% endfor %}
                 </div>
+                <div class="notes-empty-state" id="notes-search-empty" hidden>
+                    <strong>Ничего не нашлось.</strong>
+                    <span>Попробуйте другой запрос или очистите поле поиска.</span>
+                </div>
             {% else %}
                 <div class="notes-empty-state">
                     <strong>Здесь пока тихо.</strong>
@@ -102,5 +117,6 @@
     </main>
     <script src="{% static 'chat/js/theme.js' %}?v=1"></script>
     <script src="{% static 'chat/js/local-datetime.js' %}?v=1"></script>
+    <script src="{% static 'chat/js/notes-search.js' %}?v=1"></script>
 </body>
 </html>

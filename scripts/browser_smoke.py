@@ -82,7 +82,7 @@ def prepare_database(environment):
     django.setup()
 
     from django.core.management import call_command
-    from chat.models import Message, Room
+    from chat.models import Message, Note, NoteAttachment, Room
     from users.models import User
 
     call_command("migrate", verbosity=0, interactive=False)
@@ -118,6 +118,23 @@ def prepare_database(environment):
         Message(user=owner, room=main_room, text=f"history-{index:03d}")
         for index in range(120)
     ])
+    Note.objects.create(user=owner, text="Проверить резервную копию")
+    Note.objects.create(
+        user=owner,
+        source_message=Message.objects.filter(room=main_room).first(),
+        source_author="Гость-бета",
+        text="Идея для вечера",
+    )
+    file_note = Note.objects.create(user=owner, text="Файл к встрече")
+    NoteAttachment.objects.create(
+        note=file_note,
+        file="chat/note-attachments/smoke-plan.txt",
+        original_name="план-альфа.txt",
+        content_type="text/plain",
+        size=1,
+        kind="file",
+    )
+    Note.objects.create(user=guest, text="Чужой секрет")
     Room.objects.update_or_create(
         slug="vozle-bilyarda",
         defaults={
@@ -205,6 +222,35 @@ def open_chat(page, room_slug):
     page.locator(".chat-history-skeleton").wait_for(state="detached")
 
 
+def check_notes_search(page, base_url):
+    notes_url = f"{base_url}/chat/notes/"
+    page.goto(notes_url)
+    search = page.get_by_role("searchbox", name="Найти в заметках")
+    search.wait_for()
+    bounds = search.bounding_box()
+    assert bounds["x"] >= 0
+    assert bounds["x"] + bounds["width"] <= page.evaluate("window.innerWidth") + 1
+    assert page.locator(".note-card:visible").count() == 3
+    assert "Чужой секрет" not in page.locator(".notes-list").inner_text()
+
+    for query, expected in (
+        ("РЕЗЕРВНУЮ копию", "Проверить резервную копию"),
+        ("гость-бета", "Идея для вечера"),
+        ("план-альфа.txt", "Файл к встрече"),
+    ):
+        search.fill(query)
+        assert page.locator(".note-card:visible").count() == 1
+        assert expected in page.locator(".note-card:visible").inner_text()
+        assert page.url == notes_url
+
+    search.fill("нет совпадений")
+    assert page.locator(".note-card:visible").count() == 0
+    page.get_by_text("Ничего не нашлось.").wait_for()
+    search.fill("")
+    assert page.locator(".note-card:visible").count() == 3
+    page.goto(f"{base_url}/chat/")
+
+
 def assert_composer_inside_viewport(page):
     geometry = page.locator(".chat-composer").evaluate(
         """element => {
@@ -235,6 +281,7 @@ def run_chromium_flow(playwright, server):
     page = context.new_page()
     try:
         login(page, server.base_url)
+        check_notes_search(page, server.base_url)
         open_chat(page, "u-stoyki")
         assert_composer_inside_viewport(page)
         page.wait_for_function("() => document.querySelectorAll('.message').length === 50")
@@ -331,6 +378,7 @@ def run_mobile_layout(playwright, server, engine, viewport):
     page = context.new_page()
     try:
         login(page, server.base_url)
+        check_notes_search(page, server.base_url)
         open_chat(page, "u-stoyki")
         assert_composer_inside_viewport(page)
         input_element = page.locator("#chat-message-input")
