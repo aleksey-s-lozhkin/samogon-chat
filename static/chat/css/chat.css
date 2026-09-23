@@ -255,6 +255,49 @@ a {
     font-weight: 800;
 }
 
+.notes-search {
+    display: grid;
+    gap: 8px;
+    margin-top: 22px;
+}
+
+.notes-search[hidden],
+.note-card[hidden],
+.notes-empty-state[hidden] {
+    display: none;
+}
+
+.notes-search label {
+    color: var(--text-soft);
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.notes-search input {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 14px;
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    background: var(--surface-strong);
+    color: var(--text);
+}
+
+.notes-search input:focus-visible {
+    outline: 2px solid var(--amber-light);
+    outline-offset: 2px;
+}
+
+.notes-search input::placeholder,
+#notes-search-status {
+    color: var(--text-muted);
+}
+
+#notes-search-status {
+    min-height: 18px;
+    font-size: 12px;
+}
+
 .notes-list {
     display: grid;
     gap: 12px;
