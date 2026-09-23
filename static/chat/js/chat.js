@@ -10,6 +10,8 @@ const {
     messageReportTemplate,
     noteCreateUrl,
     messagesApiUrl,
+    currentUserUrl,
+    loginPageUrl,
     focusMessageId,
 } = chatConfig;
 const MESSAGE_MAX_LENGTH = 1000;
@@ -24,6 +26,9 @@ const AUDIO_MAX_DURATION_MS = 180000;
 let chatSocket = null;
 let reconnectTimer = null;
 let reconnectAttempts = 0;
+let reconnectBlocked = false;
+let sessionCheckPending = false;
+let failedHandshakes = 0;
 let socketWasConnected = false;
 let hiddenAt = null;
 let directRecipient = null;
@@ -149,7 +154,7 @@ presenceStatusSelect?.addEventListener("change", () => {
 });
 
 function connectWebSocket() {
-    if (!isAuthenticated || document.hidden) {
+    if (!isAuthenticated || document.hidden || reconnectBlocked || sessionCheckPending) {
         return;
     }
     if (
@@ -165,12 +170,15 @@ function connectWebSocket() {
     const url = `${protocol}//${window.location.host}/ws/chat/${encodeURIComponent(roomSlug)}/${focusQuery}`;
 
     const socket = new WebSocket(url);
+    let socketOpened = false;
     chatSocket = socket;
     socket.onopen = () => {
         if (socket !== chatSocket) {
             return;
         }
         reconnectAttempts = 0;
+        failedHandshakes = 0;
+        socketOpened = true;
         if (socketWasConnected) {
             showSuccess("Связь восстановлена.");
         }
@@ -189,8 +197,18 @@ function connectWebSocket() {
         chatSocket = null;
         stopPresenceHeartbeat();
         stopTyping();
+        if (code === 4401) {
+            checkSessionAfterWebSocketFailure();
+            return;
+        }
         if (SOCKET_FATAL_CLOSE_CODES.has(code)) {
-            showError("Доступ к чату закрыт. Обновите страницу после входа.");
+            reconnectBlocked = true;
+            showPersistentConnectionError("Доступ к этой беседе закрыт.");
+            return;
+        }
+        if (!socketOpened && code === 1006) {
+            failedHandshakes += 1;
+            checkSessionAfterWebSocketFailure();
             return;
         }
         showConnectionLost();
@@ -218,7 +236,7 @@ function stopPresenceHeartbeat() {
 }
 
 function scheduleWebSocketReconnect() {
-    if (reconnectTimer || document.hidden || !navigator.onLine) {
+    if (reconnectBlocked || sessionCheckPending || reconnectTimer || document.hidden || !navigator.onLine) {
         return;
     }
     const delay = Math.min(
@@ -233,7 +251,7 @@ function scheduleWebSocketReconnect() {
 }
 
 function reconnectWebSocketNow() {
-    if (!isAuthenticated || document.hidden || !navigator.onLine) {
+    if (!isAuthenticated || reconnectBlocked || sessionCheckPending || document.hidden || !navigator.onLine) {
         return;
     }
     window.clearTimeout(reconnectTimer);
@@ -262,6 +280,77 @@ function showConnectionLost() {
     errorElement.textContent = navigator.onLine
         ? "Связь потеряна. Переподключаемся…"
         : "Нет сети. Подключимся после её восстановления.";
+}
+
+async function checkSessionAfterWebSocketFailure() {
+    if (sessionCheckPending) {
+        return;
+    }
+    sessionCheckPending = true;
+    try {
+        const response = await fetch(currentUserUrl, {
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: {Accept: "application/json"},
+        });
+        if (response.status === 401) {
+            reconnectBlocked = true;
+            const loginUrl = new URL(loginPageUrl, window.location.origin);
+            loginUrl.searchParams.set("next", window.location.pathname + window.location.search);
+            showPersistentConnectionError(
+                "Вход устарел. Войдите снова, чтобы открыть чат.",
+                "Войти",
+                loginUrl.href,
+            );
+            return;
+        }
+        if (response.status === 403) {
+            reconnectBlocked = true;
+            showPersistentConnectionError("Доступ к чату закрыт для этого аккаунта.");
+            return;
+        }
+        if (response.ok) {
+            const account = await response.json();
+            if (account.username !== currentUsername) {
+                reconnectBlocked = true;
+                showPersistentConnectionError(
+                    "Аккаунт изменился. Обновите страницу, чтобы продолжить.",
+                    "Обновить",
+                    window.location.href,
+                );
+                return;
+            }
+        }
+    } catch (_error) {
+        // Сбой HTTP-проверки не должен мешать обычному восстановлению сети.
+    } finally {
+        sessionCheckPending = false;
+    }
+    if (failedHandshakes >= 3) {
+        showPersistentConnectionError(
+            "Не удалось подключиться к чату. Обновите страницу; если ошибка повторится, сообщите администратору.",
+            "Обновить",
+            window.location.href,
+        );
+    } else {
+        showConnectionLost();
+    }
+    scheduleWebSocketReconnect();
+}
+
+function showPersistentConnectionError(message, actionLabel, actionUrl) {
+    const errorElement = document.getElementById("error-message");
+    if (!errorElement) {
+        return;
+    }
+    errorElement.classList.remove("is-success");
+    errorElement.replaceChildren(document.createTextNode(message));
+    if (actionLabel && actionUrl) {
+        const link = document.createElement("a");
+        link.href = actionUrl;
+        link.textContent = actionLabel;
+        errorElement.append(" ", link);
+    }
 }
 
 function updateAppHeight() {

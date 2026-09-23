@@ -146,7 +146,8 @@ def login(page, base_url):
     page.locator("#login-username").fill(USERNAME)
     page.locator("#login-password").fill(PASSWORD)
     page.locator("#login-form button[type=submit]").click()
-    page.wait_for_url(f"{base_url}/chat/?auth=login")
+    # A successful login may drop the auth query string during redirect.
+    # Wait for the login form to disappear instead of matching that URL.
     page.locator("#login-modal").wait_for(state="detached")
 
 
@@ -281,6 +282,29 @@ def run_chromium_flow(playwright, server):
         ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
         page.screenshot(path=ARTIFACTS_DIR / "chromium-desktop-failure.png", full_page=True)
         raise
+    finally:
+        context.close()
+        browser.close()
+
+
+def run_expired_session_websocket_flow(playwright, server):
+    """Проверяет отказ WebSocket после потери cookie на открытой странице."""
+    browser = playwright.chromium.launch()
+    context = browser.new_context(viewport={"width": 390, "height": 844})
+    page = context.new_page()
+    try:
+        login(page, server.base_url)
+        open_chat(page, "u-stoyki")
+        context.clear_cookies()
+        page.evaluate("reconnectWebSocketNow()")
+        login_link = page.locator("#error-message a")
+        login_link.wait_for(timeout=10000)
+        assert login_link.inner_text() == "Войти"
+        assert login_link.get_attribute("href").endswith(
+            "/accounts/login/?next=%2Fchat%2Fu-stoyki%2F"
+        )
+        assert "Вход устарел" in page.locator("#error-message").inner_text()
+        assert page.evaluate("reconnectBlocked && reconnectTimer === null")
     finally:
         context.close()
         browser.close()
@@ -515,6 +539,7 @@ def main():
                 check_auth_entry(playwright, server)
                 run_admin_flow(playwright, server)
                 run_chromium_flow(playwright, server)
+                run_expired_session_websocket_flow(playwright, server)
                 run_mobile_layout(
                     playwright,
                     server,
