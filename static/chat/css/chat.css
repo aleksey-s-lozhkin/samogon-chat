@@ -1889,17 +1889,15 @@ html[data-theme="light"] .note-attachment-audio {
     margin-right: 6px;
 }
 
-.message.private .message-username::after {
-    margin-left: 6px;
-
-    color: var(--amber);
-
-    content: "личное";
-
+.message-privacy-label {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 3px;
+    color: var(--amber-light);
     font-size: 10px;
     font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    white-space: nowrap;
 }
 
 .message[data-color="blue"] {
@@ -4689,7 +4687,7 @@ body::after {
         padding: 0 12px 10px;
     }
 
-    .chat-hint span:first-child {
+    .chat-hint .composer-shortcut {
         display: none;
     }
 
@@ -5166,6 +5164,37 @@ html[data-theme="light"] .recipient-cancel {
 .room-title-icon .conversation-symbol { width:28px; height:28px; }
 .room-navigation-item { min-height:46px; gap:12px; }
 .room-navigation-item.active { box-shadow:inset 3px 0 var(--primary); }
+.rooms-sidebar nav[aria-label="Открытые беседы"] .room-navigation-item {
+    min-height: 58px;
+    padding-block: 6px;
+}
+.room-navigation-item.active .room-navigation-copy small { color: var(--text-soft); }
+.presence-sidebar .online-users {
+    border-color: rgba(198, 117, 58, 0.4);
+    background: linear-gradient(135deg, rgba(198, 117, 58, 0.14), rgba(198, 117, 58, 0.03));
+}
+.presence-sidebar .offline-users { background: rgba(127, 138, 156, 0.035); }
+.presence-sidebar .online-users .user-avatar { width: 25px; height: 25px; }
+.presence-sidebar .offline-users .online-user { padding-block: 3px; }
+.presence-sidebar .offline-users .user-avatar { width: 17px; height: 17px; }
+.composer-audience {
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    color: var(--text-soft);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.composer-audience[data-mode="private"],
+.composer-audience[data-mode="note"] { color: var(--amber-light); }
+.composer-shortcut { flex: 0 1 auto; }
+#message-char-count { flex: 0 0 auto; }
+.message.private .message-content {
+    border-color: rgba(106, 159, 195, 0.62);
+    box-shadow: 0 7px 22px rgba(0, 0, 0, 0.13), inset 0 0 0 1px rgba(106, 159, 195, 0.12);
+}
+.message.own .message-time { text-align: right; }
 .room-card { border-radius:18px; border-left:3px solid var(--primary); }
 .room-info h3 { font-family:Georgia,serif; font-size:20px; font-weight:500; }
 .room-info p { line-height:1.5; }

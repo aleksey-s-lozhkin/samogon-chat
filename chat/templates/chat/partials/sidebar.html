@@ -23,7 +23,12 @@
                 <span class="room-navigation-icon" aria-hidden="true">
                     {% include "chat/partials/conversation_icon.html" with icon_room=chat_room %}
                 </span>
-                <span>{{ chat_room.name }}</span>
+                <span class="room-navigation-copy">
+                    <span>{{ chat_room.name }}</span>
+                    {% if chat_room.description %}
+                        <small>{{ chat_room.description|truncatechars:38 }}</small>
+                    {% endif %}
+                </span>
                 {% include "chat/partials/unread_marker.html" with chat_room=chat_room %}
             </a>
         {% empty %}
