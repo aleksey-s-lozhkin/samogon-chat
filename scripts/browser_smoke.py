@@ -82,7 +82,7 @@ def prepare_database(environment):
     django.setup()
 
     from django.core.management import call_command
-    from chat.models import Message, Note, NoteAttachment, Room
+    from chat.models import Attachment, Message, Note, NoteAttachment, Room
     from users.models import User
 
     call_command("migrate", verbosity=0, interactive=False)
@@ -118,6 +118,14 @@ def prepare_database(environment):
         Message(user=owner, room=main_room, text=f"history-{index:03d}")
         for index in range(120)
     ])
+    Attachment.objects.create(
+        message=Message.objects.filter(room=main_room).order_by("-pk").first(),
+        file="chat/attachments/smoke-file.txt",
+        original_name=f"smoke-{'a' * 72}.txt",
+        content_type="text/plain",
+        size=1024,
+        kind=Attachment.Kind.FILE,
+    )
     Note.objects.create(user=owner, text="Проверить резервную копию")
     Note.objects.create(
         user=owner,
@@ -275,6 +283,32 @@ def assert_composer_inside_viewport(page):
         raise AssertionError(f"Поле ввода имеет некорректную высоту: {geometry}")
 
 
+def assert_compact_file_attachment(page):
+    file_link = page.locator(".message-attachment-file").first
+    file_link.wait_for()
+    geometry = file_link.evaluate(
+        """element => {
+            const link = element.getBoundingClientRect();
+            const name = element.querySelector('.message-attachment-name').getBoundingClientRect();
+            const size = element.querySelector('.message-attachment-size').getBoundingClientRect();
+            return {
+                height: link.height,
+                right: link.right,
+                viewport: innerWidth,
+                nameCenter: (name.top + name.bottom) / 2,
+                sizeCenter: (size.top + size.bottom) / 2,
+                nameRight: name.right,
+                sizeLeft: size.left,
+            };
+        }"""
+    )
+    if (geometry["height"] > 36 or
+            abs(geometry["nameCenter"] - geometry["sizeCenter"]) > 2 or
+            geometry["nameRight"] > geometry["sizeLeft"] + 1 or
+            geometry["right"] > geometry["viewport"] + 1):
+        raise AssertionError(f"Вложение не помещается в одну строку: {geometry}")
+
+
 def run_chromium_flow(playwright, server):
     browser = playwright.chromium.launch()
     context = browser.new_context(viewport={"width": 1440, "height": 900})
@@ -285,6 +319,7 @@ def run_chromium_flow(playwright, server):
         open_chat(page, "u-stoyki")
         assert_composer_inside_viewport(page)
         page.wait_for_function("() => document.querySelectorAll('.message').length === 50")
+        assert_compact_file_attachment(page)
         oldest_visible = page.locator(".message-text", has_text="history-070")
         before_top = page.locator("#chat-log").evaluate("""element => {
             element.scrollTop = 0;
@@ -381,6 +416,7 @@ def run_mobile_layout(playwright, server, engine, viewport):
         check_notes_search(page, server.base_url)
         open_chat(page, "u-stoyki")
         assert_composer_inside_viewport(page)
+        assert_compact_file_attachment(page)
         input_element = page.locator("#chat-message-input")
         if "Смахните вправо" in (input_element.get_attribute("placeholder") or ""):
             raise AssertionError("Поле ввода всё ещё показывает удалённую подсказку свайпа")
