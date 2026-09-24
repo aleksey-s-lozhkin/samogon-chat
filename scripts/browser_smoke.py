@@ -345,6 +345,8 @@ def run_chromium_flow(playwright, server):
         open_chat(page, "u-stoyki")
         assert_composer_inside_viewport(page)
         page.wait_for_function("() => document.querySelectorAll('.message').length === 50")
+        if page.locator(".message.is-grouped").count() != 49:
+            raise AssertionError("Соседние реплики одного автора не сгруппированы")
         assert_compact_file_attachment(page)
         oldest_visible = page.locator(".message-text", has_text="history-070")
         before_top = page.locator("#chat-log").evaluate("""element => {
@@ -354,6 +356,8 @@ def run_chromium_flow(playwright, server):
                 .getBoundingClientRect().top;
         }""")
         page.wait_for_function("() => document.querySelectorAll('.message').length === 100")
+        if "is-grouped" not in (page.locator(".message", has=oldest_visible).get_attribute("class") or ""):
+            raise AssertionError("Группа разорвалась на границе подгруженной истории")
         after_top = oldest_visible.bounding_box()["y"]
         if abs(after_top - before_top) > 5:
             raise AssertionError(
@@ -363,6 +367,45 @@ def run_chromium_flow(playwright, server):
         page.locator("#chat-log").evaluate("element => { element.scrollTop = 0; }")
         page.wait_for_function("() => document.querySelectorAll('.message').length === 120")
         page.get_by_text("Это начало переписки", exact=True).wait_for()
+        yesterday_label = page.evaluate("""() => {
+            const savedDay = lastMessageDay;
+            const fragment = document.createDocumentFragment();
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            lastMessageDay = null;
+            appendDayDivider(fragment, yesterday.toISOString());
+            lastMessageDay = savedDay;
+            return fragment.querySelector('.day-divider')?.textContent;
+        }""")
+        if yesterday_label != "Вчера":
+            raise AssertionError(f"Разделитель предыдущего дня: {yesterday_label}")
+        grouping = page.evaluate("""() => {
+            const savedDay = lastMessageDay;
+            const fragment = document.createDocumentFragment();
+            const noon = new Date();
+            noon.setHours(12, 0, 0, 0);
+            lastMessageDay = null;
+            const samples = [
+                {private: false},
+                {private: false},
+                {private: true, recipient: 'smoke-guest'},
+                {private: true, recipient: 'smoke-guest'},
+                {private: true, recipient: 'smoke-host'},
+                {private: true, recipient: 'smoke-host', reply_to: {id: 1, available: false}},
+            ];
+            samples.forEach((sample, index) => addMessage({
+                username: 'smoke-owner',
+                message: 'Проверка группы',
+                timestamp: new Date(noon.getTime() + index * 60_000).toISOString(),
+                ...sample,
+            }, {chatLog: fragment, historical: true, suppressScroll: true}));
+            const result = [...fragment.querySelectorAll('.message')]
+                .map(message => message.classList.contains('is-grouped'));
+            lastMessageDay = savedDay;
+            return result;
+        }""")
+        if grouping != [False, True, False, True, False, False]:
+            raise AssertionError(f"Группировка смешала режимы или ответы: {grouping}")
         if "Смахните вправо" in (
             page.locator("#chat-message-input").get_attribute("placeholder") or ""
         ):
@@ -489,6 +532,26 @@ def run_mobile_layout(playwright, server, engine, viewport):
         page.locator(".chat-header").wait_for(state="hidden")
         assert_composer_inside_viewport(page)
         page.locator("#cancel-bartender-message").click()
+        input_element.blur()
+        page.locator(".chat-header").wait_for(state="visible")
+
+        page.evaluate("""() => activateReply({
+            id: 1,
+            username: 'smoke-guest',
+            message: 'Длинная цитата '.repeat(25),
+        })""")
+        quote_geometry = page.locator("#reply-recipient").evaluate("""element => {
+            const label = element.querySelector('span').getBoundingClientRect();
+            const cancel = element.querySelector('button').getBoundingClientRect();
+            return {
+                labelHeight: label.height,
+                cancelRight: cancel.right,
+                viewport: window.innerWidth,
+            };
+        }""")
+        if quote_geometry["labelHeight"] > 24 or quote_geometry["cancelRight"] > quote_geometry["viewport"] + 1:
+            raise AssertionError(f"Панель ответа не помещается на экране: {quote_geometry}")
+        page.locator("#cancel-reply").click()
         input_element.blur()
         page.locator(".chat-header").wait_for(state="visible")
 

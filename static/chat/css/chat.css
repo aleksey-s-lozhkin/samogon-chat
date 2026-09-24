@@ -1227,10 +1227,11 @@ a {
     border: 1px solid var(--border);
     border-radius: 999px;
 
-    color: var(--text-muted);
-    background: var(--bg-soft);
+    color: var(--text-soft);
+    background: var(--surface);
 
-    font-size: 11px;
+    font-size: 12px;
+    font-weight: 700;
 }
 
 .chat-empty-state {
@@ -1633,6 +1634,13 @@ html[data-theme="light"] .message-skeleton-line::after {
     color: var(--text-soft);
     font-size: 11px;
     text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#reply-recipient > span {
+    min-width: 0;
+    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -5195,6 +5203,8 @@ html[data-theme="light"] .recipient-cancel {
     box-shadow: 0 7px 22px rgba(0, 0, 0, 0.13), inset 0 0 0 1px rgba(106, 159, 195, 0.12);
 }
 .message.own .message-time { text-align: right; }
+.message.is-grouped { margin-top: -3px; }
+.message.is-grouped .message-author-avatar { visibility: hidden; }
 .room-card { border-radius:18px; border-left:3px solid var(--primary); }
 .room-info h3 { font-family:Georgia,serif; font-size:20px; font-weight:500; }
 .room-info p { line-height:1.5; }

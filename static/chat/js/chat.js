@@ -22,6 +22,7 @@ const TYPING_DEBOUNCE_MS = 250;
 const TYPING_IDLE_MS = 1600;
 const TYPING_TTL_MS = 3500;
 const AUDIO_MAX_DURATION_MS = 180000;
+const MESSAGE_GROUP_INTERVAL_MS = 5 * 60 * 1000;
 
 let chatSocket = null;
 let reconnectTimer = null;
@@ -1001,6 +1002,12 @@ function addMessage(data, options = {}) {
 
     const message = document.createElement("div");
     message.className = "message";
+    message.dataset.groupAuthor = normalizeUsername(data.username);
+    message.dataset.groupVisibility = data.private ? "private" : "room";
+    message.dataset.groupRecipient = data.private
+        ? normalizeUsername(data.recipient || "") : "";
+    message.dataset.groupTimestamp = timestamp || "";
+    message.dataset.hasReply = data.reply_to ? "true" : "false";
     message.classList.toggle("from-bartender", normalizeUsername(data.username) === normalizeUsername(BARTENDER_USERNAME));
     if (data.id) {
         message.dataset.messageId = String(data.id);
@@ -1132,6 +1139,7 @@ function addMessage(data, options = {}) {
         }
         toggleMessageSelection(message);
     });
+    updateMessageGrouping(message, chatLog.lastElementChild);
     chatLog.append(message);
 
     if (
@@ -1160,6 +1168,22 @@ function addMessage(data, options = {}) {
     } else if (!message.classList.contains("own")) {
         document.getElementById("scroll-to-latest")?.classList.remove("hidden");
     }
+}
+
+function updateMessageGrouping(message, previous = message.previousElementSibling) {
+    const currentTime = Date.parse(message.dataset.groupTimestamp || "");
+    const previousTime = Date.parse(previous?.dataset.groupTimestamp || "");
+    const isGrouped = previous?.classList.contains("message")
+        && message.dataset.groupAuthor === previous.dataset.groupAuthor
+        && message.dataset.groupVisibility === previous.dataset.groupVisibility
+        && message.dataset.groupRecipient === previous.dataset.groupRecipient
+        && message.dataset.hasReply !== "true"
+        && Number.isFinite(currentTime)
+        && Number.isFinite(previousTime)
+        && new Date(currentTime).toDateString() === new Date(previousTime).toDateString()
+        && currentTime >= previousTime
+        && currentTime - previousTime <= MESSAGE_GROUP_INTERVAL_MS;
+    message.classList.toggle("is-grouped", Boolean(isGrouped));
 }
 
 function updateHistoryLoader(message = "") {
@@ -1212,11 +1236,12 @@ async function loadOlderMessages() {
         const loadedDividers = fragment.querySelectorAll(".day-divider");
         const loadedLastDivider = loadedDividers[loadedDividers.length - 1];
         if (existingDivider && loadedLastDivider
-            && existingDivider.textContent === loadedLastDivider.textContent) {
+            && existingDivider.dataset.dayKey === loadedLastDivider.dataset.dayKey) {
             anchor = existingDivider.nextSibling;
             existingDivider.remove();
         }
         chatLog.insertBefore(fragment, anchor || null);
+        updateMessageGrouping(firstMessage);
         historyHasMore = Boolean(data.has_more);
         finalMessage = historyHasMore ? "" : "Это начало переписки";
     } catch (error) {
@@ -1320,7 +1345,11 @@ function removeMessage(messageId) {
     if (selectedMessageElement === message) {
         selectedMessageElement = null;
     }
+    const nextMessage = message.nextElementSibling;
     message.remove();
+    if (nextMessage?.classList.contains("message")) {
+        updateMessageGrouping(nextMessage);
+    }
 
     const chatLog = document.getElementById("chat-log");
     if (chatLog && !chatLog.querySelector(".message")) {
@@ -1352,7 +1381,9 @@ function activateReply(data) {
     }
     replyTarget = {id: data.id, username: data.username, message: data.message};
     document.getElementById("reply-author").textContent = data.username;
-    document.getElementById("reply-preview").textContent = data.message.slice(0, 100);
+    const preview = document.getElementById("reply-preview");
+    preview.textContent = data.message.slice(0, 100);
+    preview.title = data.message;
     document.getElementById("reply-recipient")?.classList.remove("hidden");
     document.getElementById("chat-message-input")?.focus();
 }
@@ -1985,8 +2016,13 @@ function appendDayDivider(chatLog, timestamp) {
 
     const divider = document.createElement("div");
     divider.className = "day-divider";
+    divider.dataset.dayKey = dayKey;
     const today = new Date().toLocaleDateString("ru-RU");
-    divider.textContent = dayKey === today ? "Сегодня" : dayKey;
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = yesterday.toLocaleDateString("ru-RU");
+    divider.textContent = dayKey === today ? "Сегодня"
+        : dayKey === yesterdayKey ? "Вчера" : dayKey;
     chatLog.append(divider);
 }
 
