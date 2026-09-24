@@ -1488,6 +1488,18 @@ function renderMessageAttachments(content, attachments) {
             image.loading = "lazy";
             link.append(image);
         } else {
+            const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            icon.setAttribute("class", "message-attachment-icon");
+            icon.setAttribute("viewBox", "0 0 24 24");
+            icon.setAttribute("fill", "none");
+            icon.setAttribute("stroke", "currentColor");
+            icon.setAttribute("stroke-width", "2");
+            icon.setAttribute("stroke-linecap", "round");
+            icon.setAttribute("stroke-linejoin", "round");
+            icon.setAttribute("aria-hidden", "true");
+            const paperclip = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            paperclip.setAttribute("d", "M21 11.5 12.5 20a6 6 0 0 1-8.5-8.5l9-9a4 4 0 0 1 5.7 5.7l-9 9a2 2 0 0 1-2.8-2.8l8.5-8.5");
+            icon.append(paperclip);
             const name = document.createElement("span");
             name.className = "message-attachment-name";
             name.textContent = attachment.name;
@@ -1496,7 +1508,8 @@ function renderMessageAttachments(content, attachments) {
             size.textContent = formatFileSize(attachment.size);
             link.href = attachment.download_url;
             link.download = attachment.name;
-            link.append(name, size);
+            link.title = `${attachment.name} · ${size.textContent}`;
+            link.append(icon, name, size);
         }
         container.append(link);
     });
