@@ -5205,6 +5205,9 @@ html[data-theme="light"] .recipient-cancel {
 .message.own .message-time { text-align: right; }
 .message.is-grouped { margin-top: -3px; }
 .message.is-grouped .message-author-avatar { visibility: hidden; }
+.message.is-grouped:not(.private) .message-username { display: none; }
+.message.is-grouped:not(.private).is-selected .message-username,
+.message.is-grouped:not(.private):focus-within .message-username { display: flex; }
 .room-card { border-radius:18px; border-left:3px solid var(--primary); }
 .room-info h3 { font-family:Georgia,serif; font-size:20px; font-weight:500; }
 .room-info p { line-height:1.5; }
