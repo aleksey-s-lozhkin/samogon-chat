@@ -1220,7 +1220,7 @@ async function loadOlderMessages() {
         if (!response.ok) throw new Error(`history:${response.status}`);
         const data = await response.json();
         const messages = Array.isArray(data.messages) ? data.messages : [];
-        anchorViewportOffset = firstMessage.offsetTop - chatLog.scrollTop;
+        anchorViewportOffset = firstMessage.getBoundingClientRect().top;
         let anchor = chatLog.querySelector(".day-divider, .message");
         const previousDay = lastMessageDay;
         const fragment = document.createDocumentFragment();
@@ -1250,7 +1250,7 @@ async function loadOlderMessages() {
         loadingOlderMessages = false;
         updateHistoryLoader(finalMessage);
         if (anchorViewportOffset !== null) {
-            chatLog.scrollTop = firstMessage.offsetTop - anchorViewportOffset;
+            chatLog.scrollTop += firstMessage.getBoundingClientRect().top - anchorViewportOffset;
         }
     }
 }
@@ -2383,7 +2383,10 @@ function updateInputSize() {
     if (input.value) {
         input.style.height = `${Math.min(Math.max(input.scrollHeight, 46), 96)}px`;
     }
+    const remaining = MESSAGE_MAX_LENGTH - input.value.length;
     counter.textContent = `${input.value.length} / ${MESSAGE_MAX_LENGTH}`;
+    counter.classList.toggle("hidden", remaining > 200);
+    counter.classList.toggle("is-warning", remaining <= 50);
     updateComposerSubmitMode();
 }
 
