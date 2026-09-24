@@ -309,6 +309,32 @@ def assert_compact_file_attachment(page):
         raise AssertionError(f"Вложение не помещается в одну строку: {geometry}")
 
 
+def assert_composer_audience(page):
+    audience = page.locator("#composer-audience")
+    assert audience.inner_text() == "Всем в беседе"
+    assert "Основная тестовая беседа." in page.locator(
+        '[data-room-slug="u-stoyki"] small'
+    ).inner_text()
+
+    page.locator("#note-trigger").click()
+    assert audience.inner_text() == "Личная заметка · только вам"
+    page.evaluate("setDirectRecipient('smoke-guest')")
+    assert audience.inner_text() == "Лично для @smoke-guest"
+    assert page.locator("#note-recipient").is_hidden()
+
+    page.locator('[data-chat-action="bartender"]').click()
+    assert audience.inner_text() == "Семёну и всем в беседе"
+    assert page.locator("#direct-recipient").is_hidden()
+    page.locator("#bartender-private").click()
+    assert audience.inner_text() == "Лично Семёну"
+    assert page.locator("#chat-message-input").get_attribute(
+        "placeholder"
+    ) == "Это увидит только Семён…"
+    page.locator("#cancel-bartender-message").click()
+    assert audience.inner_text() == "Всем в беседе"
+    page.locator("#chat-message-input").blur()
+
+
 def run_chromium_flow(playwright, server):
     browser = playwright.chromium.launch()
     context = browser.new_context(viewport={"width": 1440, "height": 900})
@@ -341,11 +367,16 @@ def run_chromium_flow(playwright, server):
             page.locator("#chat-message-input").get_attribute("placeholder") or ""
         ):
             raise AssertionError("Поле ввода всё ещё показывает удалённую подсказку свайпа")
+        assert_composer_audience(page)
 
         message = f"smoke message {time.time_ns()}"
         page.locator("#chat-message-input").fill(message)
         page.locator("#chat-message-submit").click()
         page.locator(".message-text", has_text=message).wait_for()
+        if page.locator(".message.own .message-time").last.evaluate(
+            "element => getComputedStyle(element).textAlign"
+        ) != "right":
+            raise AssertionError("Время своего сообщения не со стороны аватара")
 
         open_chat(page, "smoke-owned-private")
         page.get_by_role("heading", name="Релиз без свидетелей").wait_for()
