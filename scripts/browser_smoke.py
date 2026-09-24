@@ -312,6 +312,15 @@ def assert_compact_file_attachment(page):
 def assert_composer_audience(page):
     audience = page.locator("#composer-audience")
     assert audience.inner_text() == "Всем в беседе"
+    composer_input = page.locator("#chat-message-input")
+    counter = page.locator("#message-char-count")
+    assert counter.is_hidden()
+    composer_input.fill("x" * 800)
+    assert counter.is_visible() and counter.inner_text() == "800 / 1000"
+    composer_input.fill("x" * 950)
+    assert "is-warning" in (counter.get_attribute("class") or "")
+    composer_input.fill("")
+    assert counter.is_hidden()
     assert "Основная тестовая беседа." in page.locator(
         '[data-room-slug="u-stoyki"] small'
     ).inner_text()

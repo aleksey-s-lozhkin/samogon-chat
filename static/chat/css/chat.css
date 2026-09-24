@@ -5198,6 +5198,7 @@ html[data-theme="light"] .recipient-cancel {
 .composer-audience[data-mode="note"] { color: var(--amber-light); }
 .composer-shortcut { flex: 0 1 auto; }
 #message-char-count { flex: 0 0 auto; }
+#message-char-count.is-warning { color: var(--amber-light); font-weight: 700; }
 .message.private .message-content {
     border-color: rgba(106, 159, 195, 0.62);
     box-shadow: 0 7px 22px rgba(0, 0, 0, 0.13), inset 0 0 0 1px rgba(106, 159, 195, 0.12);
