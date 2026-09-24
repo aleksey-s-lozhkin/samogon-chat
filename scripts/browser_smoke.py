@@ -347,6 +347,13 @@ def run_chromium_flow(playwright, server):
         page.wait_for_function("() => document.querySelectorAll('.message').length === 50")
         if page.locator(".message.is-grouped").count() != 49:
             raise AssertionError("Соседние реплики одного автора не сгруппированы")
+        grouped_message = page.locator(".message.is-grouped").first
+        if grouped_message.locator(".message-username").is_visible():
+            raise AssertionError("Повторное имя автора занимает место в группе")
+        grouped_message.locator(".message-content").click()
+        if not grouped_message.locator(".message-username").is_visible():
+            raise AssertionError("Действия сгруппированного сообщения недоступны")
+        grouped_message.locator(".message-content").click()
         assert_compact_file_attachment(page)
         oldest_visible = page.locator(".message-text", has_text="history-070")
         before_top = page.locator("#chat-log").evaluate("""element => {
