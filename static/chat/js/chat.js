@@ -840,6 +840,7 @@ function renderUserList(
 
 function setDirectRecipient(username) {
     stopTyping();
+    clearNoteMode(false);
     clearBartenderMode(false);
     directRecipient = username;
 
@@ -852,7 +853,8 @@ function setDirectRecipient(username) {
 
     name.textContent = `@${username}`;
     banner.classList.remove("hidden");
-    input.placeholder = `Личное сообщение для @${username}`;
+    setComposerPlaceholder(input);
+    updateComposerAudience();
     input.focus();
 }
 
@@ -869,6 +871,7 @@ function clearDirectRecipient(focus = true) {
             input.focus();
         }
     }
+    updateComposerAudience();
 }
 
 function activateNoteMode() {
@@ -881,9 +884,10 @@ function activateNoteMode() {
 
     const input = document.getElementById("chat-message-input");
     if (input) {
-        input.placeholder = "Запишите мысль для себя…";
+        setComposerPlaceholder(input);
         input.focus();
     }
+    updateComposerAudience();
 }
 
 function clearNoteMode(focus = true) {
@@ -897,12 +901,14 @@ function clearNoteMode(focus = true) {
     if (focus) {
         input?.focus();
     }
+    updateComposerAudience();
 }
 
 function activateBartender() {
     stopTyping();
     clearReply();
     clearDirectRecipient(false);
+    clearNoteMode(false);
     bartenderMode = true;
     bartenderPrivate = false;
     updateBartenderMode();
@@ -946,6 +952,7 @@ function clearBartenderMode(focus = true) {
     if (focus) {
         input?.focus();
     }
+    updateComposerAudience();
 }
 
 function updateBartenderMode() {
@@ -953,6 +960,28 @@ function updateBartenderMode() {
     banner?.classList.toggle("hidden", !bartenderMode);
     document.getElementById("bartender-public")?.classList.toggle("selected", !bartenderPrivate);
     document.getElementById("bartender-private")?.classList.toggle("selected", bartenderPrivate);
+    setComposerPlaceholder(document.getElementById("chat-message-input"));
+    updateComposerAudience();
+}
+
+function updateComposerAudience() {
+    const audience = document.getElementById("composer-audience");
+    if (!audience) return;
+
+    let mode = "room";
+    let label = "Всем в беседе";
+    if (noteMode) {
+        mode = "note";
+        label = "Личная заметка · только вам";
+    } else if (directRecipient) {
+        mode = "private";
+        label = `Лично для @${directRecipient}`;
+    } else if (bartenderMode) {
+        mode = bartenderPrivate ? "private" : "room";
+        label = bartenderPrivate ? "Лично Семёну" : "Семёну и всем в беседе";
+    }
+    audience.dataset.mode = mode;
+    audience.textContent = label;
 }
 
 function addMessage(data, options = {}) {
@@ -1024,6 +1053,15 @@ function addMessage(data, options = {}) {
     authorName.classList.add("message-author-name");
     authorName.title = authorName.textContent;
     author.append(authorName);
+    if (data.private) {
+        const privacyLabel = document.createElement("span");
+        privacyLabel.className = "message-privacy-label";
+        const lock = document.createElement("span");
+        lock.setAttribute("aria-hidden", "true");
+        lock.textContent = "🔒";
+        privacyLabel.append(lock, document.createTextNode("(лично)"));
+        author.append(privacyLabel);
+    }
 
     const canDelete = normalizeUsername(data.username) === normalizeUsername(currentUsername)
         || canModerateMessages;
@@ -2387,7 +2425,7 @@ function rotateTagline(tagline) {
 }
 
 function rotateComposerHint(input) {
-    if (!input || input.value || directRecipient || bartenderMode) {
+    if (!input || input.value || directRecipient || bartenderMode || noteMode) {
         return;
     }
 
@@ -2396,9 +2434,13 @@ function rotateComposerHint(input) {
 }
 
 function setComposerPlaceholder(input) {
-    if (input && !input.value && !directRecipient && !bartenderMode) {
-        input.placeholder = COMPOSER_HINTS[composerHintIndex];
-    }
+    if (!input) return;
+    if (noteMode) input.placeholder = "Запишите мысль для себя…";
+    else if (directRecipient) input.placeholder = `Лично для @${directRecipient}…`;
+    else if (bartenderMode) input.placeholder = bartenderPrivate
+        ? "Это увидит только Семён…"
+        : "Спросите Семёна в общем чате…";
+    else input.placeholder = COMPOSER_HINTS[composerHintIndex];
 }
 
 function createMessageAction(className, title, icon) {
@@ -2524,4 +2566,5 @@ document.addEventListener("click", (event) => {
 });
 
 initialiseAtmosphere();
+updateComposerAudience();
 updateInputSize();
