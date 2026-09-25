@@ -314,6 +314,29 @@ def assert_composer_audience(page):
     assert audience.inner_text() == "Всем в беседе"
     composer_input = page.locator("#chat-message-input")
     counter = page.locator("#message-char-count")
+    page.evaluate("""() => {
+        const state = document.createElement('div');
+        state.className = 'chat-empty-state';
+        document.getElementById('chat-log').append(state);
+        setComposerPlaceholder(document.getElementById('chat-message-input'));
+    }""")
+    assert composer_input.get_attribute("placeholder") == "Начните разговор…"
+    page.evaluate("""() => {
+        document.querySelector('#chat-log .chat-empty-state').remove();
+        const message = document.createElement('div');
+        message.className = 'message';
+        message.dataset.groupAuthor = 'smoke-guest';
+        message.innerHTML = '<span class="message-author-name">smoke-guest</span>';
+        document.getElementById('chat-log').append(message);
+        setComposerPlaceholder(document.getElementById('chat-message-input'));
+    }""")
+    assert composer_input.get_attribute("placeholder") == (
+        "Продолжите разговор с smoke-guest…"
+    )
+    page.evaluate("""() => {
+        document.querySelector('#chat-log .message:last-child').remove();
+        setComposerPlaceholder(document.getElementById('chat-message-input'));
+    }""")
     assert counter.is_hidden()
     composer_input.fill("x" * 800)
     assert counter.is_visible() and counter.inner_text() == "800 / 1000"
