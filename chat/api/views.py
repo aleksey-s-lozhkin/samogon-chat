@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view
 
 from chat.models import BartenderJob, Message, Note, Room
 from chat.services.bartender import bartender
-from chat.selectors import get_visible_rooms
+from chat.selectors import get_message_recipients, get_visible_rooms
 from chat.services.attachments import AttachmentValidationError, create_attachments
 from chat.services.events import broadcast_attachment_update, message_group_names
 from chat.services.events import broadcast_message
@@ -35,6 +35,7 @@ from .serializers import (
     NotesResponseSerializer,
     ReactionSerializer,
     ReactionToggleSerializer,
+    ParticipantsResponseSerializer,
     RoomsResponseSerializer,
 )
 
@@ -86,6 +87,44 @@ def api_rooms(request):
         return error
     rooms = list(visible_rooms(request.user))
     return JsonResponse({"api_version": "v1", "rooms": [room_data(room, request.user) for room in rooms]})
+
+
+@extend_schema(
+    tags=("chat",),
+    auth=({"cookieAuth": []},),
+    parameters=[
+        OpenApiParameter("q", str, required=False, description="Username fragment, max 50 characters"),
+    ],
+    responses={
+        200: ParticipantsResponseSerializer,
+        400: ChatApiErrorSerializer,
+        401: ChatApiErrorSerializer,
+        403: ChatApiErrorSerializer,
+        404: ChatApiErrorSerializer,
+    },
+)
+@api_view(("GET",))
+def api_room_participants(request, room_slug):
+    if error := auth_error(request):
+        return error
+    room = accessible_room(request.user, room_slug)
+    if room is None:
+        return JsonResponse({"error": "room_not_found"}, status=404)
+    query = request.query_params.get("q", "").strip()
+    if len(query) > 50:
+        return JsonResponse({"error": "invalid_query"}, status=400)
+    users = list(get_message_recipients(room=room, viewer=request.user, query=query)[:51])
+    return JsonResponse({
+        "api_version": "v1",
+        "participants": [
+            {
+                "username": user.username,
+                "display_name": MessageService.display_username(user.username),
+            }
+            for user in users[:50]
+        ],
+        "has_more": len(users) > 50,
+    })
 
 
 @extend_schema_view(

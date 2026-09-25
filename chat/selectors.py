@@ -1,4 +1,6 @@
+from django.contrib.auth import get_user_model
 from django.db.models import Case, IntegerField, Q, Value, When
+from django.utils import timezone
 
 from chat.models import AtmosphereLine, Room
 
@@ -49,3 +51,15 @@ def get_published_atmosphere_lines(limit=50):
         .order_by("kind", "id")
         .values_list("text", flat=True)[:limit]
     )
+
+
+def get_message_recipients(*, room, viewer, query=""):
+    """Eligible recipients in a room; the caller applies the result limit."""
+    users = get_user_model().objects.filter(is_active=True, is_superuser=False).filter(
+        Q(banned_at__isnull=True) | Q(banned_until__lte=timezone.now())
+    ).exclude(pk=viewer.pk)
+    if room.is_private:
+        users = users.filter(private_room_memberships__room=room)
+    if query:
+        users = users.filter(username__icontains=query)
+    return users.order_by("username")
