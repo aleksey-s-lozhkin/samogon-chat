@@ -1508,6 +1508,7 @@ async function saveNote(sourceMessageId = null) {
             throw new Error(payload.error || "Не удалось сохранить заметку.");
         }
         if (!sourceMessageId && input) {
+            showComposerSendFeedback();
             input.value = "";
             updateInputSize();
             clearNoteMode();
@@ -1771,6 +1772,20 @@ function updateComposerSubmitMode() {
         ? "Удерживайте для записи аудиосообщения"
         : "Отправить сообщение";
     button.title = voiceMode ? "Удерживайте для записи" : "Отправить";
+}
+
+let sendFeedbackTimer;
+
+function showComposerSendFeedback() {
+    const button = document.getElementById("chat-message-submit");
+    if (!button || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        return;
+    }
+    window.clearTimeout(sendFeedbackTimer);
+    button.classList.remove("is-sending");
+    void button.offsetWidth;
+    button.classList.add("is-sending");
+    sendFeedbackTimer = window.setTimeout(() => button.classList.remove("is-sending"), 450);
 }
 
 function startAudioGesture(event) {
@@ -2151,6 +2166,7 @@ function sendMessage() {
         bartender_private: bartenderMode && bartenderPrivate,
         reply_to: replyTarget?.id || null,
     }));
+    showComposerSendFeedback();
     if (bartenderMode || isBartenderRequest(message)) {
         setBartenderTyping(true);
     }
@@ -2270,6 +2286,7 @@ async function createAttachmentMessage() {
         if (!response.ok) {
             throw new Error(payload.error || "Не удалось отправить файлы.");
         }
+        showComposerSendFeedback();
         selectedAttachments = [];
         renderSelectedAttachments();
         clearReply();
