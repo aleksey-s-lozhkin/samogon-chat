@@ -10,11 +10,17 @@ from .views import (
     api_notes,
     api_room_messages,
     api_rooms,
+    api_room_participants,
 )
 
 
 urlpatterns = [
     path("rooms/", api_rooms, name="api_v1_chat_rooms"),
+    path(
+        "rooms/<slug:room_slug>/participants/",
+        api_room_participants,
+        name="api_v1_chat_room_participants",
+    ),
     path("notes/", api_notes, name="api_v1_chat_notes"),
     path("notes/<int:note_id>/", api_note_detail, name="api_v1_chat_note_detail"),
     path(

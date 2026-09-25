@@ -264,6 +264,7 @@ class MessageService:
             {
                 "id": message.id,
                 "username": MessageService.display_username(message.user.username),
+                "author_username": message.user.username,
                 "avatar_url": MessageService.get_avatar_url(message.user),
                 "message": message.text,
                 "created_at": message.created_at.isoformat(),
@@ -272,6 +273,7 @@ class MessageService:
                     if message.recipient
                     else None
                 ),
+                "recipient_username": message.recipient.username if message.recipient else None,
                 "private": message.recipient_id is not None,
                 "color": message.user.message_color,
                 "attachments": MessageService.serialize_attachments(message),
@@ -289,6 +291,7 @@ class MessageService:
         return {
             "id": message.id,
             "username": MessageService.display_username(message.user.username),
+            "author_username": message.user.username,
             "avatar_url": MessageService.get_avatar_url(message.user),
             "message": message.text,
             "created_at": message.created_at.isoformat(),
@@ -297,6 +300,7 @@ class MessageService:
                 if message.recipient
                 else None
             ),
+            "recipient_username": message.recipient.username if message.recipient else None,
             "private": message.recipient_id is not None,
             "color": message.user.message_color,
             "attachments": MessageService.serialize_attachments(message),

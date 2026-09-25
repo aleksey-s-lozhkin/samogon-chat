@@ -1623,6 +1623,47 @@ class ChatApiTests(TestCase):
             404,
         )
 
+    @override_settings(BARTENDER_USERNAME="semen")
+    def test_participants_are_eligible_and_scoped_to_accessible_room(self):
+        RoomMembership.objects.create(room=self.private_room, user=self.other)
+        bartender_user = User.objects.create_user(username="semen")
+        User.objects.create_user(username="inactive", is_active=False)
+        User.objects.create_superuser(username="admin", email="admin@example.com", password="test")
+        banned = User.objects.create_user(username="banned")
+        banned.banned_at = timezone.now()
+        banned.save(update_fields=["banned_at"])
+        path = "/api/v1/chat/rooms/general/participants/"
+
+        self.assertEqual(self.client.get(path).status_code, 401)
+        self.client.force_login(self.outsider)
+        self.assertEqual(
+            self.client.get("/api/v1/chat/rooms/private/participants/").status_code,
+            404,
+        )
+        self.client.force_login(self.user)
+        response = self.client.get(path)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["api_version"], "v1")
+        self.assertEqual(
+            response.json()["participants"],
+            [
+                {"username": "ivan", "display_name": "ivan"},
+                {"username": "maria", "display_name": "maria"},
+                {"username": bartender_user.username, "display_name": "Семён"},
+            ],
+        )
+        self.assertFalse(response.json()["has_more"])
+        self.assertEqual(
+            [item["username"] for item in self.client.get(path, {"q": "MA"}).json()["participants"]],
+            ["maria"],
+        )
+        self.assertEqual(self.client.get(path, {"q": "x" * 51}).status_code, 400)
+        private = self.client.get("/api/v1/chat/rooms/private/participants/")
+        self.assertEqual(private.status_code, 200)
+        self.assertEqual(private.json()["participants"], [
+            {"username": "maria", "display_name": "maria"},
+        ])
+
     def test_history_does_not_disclose_direct_message_to_outsider(self):
         Message.objects.create(user=self.user, recipient=self.other, room=self.room, text="secret")
         Message.objects.create(user=self.user, room=self.room, text="public")
@@ -1631,6 +1672,18 @@ class ChatApiTests(TestCase):
         response = self.client.get("/api/v1/chat/rooms/general/messages/")
 
         self.assertEqual([item["message"] for item in response.json()["messages"]], ["public"])
+
+    @override_settings(BARTENDER_USERNAME="semen")
+    def test_history_keeps_canonical_usernames_for_personal_recipient(self):
+        bartender_user = User.objects.create_user(username="semen")
+        Message.objects.create(
+            user=bartender_user, recipient=self.user, room=self.room, text="answer",
+        )
+        self.client.force_login(self.user)
+        message = self.client.get("/api/v1/chat/rooms/general/messages/").json()["messages"][0]
+        self.assertEqual(message["username"], "Семён")
+        self.assertEqual(message["author_username"], "semen")
+        self.assertEqual(message["recipient_username"], self.user.username)
 
     def test_history_api_paginates_older_messages_without_gaps(self):
         Message.objects.bulk_create([
