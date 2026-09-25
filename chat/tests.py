@@ -3342,10 +3342,12 @@ class ChatConsumerTests(TransactionTestCase):
                     {
                         "id": message_id,
                         "username": "alex",
+                        "author_username": "alex",
                         "avatar_url": None,
                         "message": "Earlier",
                         "created_at": created_at,
                         "recipient": None,
+                        "recipient_username": None,
                         "private": False,
                         "color": "amber",
                         "attachments": [],
