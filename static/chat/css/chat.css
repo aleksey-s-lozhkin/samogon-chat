@@ -2317,6 +2317,43 @@ html[data-theme="light"] .note-attachment-audio {
     transform: none;
 }
 
+#chat-message-submit {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+}
+
+#chat-message-submit svg {
+    position: relative;
+    z-index: 1;
+}
+
+#chat-message-submit::after {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: var(--primary);
+    content: "";
+    opacity: 0;
+    pointer-events: none;
+    transform: scaleY(0);
+    transform-origin: bottom;
+}
+
+#chat-message-submit.is-sending::after {
+    animation: composer-pour 450ms ease-out both;
+}
+
+@keyframes composer-pour {
+    0% { opacity: 0.8; transform: scaleY(0); }
+    55% { opacity: 0.8; transform: scaleY(1); }
+    100% { opacity: 0; transform: scaleY(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #chat-message-submit.is-sending::after { animation: none; }
+}
+
 .chat-hint {
     display: flex;
     justify-content: space-between;
