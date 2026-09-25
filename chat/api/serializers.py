@@ -18,13 +18,26 @@ class RoomsResponseSerializer(serializers.Serializer):
     rooms = RoomSerializer(many=True)
 
 
+class ParticipantSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    display_name = serializers.CharField()
+
+
+class ParticipantsResponseSerializer(serializers.Serializer):
+    api_version = serializers.CharField()
+    participants = ParticipantSerializer(many=True)
+    has_more = serializers.BooleanField()
+
+
 class MessageSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     username = serializers.CharField()
+    author_username = serializers.CharField()
     avatar_url = serializers.CharField(allow_null=True)
     message = serializers.CharField()
     created_at = serializers.DateTimeField()
     recipient = serializers.CharField(allow_null=True)
+    recipient_username = serializers.CharField(allow_null=True)
     private = serializers.BooleanField()
     color = serializers.CharField()
     attachments = serializers.ListField()
