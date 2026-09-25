@@ -392,6 +392,14 @@ def run_chromium_flow(playwright, server):
         open_chat(page, "u-stoyki")
         assert_composer_inside_viewport(page)
         page.wait_for_function("() => document.querySelectorAll('.message').length === 50")
+        header_status = page.locator("#room-live-status")
+        page.wait_for_function(
+            "() => document.querySelector('#room-live-status').textContent.includes('Пока никого, кроме вас')"
+        )
+        page.evaluate("() => updateTypingUser({username: 'smoke-guest', active: true})")
+        if "smoke-guest печатает" not in header_status.inner_text():
+            raise AssertionError("Шапка комнаты не показывает набор текста")
+        page.evaluate("() => updateTypingUser({username: 'smoke-guest', active: false})")
         if page.locator(".message.is-grouped").count() != 49:
             raise AssertionError("Соседние реплики одного автора не сгруппированы")
         grouped_message = page.locator(".message.is-grouped").first
@@ -421,6 +429,13 @@ def run_chromium_flow(playwright, server):
         page.locator("#chat-log").evaluate("element => { element.scrollTop = 0; }")
         page.wait_for_function("() => document.querySelectorAll('.message').length === 120")
         page.get_by_text("Это начало переписки", exact=True).wait_for()
+        sticky_day = page.locator("#chat-log").evaluate("""log => {
+            log.scrollTop = 140;
+            const divider = log.querySelector('.day-divider');
+            return divider.getBoundingClientRect().top - log.getBoundingClientRect().top;
+        }""")
+        if not 0 <= sticky_day <= 48:
+            raise AssertionError(f"Дата не закрепилась при прокрутке: {sticky_day}")
         yesterday_label = page.evaluate("""() => {
             const savedDay = lastMessageDay;
             const fragment = document.createDocumentFragment();

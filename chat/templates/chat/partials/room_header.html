@@ -7,7 +7,7 @@
             <h2>{{ room.name }}</h2>
         </div>
 
-        <p>
+        <p id="room-live-status" aria-live="polite">
             {% if room.is_private %}
                 Закрытая беседа доступна только выбранным участникам.
             {% elif room.description %}
