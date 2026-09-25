@@ -367,6 +367,21 @@ def assert_composer_audience(page):
     page.locator("#chat-message-input").blur()
 
 
+def assert_composer_send_feedback(page):
+    button = page.locator("#chat-message-submit")
+    page.evaluate("showComposerSendFeedback()")
+    assert button.evaluate(
+        "element => getComputedStyle(element, '::after').animationName"
+    ) == "composer-pour"
+    page.emulate_media(reduced_motion="reduce")
+    page.evaluate("""() => {
+        document.getElementById('chat-message-submit').classList.remove('is-sending');
+        showComposerSendFeedback();
+    }""")
+    assert "is-sending" not in (button.get_attribute("class") or "")
+    page.emulate_media(reduced_motion="no-preference")
+
+
 def run_chromium_flow(playwright, server):
     browser = playwright.chromium.launch()
     context = browser.new_context(viewport={"width": 1440, "height": 900})
@@ -450,6 +465,7 @@ def run_chromium_flow(playwright, server):
         ):
             raise AssertionError("Поле ввода всё ещё показывает удалённую подсказку свайпа")
         assert_composer_audience(page)
+        assert_composer_send_feedback(page)
 
         message = f"smoke message {time.time_ns()}"
         page.locator("#chat-message-input").fill(message)
