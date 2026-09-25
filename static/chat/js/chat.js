@@ -632,8 +632,10 @@ function finishHistoryLoading() {
 
     if (!chatLog.querySelector(".message")) {
         renderEmptyState(chatLog);
+        setComposerPlaceholder(document.getElementById("chat-message-input"));
         return;
     }
+    setComposerPlaceholder(document.getElementById("chat-message-input"));
     if (focusMessageId) {
         window.requestAnimationFrame(() => {
             window.requestAnimationFrame(() => scrollToMessage(focusMessageId));
@@ -1141,6 +1143,9 @@ function addMessage(data, options = {}) {
     });
     updateMessageGrouping(message, chatLog.lastElementChild);
     chatLog.append(message);
+    if (!options.historical) {
+        setComposerPlaceholder(document.getElementById("chat-message-input"));
+    }
 
     if (
         !options.historical
@@ -1355,6 +1360,7 @@ function removeMessage(messageId) {
     if (chatLog && !chatLog.querySelector(".message")) {
         renderEmptyState(chatLog);
     }
+    setComposerPlaceholder(document.getElementById("chat-message-input"));
 }
 
 function toggleMessageSelection(message) {
@@ -2479,7 +2485,21 @@ function setComposerPlaceholder(input) {
     else if (bartenderMode) input.placeholder = bartenderPrivate
         ? "Это увидит только Семён…"
         : "Спросите Семёна в общем чате…";
-    else input.placeholder = COMPOSER_HINTS[composerHintIndex];
+    else {
+        const chatLog = document.getElementById("chat-log");
+        const latest = Array.from(chatLog?.querySelectorAll(".message") || []).at(-1);
+        const latestAuthor = latest?.dataset.groupAuthor;
+        if (chatLog?.querySelector(".chat-empty-state")) {
+            input.placeholder = "Начните разговор…";
+        } else if (latestAuthor && latestAuthor !== normalizeUsername(currentUsername)) {
+            const name = latest.querySelector(".message-author-name")?.textContent?.trim();
+            input.placeholder = name && name.length <= 20
+                ? `Продолжите разговор с ${name}…`
+                : "Продолжите разговор…";
+        } else {
+            input.placeholder = COMPOSER_HINTS[composerHintIndex];
+        }
+    }
 }
 
 function createMessageAction(className, title, icon) {
