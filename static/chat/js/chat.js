@@ -684,6 +684,7 @@ function showUnreadMarker(data) {
 function updateUserPresence(users, online) {
     presenceUsers = users;
     presenceOnlineUsers = online;
+    renderRoomLiveStatus();
     const onlineUsers = new Set(
         online.map((user) => normalizeUsername(user.username || user)),
     );
@@ -2315,6 +2316,7 @@ function setBartenderTyping(isTyping) {
 }
 
 function renderTypingIndicator() {
+    renderRoomLiveStatus();
     const indicator = document.getElementById("typing-indicator");
     if (!indicator) {
         return;
@@ -2334,6 +2336,39 @@ function renderTypingIndicator() {
         ? `${usernames[0]} печатает…`
         : `${usernames.slice(0, 2).join(" и ")} печатают…`;
     indicator.classList.remove("hidden");
+}
+
+function renderRoomLiveStatus() {
+    const element = document.getElementById("room-live-status");
+    if (!element) return;
+    if (!element.dataset.description) {
+        element.dataset.description = element.textContent.trim();
+    }
+
+    const typingNames = [...typingUsers.keys()];
+    const guestWord = (count) => {
+        const lastTwo = count % 100;
+        if (lastTwo >= 11 && lastTwo <= 14) return "гостей";
+        const lastDigit = count % 10;
+        if (lastDigit === 1) return "гость";
+        if (lastDigit >= 2 && lastDigit <= 4) return "гостя";
+        return "гостей";
+    };
+    const guestCount = presenceOnlineUsers.filter(
+        (user) => normalizeUsername(user.username || user) !== normalizeUsername(currentUsername),
+    ).length;
+    let activity = "Пока никого, кроме вас";
+    if (bartenderTyping) {
+        activity = "Семён подбирает слова…";
+    } else if (typingNames.length === 1) {
+        activity = `${typingNames[0]} печатает…`;
+    } else if (typingNames.length > 1) {
+        activity = `${typingNames.length} ${guestWord(typingNames.length)} печатают…`;
+    } else if (guestCount > 0) {
+        activity = `Здесь: ${guestCount} ${guestWord(guestCount)}`;
+    }
+    const text = `${activity} · ${element.dataset.description}`;
+    if (element.textContent !== text) element.textContent = text;
 }
 
 function updateTypingUser(data) {
