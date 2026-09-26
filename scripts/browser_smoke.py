@@ -402,13 +402,6 @@ def run_chromium_flow(playwright, server):
         page.evaluate("() => updateTypingUser({username: 'smoke-guest', active: false})")
         if page.locator(".message.is-grouped").count() != 49:
             raise AssertionError("Соседние реплики одного автора не сгруппированы")
-        grouped_message = page.locator(".message.is-grouped").first
-        if grouped_message.locator(".message-username").is_visible():
-            raise AssertionError("Повторное имя автора занимает место в группе")
-        grouped_message.locator(".message-content").click()
-        if not grouped_message.locator(".message-username").is_visible():
-            raise AssertionError("Действия сгруппированного сообщения недоступны")
-        grouped_message.locator(".message-content").click()
         assert_compact_file_attachment(page)
         oldest_visible = page.locator(".message-text", has_text="history-070")
         before_top = page.locator("#chat-log").evaluate("""element => {
@@ -436,6 +429,15 @@ def run_chromium_flow(playwright, server):
         }""")
         if not 0 <= sticky_day <= 48:
             raise AssertionError(f"Дата не закрепилась при прокрутке: {sticky_day}")
+        # Clicking an early message scrolls it into view and can start pagination.
+        # Exercise selection only after the history anchoring checks finish.
+        grouped_message = page.locator(".message.is-grouped").first
+        if grouped_message.locator(".message-username").is_visible():
+            raise AssertionError("Повторное имя автора занимает место в группе")
+        grouped_message.locator(".message-content").click()
+        if not grouped_message.locator(".message-username").is_visible():
+            raise AssertionError("Действия сгруппированного сообщения недоступны")
+        grouped_message.locator(".message-content").click()
         yesterday_label = page.evaluate("""() => {
             const savedDay = lastMessageDay;
             const fragment = document.createDocumentFragment();

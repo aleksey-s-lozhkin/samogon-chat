@@ -1211,6 +1211,9 @@ async function loadOlderMessages() {
     const firstMessage = chatLog?.querySelector(".message[data-message-id]");
     if (!chatLog || !firstMessage) return;
 
+    // Grouping can hide the author row of the old first message. Keep the
+    // readable content anchored, rather than the changing outer message box.
+    const viewportAnchor = firstMessage.querySelector(".message-text") || firstMessage;
     loadingOlderMessages = true;
     updateHistoryLoader();
     let anchorViewportOffset = null;
@@ -1226,7 +1229,7 @@ async function loadOlderMessages() {
         if (!response.ok) throw new Error(`history:${response.status}`);
         const data = await response.json();
         const messages = Array.isArray(data.messages) ? data.messages : [];
-        anchorViewportOffset = firstMessage.getBoundingClientRect().top;
+        anchorViewportOffset = viewportAnchor.getBoundingClientRect().top;
         let anchor = chatLog.querySelector(".day-divider, .message");
         const previousDay = lastMessageDay;
         const fragment = document.createDocumentFragment();
@@ -1256,7 +1259,7 @@ async function loadOlderMessages() {
         loadingOlderMessages = false;
         updateHistoryLoader(finalMessage);
         if (anchorViewportOffset !== null) {
-            chatLog.scrollTop += firstMessage.getBoundingClientRect().top - anchorViewportOffset;
+            chatLog.scrollTop += viewportAnchor.getBoundingClientRect().top - anchorViewportOffset;
         }
     }
 }
