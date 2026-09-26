@@ -1,0 +1,16 @@
+{% extends "admin/actions.html" %}
+{% block actions-form %}
+    {% for field in action_form %}
+        {% if field.name == 'action' %}
+            <label for="action-select-{{ action_index|default:0 }}" class="visually-hidden">Действие</label>
+            <select name="action" id="action-select-{{ action_index|default:0 }}">
+                {% for value, label in field.field.choices %}
+                    <option value="{{ value }}">{% if value %}{{ label }}{% else %}Выберите действие{% endif %}</option>
+                {% endfor %}
+            </select>
+        {% else %}{{ field }}{% endif %}
+    {% endfor %}
+{% endblock %}
+{% block actions-submit %}
+    <button type="submit" class="btn btn-primary" name="index" value="{{ action_index|default:0 }}" title="Выполнить выбранное действие">Применить</button>
+{% endblock %}

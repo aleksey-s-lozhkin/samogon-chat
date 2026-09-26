@@ -78,11 +78,16 @@ jobs:
       - name: Run browser smoke tests
         run: poetry run python scripts/browser_smoke.py
 
+      - name: Check mobile moderation and admin
+        run: poetry run python scripts/moderation_smoke.py
+
       - name: Upload failure screenshots
         if: failure()
         uses: actions/upload-artifact@v5
         with:
           name: browser-smoke-failure
-          path: test-results/browser-smoke/
+          path: |
+            test-results/browser-smoke/
+            test-results/moderation-smoke/
           if-no-files-found: ignore
           retention-days: 7

@@ -11,13 +11,14 @@ class Room(models.Model):
         PUBLIC = "public", "Открытая"
         PRIVATE = "private", "Закрытая"
 
-    name = models.CharField(max_length=100)
-    slug = models.SlugField(max_length=100, unique=True)
-    description = models.TextField(blank=True)
+    name = models.CharField(max_length=100, verbose_name="Название")
+    slug = models.SlugField(max_length=100, unique=True, verbose_name="Адрес беседы")
+    description = models.TextField(blank=True, verbose_name="Описание")
     visibility = models.CharField(
         max_length=10,
         choices=Visibility.choices,
         default=Visibility.PUBLIC,
+        verbose_name="Доступность",
     )
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -25,16 +26,20 @@ class Room(models.Model):
         related_name="owned_chat_rooms",
         blank=True,
         null=True,
+        verbose_name="Владелец",
     )
     members = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
         through="RoomMembership",
+        verbose_name="Участники",
         related_name="private_chat_rooms",
         blank=True,
     )
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
 
     class Meta:
+        verbose_name = "Беседа"
+        verbose_name_plural = "Беседы"
         ordering = ["name"]
         constraints = [
             models.UniqueConstraint(
@@ -65,15 +70,19 @@ class RoomMembership(models.Model):
         Room,
         on_delete=models.CASCADE,
         related_name="memberships",
+        verbose_name="Беседа",
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="private_room_memberships",
+        verbose_name="Пользователь",
     )
-    joined_at = models.DateTimeField(auto_now_add=True)
+    joined_at = models.DateTimeField(auto_now_add=True, verbose_name="Присоединился")
 
     class Meta:
+        verbose_name = "Участник беседы"
+        verbose_name_plural = "Участники бесед"
         constraints = [
             models.UniqueConstraint(
                 fields=("room", "user"),
@@ -93,15 +102,19 @@ class RoomReadState(models.Model):
         Room,
         on_delete=models.CASCADE,
         related_name="read_states",
+        verbose_name="Беседа",
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="chat_read_states",
+        verbose_name="Пользователь",
     )
-    last_read_at = models.DateTimeField()
+    last_read_at = models.DateTimeField( verbose_name="Прочитано до")
 
     class Meta:
+        verbose_name = "Статус прочтения"
+        verbose_name_plural = "Статусы прочтения"
         constraints = [
             models.UniqueConstraint(
                 fields=("room", "user"),
@@ -113,16 +126,19 @@ class RoomReadState(models.Model):
 class Message(models.Model):
     reply_to = models.ForeignKey(
         "self", on_delete=models.SET_NULL, related_name="replies", blank=True, null=True,
+        verbose_name="Ответ на сообщение",
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="chat_messages",
+        verbose_name="Пользователь",
     )
     room = models.ForeignKey(
         Room,
         on_delete=models.CASCADE,
         related_name="messages",
+        verbose_name="Беседа",
     )
     recipient = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -130,20 +146,24 @@ class Message(models.Model):
         related_name="received_chat_messages",
         blank=True,
         null=True,
+        verbose_name="Получатель",
     )
-    text = models.TextField()
-    hidden_at = models.DateTimeField(blank=True, null=True)
-    hidden_reason = models.CharField(blank=True, max_length=240)
+    text = models.TextField( verbose_name="Текст")
+    hidden_at = models.DateTimeField(blank=True, null=True, verbose_name="Скрыто")
+    hidden_reason = models.CharField(blank=True, max_length=240, verbose_name="Причина скрытия")
     hidden_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         related_name="hidden_chat_messages",
         blank=True,
         null=True,
+        verbose_name="Скрыл",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
 
     class Meta:
+        verbose_name = "Сообщение"
+        verbose_name_plural = "Сообщения"
         ordering = ["created_at"]
         permissions = [
             ("moderate_message", "Can moderate chat messages"),
@@ -172,16 +192,20 @@ class MessageReaction(models.Model):
         Message,
         on_delete=models.CASCADE,
         related_name="reactions",
+        verbose_name="Сообщение",
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="chat_reactions",
+        verbose_name="Пользователь",
     )
-    emoji = models.CharField(max_length=8, choices=Emoji.choices)
-    created_at = models.DateTimeField(auto_now_add=True)
+    emoji = models.CharField(max_length=8, choices=Emoji.choices, verbose_name="Эмодзи")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
 
     class Meta:
+        verbose_name = "Реакция"
+        verbose_name_plural = "Реакции"
         constraints = [
             models.UniqueConstraint(
                 fields=("message", "user", "emoji"),
@@ -201,19 +225,23 @@ class Note(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="chat_notes",
+        verbose_name="Пользователь",
     )
-    text = models.TextField(max_length=1000)
+    text = models.TextField(max_length=1000, verbose_name="Текст")
     source_message = models.ForeignKey(
         Message,
         on_delete=models.SET_NULL,
         related_name="saved_notes",
         blank=True,
         null=True,
+        verbose_name="Исходное сообщение",
     )
-    source_author = models.CharField(blank=True, max_length=150)
-    created_at = models.DateTimeField(auto_now_add=True)
+    source_author = models.CharField("Автор исходного сообщения", blank=True, max_length=150)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
 
     class Meta:
+        verbose_name = "Заметка"
+        verbose_name_plural = "Заметки"
         ordering = ["-created_at"]
         constraints = [
             models.UniqueConstraint(
@@ -241,18 +269,22 @@ class NoteAttachment(models.Model):
         Note,
         on_delete=models.CASCADE,
         related_name="attachments",
+        verbose_name="Заметка",
     )
-    file = models.FileField(upload_to=note_attachment_upload_to)
-    original_name = models.CharField(max_length=255)
-    content_type = models.CharField(max_length=100)
-    size = models.PositiveIntegerField()
+    file = models.FileField(upload_to=note_attachment_upload_to, verbose_name="Файл")
+    original_name = models.CharField(max_length=255, verbose_name="Исходное имя файла")
+    content_type = models.CharField(max_length=100, verbose_name="Тип содержимого")
+    size = models.PositiveIntegerField( verbose_name="Размер в байтах")
     kind = models.CharField(
         max_length=10,
         choices=(("image", "Изображение"), ("file", "Файл"), ("audio", "Аудио")),
+        verbose_name="Вид",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
 
     class Meta:
+        verbose_name = "Вложение заметки"
+        verbose_name_plural = "Вложения заметок"
         ordering = ["created_at"]
 
     def __str__(self):
@@ -278,16 +310,19 @@ class Attachment(models.Model):
         Message,
         on_delete=models.CASCADE,
         related_name="attachments",
+        verbose_name="Сообщение",
     )
-    file = models.FileField(upload_to=attachment_upload_to)
-    original_name = models.CharField(max_length=255)
-    content_type = models.CharField(max_length=100)
-    size = models.PositiveIntegerField()
-    kind = models.CharField(max_length=10, choices=Kind.choices)
-    duration_ms = models.PositiveIntegerField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    file = models.FileField(upload_to=attachment_upload_to, verbose_name="Файл")
+    original_name = models.CharField(max_length=255, verbose_name="Исходное имя файла")
+    content_type = models.CharField(max_length=100, verbose_name="Тип содержимого")
+    size = models.PositiveIntegerField( verbose_name="Размер в байтах")
+    kind = models.CharField(max_length=10, choices=Kind.choices, verbose_name="Вид")
+    duration_ms = models.PositiveIntegerField("Длительность в мс", blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
 
     class Meta:
+        verbose_name = "Вложение"
+        verbose_name_plural = "Вложения"
         ordering = ["created_at"]
 
     def __str__(self):
@@ -298,23 +333,26 @@ class ModerationEvent(models.Model):
     """Хранит решения модераторов, не смешивая их с содержимым чата."""
 
     class Action(models.TextChoices):
+        RESOLVE_REPORT = "resolve_report", "Рассмотрение жалоб"
         BAN = "ban", "Блокировка"
         UNBAN = "unban", "Разблокировка"
         HIDE_MESSAGE = "hide_message", "Скрытие сообщения"
         RESTORE_MESSAGE = "restore_message", "Восстановление сообщения"
 
-    action = models.CharField(max_length=20, choices=Action.choices)
+    action = models.CharField(max_length=20, choices=Action.choices, verbose_name="Действие")
     moderator = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         related_name="moderation_actions",
         blank=True,
         null=True,
+        verbose_name="Модератор",
     )
     target_user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="moderation_events",
+        verbose_name="Пользователь",
     )
     message = models.ForeignKey(
         Message,
@@ -322,12 +360,15 @@ class ModerationEvent(models.Model):
         related_name="moderation_events",
         blank=True,
         null=True,
+        verbose_name="Сообщение",
     )
-    reason = models.CharField(blank=True, max_length=240)
-    expires_at = models.DateTimeField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    reason = models.CharField(blank=True, max_length=240, verbose_name="Причина")
+    expires_at = models.DateTimeField(blank=True, null=True, verbose_name="Действует до")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
 
     class Meta:
+        verbose_name = "Событие модерации"
+        verbose_name_plural = "Журнал модерации"
         ordering = ["-created_at"]
 
     def __str__(self):
@@ -336,6 +377,14 @@ class ModerationEvent(models.Model):
 
 class MessageReport(models.Model):
     """Жалоба пользователя для ручного решения модератором."""
+
+    class Outcome(models.TextChoices):
+        DISMISS = "dismiss", "Жалоба отклонена"
+        HIDE = "hide", "Сообщение скрыто"
+        BAN = "ban", "Автор заблокирован"
+
+    outcome = models.CharField("Решение", max_length=16, choices=Outcome.choices, blank=True, db_default="")
+    resolution_note = models.CharField("Комментарий к решению", max_length=240, blank=True, db_default="")
 
     class Reason(models.TextChoices):
         ABUSE = "abuse", "Оскорбление или травля"
@@ -347,25 +396,30 @@ class MessageReport(models.Model):
         Message,
         on_delete=models.CASCADE,
         related_name="reports",
+        verbose_name="Сообщение",
     )
     reporter = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="message_reports",
+        verbose_name="Заявитель",
     )
-    reason = models.CharField(max_length=16, choices=Reason.choices)
-    details = models.CharField(blank=True, max_length=240)
-    resolved_at = models.DateTimeField(blank=True, null=True)
+    reason = models.CharField(max_length=16, choices=Reason.choices, verbose_name="Причина")
+    details = models.CharField(blank=True, max_length=240, verbose_name="Пояснение")
+    resolved_at = models.DateTimeField(blank=True, null=True, verbose_name="Рассмотрено")
     resolved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         related_name="resolved_message_reports",
         blank=True,
         null=True,
+        verbose_name="Рассмотрел",
     )
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
 
     class Meta:
+        verbose_name = "Жалоба"
+        verbose_name_plural = "Жалобы"
         ordering = ("-created_at",)
         constraints = [
             models.UniqueConstraint(
@@ -392,12 +446,14 @@ class BartenderJob(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="bartender_jobs",
+        verbose_name="Пользователь",
     )
-    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="bartender_jobs")
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="bartender_jobs", verbose_name="Беседа")
     question = models.ForeignKey(
         Message,
         on_delete=models.CASCADE,
         related_name="bartender_question_jobs",
+        verbose_name="Вопрос",
     )
     response = models.ForeignKey(
         Message,
@@ -405,20 +461,24 @@ class BartenderJob(models.Model):
         related_name="bartender_response_jobs",
         blank=True,
         null=True,
+        verbose_name="Ответ",
     )
-    private = models.BooleanField(default=False)
+    private = models.BooleanField(default=False, verbose_name="Личное обращение")
     status = models.CharField(
         max_length=12,
         choices=Status.choices,
         default=Status.QUEUED,
         db_index=True,
+        verbose_name="Статус",
     )
-    error_code = models.CharField(max_length=32, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    started_at = models.DateTimeField(blank=True, null=True)
-    finished_at = models.DateTimeField(blank=True, null=True)
+    error_code = models.CharField(max_length=32, blank=True, verbose_name="Код ошибки")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
+    started_at = models.DateTimeField(blank=True, null=True, verbose_name="Начато")
+    finished_at = models.DateTimeField(blank=True, null=True, verbose_name="Завершено")
 
     class Meta:
+        verbose_name = "Задание Семёна"
+        verbose_name_plural = "Задания Семёна"
         ordering = ("-created_at",)
 
 
@@ -434,29 +494,33 @@ class AtmosphereLine(models.Model):
         APPROVED = "approved", "Одобрена"
         REJECTED = "rejected", "Отклонена"
 
-    text = models.CharField(max_length=140, unique=True)
-    kind = models.CharField(max_length=12, choices=Kind.choices)
+    text = models.CharField(max_length=140, unique=True, verbose_name="Текст")
+    kind = models.CharField(max_length=12, choices=Kind.choices, verbose_name="Вид")
     status = models.CharField(
         max_length=12,
         choices=Status.choices,
         default=Status.DRAFT,
         db_index=True,
+        verbose_name="Статус",
     )
-    source_label = models.CharField(max_length=80, blank=True)
-    source_url = models.URLField(blank=True)
-    generated_by_model = models.CharField(max_length=120, blank=True)
-    is_active = models.BooleanField(default=True)
+    source_label = models.CharField(max_length=80, blank=True, verbose_name="Источник")
+    source_url = models.URLField(blank=True, verbose_name="Ссылка на источник")
+    generated_by_model = models.CharField(max_length=120, blank=True, verbose_name="Модель генерации")
+    is_active = models.BooleanField(default=True, verbose_name="Активно")
     approved_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         related_name="approved_atmosphere_lines",
         blank=True,
         null=True,
+        verbose_name="Одобрил",
     )
-    approved_at = models.DateTimeField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    approved_at = models.DateTimeField(blank=True, null=True, verbose_name="Одобрено")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
 
     class Meta:
+        verbose_name = "Атмосферная строка"
+        verbose_name_plural = "Атмосферные строки"
         ordering = ("kind", "text")
 
     def __str__(self):

@@ -19,7 +19,12 @@ from config.views import (
     service_worker,
 )
 
+from chat.moderation_views import moderation, moderation_attachment
+
 urlpatterns = [
+    path("moderation/", moderation, name="moderation"),
+    path("moderation/<int:report_id>/", moderation, name="moderation_detail"),
+    path("moderation/<int:report_id>/attachments/<uuid:attachment_id>/", moderation_attachment, name="moderation_attachment"),
     path("health/live/", health_live, name="health_live"),
     path("health/ready/", health_ready, name="health_ready"),
     path(

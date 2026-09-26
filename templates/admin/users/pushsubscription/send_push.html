@@ -9,20 +9,21 @@
 {% endblock %}
 
 {% block content %}
-<form method="post" novalidate>
+<div class="samogon-admin-page"><h1>Отправить уведомление</h1>
+<form method="post" class="samogon-export-form" novalidate>
     {% csrf_token %}
-    <fieldset class="module aligned">
+    <fieldset class="module aligned" style="border:0">
         {% for field in form %}
-            <div class="form-row{% if field.errors %} errors{% endif %}">
+            <div class="samogon-form-row{% if field.widget_type == 'checkbox' %} samogon-checkbox-row{% endif %}{% if field.errors %} errors{% endif %}">
                 {{ field.errors }}
-                <div>{{ field.label_tag }} {{ field }}</div>
-                {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+                {{ field.label_tag }} {{ field }}
+                {% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}
             </div>
         {% endfor %}
     </fieldset>
     <div class="submit-row">
-        <input type="submit" value="Отправить push" class="default">
+        <button type="submit" class="samogon-primary-action">Отправить уведомление</button>
         <a href="{% url 'admin:users_pushsubscription_changelist' %}" class="closelink">Отмена</a>
     </div>
-</form>
+</form></div>
 {% endblock %}
