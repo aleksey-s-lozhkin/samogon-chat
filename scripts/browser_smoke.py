@@ -627,7 +627,10 @@ def run_mobile_layout(playwright, server, engine, viewport):
         input_element.blur()
         page.locator(".chat-header").wait_for(state="visible")
 
-        message = page.locator(".message").first
+        # Scrolling to the first message may prepend history. Keep the same
+        # message identity when checking selection after the click.
+        message_id = page.locator(".message[data-message-id]").first.get_attribute("data-message-id")
+        message = page.locator(f'.message[data-message-id="{message_id}"]')
         message.locator(".message-content").click()
         if "is-selected" not in (message.get_attribute("class") or ""):
             raise AssertionError("Действия сообщения не открылись по нажатию")
