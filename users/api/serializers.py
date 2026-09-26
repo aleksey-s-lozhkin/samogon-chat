@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from users.models import ChatStatus
+
 
 class ErrorSerializer(serializers.Serializer):
     error = serializers.CharField()
@@ -54,7 +56,9 @@ class CurrentUserSerializer(serializers.Serializer):
 
 
 class PresenceStatusUpdateSerializer(serializers.Serializer):
-    presence_status = serializers.ChoiceField(
-        choices=("", "reading", "eating", "beer", "thinking", "smoking", "back_soon"),
-        allow_blank=True,
-    )
+    presence_status = serializers.CharField(allow_blank=True, max_length=24)
+
+    def validate_presence_status(self, value):
+        if value and not ChatStatus.objects.filter(code=value, is_active=True).exists():
+            raise serializers.ValidationError("Такой статус недоступен.")
+        return value

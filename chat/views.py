@@ -15,7 +15,7 @@ from django.utils.text import slugify
 from django.views.decorators.csrf import ensure_csrf_cookie
 
 from config.rate_limit import is_allowed
-from users.models import User
+from users.models import ChatStatus, User
 
 from .forms import MessageSearchForm, PrivateRoomForm
 from .models import (
@@ -164,7 +164,9 @@ def chat_page(request, room_slug):
             ),
             "focus_message_id": focus_message_id,
             "pending_report_count": pending_report_count,
-            "presence_status_choices": User.PresenceStatus.choices,
+            "presence_status_choices": ChatStatus.choices_for(
+                getattr(request.user, "presence_status", ""),
+            )[1:],
             "atmosphere_lines": get_published_atmosphere_lines(),
         },
     )

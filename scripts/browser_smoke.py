@@ -295,6 +295,7 @@ def assert_compact_file_attachment(page):
                 height: link.height,
                 right: link.right,
                 viewport: innerWidth,
+                background: getComputedStyle(element).backgroundColor,
                 nameCenter: (name.top + name.bottom) / 2,
                 sizeCenter: (size.top + size.bottom) / 2,
                 nameRight: name.right,
@@ -302,11 +303,42 @@ def assert_compact_file_attachment(page):
             };
         }"""
     )
+    if geometry["background"] != "rgba(0, 0, 0, 0)":
+        raise AssertionError(f"Вложение перекрывает фон пузыря: {geometry}")
     if (geometry["height"] > 36 or
             abs(geometry["nameCenter"] - geometry["sizeCenter"]) > 2 or
             geometry["nameRight"] > geometry["sizeLeft"] + 1 or
             geometry["right"] > geometry["viewport"] + 1):
         raise AssertionError(f"Вложение не помещается в одну строку: {geometry}")
+
+
+def assert_short_composer_hint(page):
+    geometry = page.locator("#chat-message-input").evaluate("""el => {
+        const css = getComputedStyle(el);
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+        context.font = `${css.fontWeight} ${css.fontSize} ${css.fontFamily}`;
+        return {
+            hintWidth: context.measureText(el.placeholder).width,
+            width: el.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight),
+            height: el.clientHeight - parseFloat(css.paddingTop) - parseFloat(css.paddingBottom),
+            lineHeight: parseFloat(css.lineHeight),
+        };
+    }""")
+    if geometry["hintWidth"] > geometry["width"] or geometry["lineHeight"] > geometry["height"] + 1:
+        raise AssertionError(f"Подсказка обрезается: {geometry}")
+
+
+def choose_bartender_action(page, visibility):
+    page.locator("#chat-message-input").blur()
+    if page.viewport_size["width"] <= 1100:
+        page.get_by_role("button", name="Открыть список гостей").click()
+    page.locator("#bartender-guest summary").click()
+    page.locator(f'[data-bartender-action="{visibility}"]').click()
+    assert page.locator("#chat-message-input").evaluate("el => el === document.activeElement")
+    assert not page.locator("#bartender-guest").evaluate("el => el.open")
+    if page.viewport_size["width"] <= 1100:
+        page.wait_for_function("!document.querySelector('.presence-sidebar').classList.contains('is-open')")
 
 
 def assert_composer_audience(page):
@@ -320,7 +352,7 @@ def assert_composer_audience(page):
         document.getElementById('chat-log').append(state);
         setComposerPlaceholder(document.getElementById('chat-message-input'));
     }""")
-    assert composer_input.get_attribute("placeholder") == "Начните разговор…"
+    assert composer_input.get_attribute("placeholder") == "Сообщение…"
     page.evaluate("""() => {
         document.querySelector('#chat-log .chat-empty-state').remove();
         const message = document.createElement('div');
@@ -331,7 +363,7 @@ def assert_composer_audience(page):
         setComposerPlaceholder(document.getElementById('chat-message-input'));
     }""")
     assert composer_input.get_attribute("placeholder") == (
-        "Продолжите разговор с smoke-guest…"
+        "Сообщение…"
     )
     page.evaluate("""() => {
         document.querySelector('#chat-log .message:last-child').remove();
@@ -354,14 +386,14 @@ def assert_composer_audience(page):
     assert audience.inner_text() == "Лично для @smoke-guest"
     assert page.locator("#note-recipient").is_hidden()
 
-    page.locator('[data-chat-action="bartender"]').click()
+    choose_bartender_action(page, "public")
     assert audience.inner_text() == "Семёну и всем в беседе"
     assert page.locator("#direct-recipient").is_hidden()
-    page.locator("#bartender-private").click()
+    choose_bartender_action(page, "private")
     assert audience.inner_text() == "Лично Семёну"
     assert page.locator("#chat-message-input").get_attribute(
         "placeholder"
-    ) == "Это увидит только Семён…"
+    ) == "Сообщение…"
     page.locator("#cancel-bartender-message").click()
     assert audience.inner_text() == "Всем в беседе"
     page.locator("#chat-message-input").blur()
@@ -403,6 +435,7 @@ def run_chromium_flow(playwright, server):
         if page.locator(".message.is-grouped").count() != 49:
             raise AssertionError("Соседние реплики одного автора не сгруппированы")
         assert_compact_file_attachment(page)
+        assert_short_composer_hint(page)
         oldest_visible = page.locator(".message-text", has_text="history-070")
         before_top = page.locator("#chat-log").evaluate("""element => {
             element.scrollTop = 0;
@@ -563,6 +596,7 @@ def run_mobile_layout(playwright, server, engine, viewport):
         open_chat(page, "u-stoyki")
         assert_composer_inside_viewport(page)
         assert_compact_file_attachment(page)
+        assert_short_composer_hint(page)
         input_element = page.locator("#chat-message-input")
         if "Смахните вправо" in (input_element.get_attribute("placeholder") or ""):
             raise AssertionError("Поле ввода всё ещё показывает удалённую подсказку свайпа")
@@ -597,12 +631,14 @@ def run_mobile_layout(playwright, server, engine, viewport):
         input_element.blur()
         page.locator(".chat-header").wait_for(state="visible")
 
-        # Штатный вызов Семёна из меню остаётся рабочим.
-        page.get_by_role("button", name="Открыть комнаты").click()
-        page.locator('[data-chat-action="bartender"]').click()
+        # Вызов Семёна из списка гостей закрывает панель и фокусирует ввод.
+        choose_bartender_action(page, "public")
         page.locator("#bartender-recipient").wait_for(state="visible")
         page.locator(".chat-header").wait_for(state="hidden")
         assert_composer_inside_viewport(page)
+        choose_bartender_action(page, "private")
+        assert page.locator("#composer-audience").inner_text() == "Лично Семёну"
+        assert page.evaluate("bartenderMode && bartenderPrivate")
         page.locator("#cancel-bartender-message").click()
         input_element.blur()
         page.locator(".chat-header").wait_for(state="visible")
