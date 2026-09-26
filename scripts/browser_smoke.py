@@ -296,6 +296,7 @@ def assert_compact_file_attachment(page):
                 right: link.right,
                 viewport: innerWidth,
                 background: getComputedStyle(element).backgroundColor,
+                border: getComputedStyle(element).borderTopWidth,
                 nameCenter: (name.top + name.bottom) / 2,
                 sizeCenter: (size.top + size.bottom) / 2,
                 nameRight: name.right,
@@ -303,7 +304,7 @@ def assert_compact_file_attachment(page):
             };
         }"""
     )
-    if geometry["background"] != "rgba(0, 0, 0, 0)":
+    if geometry["background"] != "rgba(0, 0, 0, 0)" or geometry["border"] != "0px":
         raise AssertionError(f"Вложение перекрывает фон пузыря: {geometry}")
     if (geometry["height"] > 36 or
             abs(geometry["nameCenter"] - geometry["sizeCenter"]) > 2 or
@@ -455,13 +456,14 @@ def run_chromium_flow(playwright, server):
         page.locator("#chat-log").evaluate("element => { element.scrollTop = 0; }")
         page.wait_for_function("() => document.querySelectorAll('.message').length === 120")
         page.get_by_text("Это начало переписки", exact=True).wait_for()
-        sticky_day = page.locator("#chat-log").evaluate("""log => {
-            log.scrollTop = 140;
-            const divider = log.querySelector('.day-divider');
-            return divider.getBoundingClientRect().top - log.getBoundingClientRect().top;
-        }""")
-        if not 0 <= sticky_day <= 48:
-            raise AssertionError(f"Дата не закрепилась при прокрутке: {sticky_day}")
+        page.locator("#chat-log").evaluate("log => { log.scrollTop = 400; }")
+        page.locator(".date-navigation").wait_for(state="visible")
+        assert page.locator(".date-stack-layer").count() <= 2
+        page.locator(".date-stack").click()
+        page.locator(".date-options").wait_for(state="visible")
+        assert page.locator(".date-options").evaluate("el => el.clientHeight <= 308")
+        page.locator(".date-options button").first.click()
+        page.locator(".date-options").wait_for(state="hidden")
         # Clicking an early message scrolls it into view and can start pagination.
         # Exercise selection only after the history anchoring checks finish.
         grouped_message = page.locator(".message.is-grouped").first

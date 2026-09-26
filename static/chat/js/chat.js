@@ -42,6 +42,7 @@ let historyHasMore = false;
 let lastMessageDay = null;
 let presenceUsers = [];
 let presenceOnlineUsers = [];
+const guestEntries = new Map();
 let selectedAttachments = [];
 let pendingAttachmentUpload = null;
 let attachmentMessageUploadInProgress = false;
@@ -495,6 +496,13 @@ function collectViewportDiagnostics(panel) {
 }
 
 function handleServerEvent(data) {
+    if (data.type === "unread_snapshot") {
+        document.querySelectorAll(".room-unread-marker").forEach(marker => marker.remove());
+        for (const [slug, state] of Object.entries(data.rooms || {})) {
+            if (state.general || state.personal) showUnreadMarker({room_slug: slug, personal: state.personal});
+        }
+        return;
+    }
     if (data.type === "history") {
         loadingHistory = true;
         historyHasMore = Boolean(data.has_more);
@@ -691,6 +699,10 @@ function updateUserPresence(users, online) {
         (user) => normalizeUsername(user.username || user) !== normalizeUsername(currentUsername),
     );
 
+    for (const name of guestEntries.keys()) {
+        if (!contacts.some(user => userDetails(user).username === name)) guestEntries.delete(name);
+    }
+
     renderUserList(
         "online-users-list",
         contacts.filter((user) => onlineUsers.has(normalizeUsername(user.username || user))),
@@ -814,24 +826,47 @@ function renderUserList(
     container.replaceChildren(
         ...usernames.map((user) => {
             const details = userDetails(user);
-            const button = document.createElement("button");
-            button.type = "button";
-            button.className = `online-user user-contact ${className}`;
-            const name = document.createElement("span");
-            const identity = document.createElement("span");
-            const status = document.createElement("span");
-            identity.className = "user-contact-identity";
-            name.className = "user-contact-name";
-            name.textContent = details.username;
-            name.title = details.username;
-            status.className = "user-contact-status";
-            status.textContent = className === "online-user"
-                ? (details.status || "Сейчас в беседе")
-                : formatLastSeen(details.lastSeenAt);
-            identity.append(name, status);
-            button.append(createUserAvatar(details), identity);
-            button.addEventListener("click", () => setDirectRecipient(details.username));
-            return button;
+            let entry = guestEntries.get(details.username);
+            if (!entry) {
+                entry = document.createElement("details");
+                entry.className = "guest-entry";
+                entry.dataset.username = details.username;
+                const summary = document.createElement("summary");
+                summary.className = "online-user user-contact";
+                const identity = document.createElement("span");
+                identity.className = "user-contact-identity";
+                const name = document.createElement("span");
+                name.className = "user-contact-name";
+                name.textContent = details.username;
+                const status = document.createElement("span");
+                status.className = "user-contact-status";
+                identity.append(name, status);
+                summary.append(createUserAvatar(details), identity);
+                const actions = document.createElement("div");
+                actions.className = "guest-actions";
+                for (const [mode, label] of [["public", "Обратиться в беседе"], ["private", "Написать лично"]]) {
+                    const button = document.createElement("button");
+                    button.type = "button";
+                    button.dataset.guestAction = mode;
+                    button.textContent = label;
+                    button.addEventListener("click", () => {
+                        entry.open = false;
+                        window.dispatchEvent(new Event("close-guests"));
+                        clearReply();
+                        if (mode === "private") setDirectRecipient(details.username);
+                        else addressGuestInRoom(details.username);
+                    });
+                    actions.append(button);
+                }
+                entry.append(summary, actions);
+                guestEntries.set(details.username, entry);
+            }
+            const summary = entry.querySelector("summary");
+            summary.className = `online-user user-contact ${className}`;
+            summary.querySelector(".user-avatar").replaceWith(createUserAvatar(details));
+            summary.querySelector(".user-contact-status").textContent = className === "online-user"
+                ? (details.status || "Сейчас в беседе") : formatLastSeen(details.lastSeenAt);
+            return entry;
         }),
     );
 
@@ -839,6 +874,21 @@ function renderUserList(
         return;
     }
     toggle.classList.add("hidden");
+}
+
+function addressGuestInRoom(username) {
+    stopTyping();
+    clearReply();
+    clearDirectRecipient(false);
+    clearBartenderMode(false);
+    clearNoteMode(false);
+    const input = document.getElementById("chat-message-input");
+    if (!input) return;
+    const mention = `@${username} `;
+    if (!input.value.startsWith(mention)) input.value = mention + input.value;
+    updateInputSize();
+    updateComposerAudience();
+    input.focus({preventScroll: true});
 }
 
 function setDirectRecipient(username) {

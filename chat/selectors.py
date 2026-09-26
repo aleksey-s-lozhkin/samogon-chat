@@ -2,6 +2,8 @@ from django.contrib.auth import get_user_model
 from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils import timezone
 
+from users.models import PersonalBlock
+from users.services.safety import blocked_ids
 from chat.models import AtmosphereLine, Room
 
 
@@ -58,6 +60,7 @@ def get_message_recipients(*, room, viewer, query=""):
     users = get_user_model().objects.filter(is_active=True, is_superuser=False).filter(
         Q(banned_at__isnull=True) | Q(banned_until__lte=timezone.now())
     ).exclude(pk=viewer.pk)
+    users = users.exclude(pk__in=blocked_ids(viewer.pk)).exclude(pk__in=PersonalBlock.objects.filter(target=viewer).values("owner_id"))
     if room.is_private:
         users = users.filter(private_room_memberships__room=room)
     if query:

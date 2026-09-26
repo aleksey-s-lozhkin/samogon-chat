@@ -6,6 +6,8 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.core.exceptions import PermissionDenied
+from users.services.safety import blocked_ids
 from django.db.models import Q
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -39,6 +41,7 @@ from .services.events import broadcast_attachment_update, broadcast_message
 from .services.messages import MessageService
 from .services.navigation import get_last_room_url
 from .services.reports import create_message_report
+from .services import private_rooms as room_operations
 from .selectors import get_published_atmosphere_lines, get_visible_rooms
 
 
@@ -180,7 +183,7 @@ def message_search(request):
     if form.is_valid():
         query = form.cleaned_data["q"]
         results = list(
-            Message.objects.filter(hidden_at__isnull=True, text__icontains=query)
+            Message.objects.filter(hidden_at__isnull=True, text__icontains=query).exclude(user_id__in=blocked_ids(request.user.pk))
             .filter(
                 Q(room__visibility=Room.Visibility.PUBLIC)
                 | Q(room__memberships__user=request.user)
@@ -373,6 +376,8 @@ def create_attachment_message(request, room_slug):
                 message=message,
                 uploaded_files=request.FILES.getlist("files"),
             )
+    except PermissionDenied:
+        return JsonResponse({"error": "Получатель недоступен."}, status=403)
     except AttachmentValidationError as error:
         return JsonResponse({"error": str(error)}, status=400)
 
@@ -646,20 +651,11 @@ def create_private_room(request):
             status=400,
         )
 
-    with transaction.atomic():
-        room = Room.objects.create(
-            name=form.cleaned_data["name"],
-            slug=private_room_slug(form.cleaned_data["name"]),
-            description="Закрытая беседа доступна только её участникам.",
-            visibility=Room.Visibility.PRIVATE,
-            owner=request.user,
-        )
-        RoomMembership.objects.bulk_create(
-            [
-                RoomMembership(room=room, user=user)
-                for user in (request.user, *form.cleaned_data["members"])
-            ]
-        )
+    try:
+        room = room_operations.create_private_room(actor=request.user, data=request.POST)
+    except room_operations.RoomOperationError:
+        messages.error(request, "Не удалось создать беседу. Проверьте участников и наличие собственной беседы.")
+        return redirect("chat:rooms")
 
     messages.success(request, "Закрытая беседа создана. Участники уже добавлены.")
     return redirect("chat:chat", room_slug=room.slug)
@@ -692,18 +688,11 @@ def update_private_room(request, room_id):
             status=400,
         )
 
-    with transaction.atomic():
-        previous_member_ids = set(room.members.values_list("id", flat=True))
-        room.name = form.cleaned_data["name"]
-        room.save(update_fields=("name",))
-        new_members = (request.user, *form.cleaned_data["members"])
-        room.members.set(new_members)
-        new_member_ids = {member.id for member in new_members}
-
-    revoke_private_room_access(
-        room_slug=room.slug,
-        user_ids=previous_member_ids - new_member_ids,
-    )
+    try:
+        room_operations.update_private_room(actor=request.user, room_id=room.pk, data=request.POST)
+    except room_operations.RoomOperationError:
+        messages.error(request, "Не удалось изменить беседу. Обновите страницу.")
+        return redirect("chat:rooms")
 
     messages.success(request, "Настройки закрытой беседы сохранены.")
     return redirect(f"{reverse('chat:rooms')}#closed-conversations")
@@ -721,9 +710,11 @@ def delete_private_room(request, room_id):
         visibility=Room.Visibility.PRIVATE,
     )
     room_slug = room.slug
-    member_ids = list(room.members.values_list("id", flat=True))
-    room.delete()
-    revoke_private_room_access(room_slug=room_slug, user_ids=member_ids)
+    try:
+        room_operations.delete_private_room(actor=request.user, room_id=room.pk)
+    except room_operations.RoomOperationError:
+        messages.error(request, "Беседа уже недоступна. Обновите страницу.")
+        return redirect("chat:rooms")
     if request.session.get("last_chat_room_slug") == room_slug:
         request.session.pop("last_chat_room_slug", None)
     messages.success(request, "Закрытая беседа удалена.")
@@ -744,7 +735,10 @@ def leave_private_room(request, room_id):
         messages.error(request, "Создатель может только удалить свою беседу.")
         return redirect(f"{reverse('chat:rooms')}#closed-conversations")
 
-    RoomMembership.objects.filter(room=room, user=request.user).delete()
-    revoke_private_room_access(room_slug=room.slug, user_ids=(request.user.id,))
+    try:
+        room_operations.leave_private_room(actor=request.user, room_id=room.pk)
+    except room_operations.RoomOperationError:
+        messages.error(request, "Беседа уже недоступна. Обновите страницу.")
+        return redirect("chat:rooms")
     messages.success(request, "Вы покинули закрытую беседу.")
     return redirect(f"{reverse('chat:rooms')}#closed-conversations")

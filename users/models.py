@@ -106,3 +106,40 @@ class PushSubscription(models.Model):
 
     def __str__(self):
         return f"Web Push: {self.user.username} ({self.pk})"
+
+
+class PersonalBlock(models.Model):
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="personal_blocks", verbose_name="Кто блокирует")
+    target = models.ForeignKey(User, on_delete=models.CASCADE, related_name="blocked_by_users", verbose_name="Заблокированный пользователь")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=("owner", "target"), name="unique_personal_block"),
+            models.CheckConstraint(condition=~models.Q(owner=models.F("target")), name="no_self_personal_block"),
+        ]
+        verbose_name = "персональная блокировка"
+        verbose_name_plural = "Персональные блокировки"
+
+
+class UserReport(models.Model):
+    class Reason(models.TextChoices):
+        ABUSE = "abuse", "Оскорбление или травля"
+        SPAM = "spam", "Спам"
+        PRIVACY = "privacy", "Личные данные"
+        OTHER = "other", "Другое"
+
+    reporter = models.ForeignKey(User, on_delete=models.CASCADE, related_name="user_reports", verbose_name="Заявитель")
+    target = models.ForeignKey(User, on_delete=models.CASCADE, related_name="received_user_reports", verbose_name="Пользователь")
+    reason = models.CharField(max_length=16, choices=Reason.choices, verbose_name="Причина")
+    details = models.CharField(max_length=1000, blank=True, verbose_name="Пояснение")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
+    resolved_at = models.DateTimeField(null=True, blank=True, verbose_name="Рассмотрено")
+    resolved_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name="resolved_user_reports", verbose_name="Рассмотрел")
+    resolution_note = models.CharField(max_length=1000, blank=True, verbose_name="Решение и причина")
+
+    class Meta:
+        ordering = ("-created_at",)
+        verbose_name = "жалоба на пользователя"
+        verbose_name_plural = "Жалобы на пользователей"
+        constraints = [models.UniqueConstraint(fields=("reporter", "target"), condition=models.Q(resolved_at__isnull=True), name="one_open_user_report")]

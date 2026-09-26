@@ -5267,38 +5267,35 @@ html[data-theme="light"] .recipient-cancel {
 .message.from-bartender .message-content { border-color:var(--primary); background:linear-gradient(135deg,var(--primary-soft),transparent),var(--message-surface); }
 @media (min-width:701px) { .message { max-width:min(82%, 640px); } }
 
-/* Semen stays with the guests; actions use the existing composer modes. */
-.bartender-guest {
-    flex: 0 0 auto;
-    margin: 12px 0;
-    padding: 10px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: var(--panel);
+
+/* Shared guest rows, including Semen. */
+.guest-entry { min-width: 0; flex: 0 0 auto; }
+.guest-entry summary { cursor: pointer; list-style: none; min-height: 44px; }
+.guest-entry summary::-webkit-details-marker { display: none; }
+.guest-entry summary::after {
+    content: "";
+    width: 7px; height: 7px;
+    border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+    transform: rotate(45deg); margin: 0 6px 4px auto; flex: 0 0 auto;
 }
-.bartender-guest summary {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-height: 44px;
-    cursor: pointer;
-    list-style: none;
+.guest-entry[open] summary::after { transform: rotate(225deg); margin-bottom: -4px; }
+.guest-entry summary:focus-visible { outline: 2px solid var(--primary); }
+.guest-actions { display: grid; gap: 4px; padding: 4px 0 8px; }
+.guest-actions button {
+    min-height: 44px; padding: 8px 10px; border: 0; border-radius: 8px;
+    background: transparent; color: var(--text); font: inherit; text-align: left; cursor: pointer;
 }
-.bartender-guest summary::-webkit-details-marker { display: none; }
-.bartender-guest summary::after { content: "+"; margin-left: auto; }
-.bartender-guest[open] summary::after { content: "−"; }
-.bartender-guest summary:focus-visible { outline: 2px solid var(--primary); }
-.bartender-guest-actions { display: grid; gap: 6px; margin-top: 10px; }
-.bartender-guest-actions button {
-    min-height: 44px;
-    padding: 8px 10px;
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
-    background: transparent;
-    color: var(--text);
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
+.guest-actions button:hover, .guest-actions button:focus-visible { background: var(--primary-soft); }
+.message-attachment { border: 0; box-shadow: none; }
+.day-divider { position: static; border: 0; box-shadow: none; background: transparent; }
+.date-navigation {
+    position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    z-index: 5; max-width: calc(100% - 24px); width: 200px; text-align: center;
 }
-.bartender-guest-actions button:hover,
-.bartender-guest-actions button:focus-visible { background: var(--primary-soft); }
+.date-stack { position: relative; min-width: 130px; min-height: 44px; padding: 0; border: 0; background: none; color: var(--text); font: inherit; cursor: pointer; touch-action: none; }
+.date-stack-layer { position: absolute; inset: 0; border-radius: 12px; background: var(--surface); transform: translateY(calc(var(--depth) * 5px)) scale(calc(1 - var(--depth) * .06)); }
+.date-stack-label { position: relative; display: grid; align-items: center; min-height: 44px; padding: 4px 14px; border-radius: 12px; background: var(--surface); }
+.date-options { margin-top: 12px; max-height: 308px; overflow-y: auto; overscroll-behavior: contain; border-radius: 12px; background: var(--surface); box-shadow: 0 4px 14px #0002; }
+.date-options button { display: block; width: 100%; min-height: 44px; border: 0; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+.date-options button:hover, .date-options button:focus-visible, .date-options button[aria-current="date"] { background: var(--primary-soft); }
+.date-navigation[hidden], .date-options[hidden] { display: none; }

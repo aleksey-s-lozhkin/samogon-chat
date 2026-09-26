@@ -6,6 +6,7 @@ from django.contrib import admin
 from django.contrib import messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.db.models import OuterRef, Subquery
 from django.shortcuts import redirect, render
 from django.urls import path, reverse
@@ -282,3 +283,35 @@ class UserAdmin(BaseUserAdmin):
         users = queryset.filter(is_staff=False, is_superuser=False).exclude(groups__name="Moderators")
         for user_id in users.values_list("pk", flat=True):
             set_user_ban(actor=request.user, user_id=user_id, reason="Блокировка снята модератором.", remove=True)
+
+
+from users.models import UserReport
+
+
+@admin.register(UserReport)
+class UserReportAdmin(admin.ModelAdmin):
+    list_display = ("target", "reporter", "reason", "created_at", "resolved_at")
+    list_filter = ("resolved_at", "reason")
+    search_fields = ("target__username", "reporter__username")
+    fields = ("target", "reporter", "reason", "details", "created_at", "resolution_note", "resolved_at", "resolved_by")
+    readonly_fields = ("target", "reporter", "reason", "details", "created_at", "resolved_at", "resolved_by")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_readonly_fields(self, request, obj=None):
+        return self.readonly_fields + (("resolution_note",) if obj and obj.resolved_at else ())
+
+    @transaction.atomic
+    def save_model(self, request, obj, form, change):
+        current = UserReport.objects.select_for_update().get(pk=obj.pk)
+        if current.resolved_at:
+            return
+        if obj.resolution_note:
+            current.resolution_note = obj.resolution_note
+            current.resolved_at = timezone.now()
+            current.resolved_by = request.user
+            current.save(update_fields=("resolution_note", "resolved_at", "resolved_by"))

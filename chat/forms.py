@@ -3,6 +3,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 
 from .models import Room
+from .services.guests import eligible_guests
 
 
 User = get_user_model()
@@ -28,15 +29,7 @@ class PrivateRoomForm(forms.Form):
         super().__init__(*args, **kwargs)
         self.room = room
         if user and user.is_authenticated:
-            self.fields["members"].queryset = User.objects.filter(
-                is_active=True,
-            ).exclude(
-                id=user.id,
-            ).exclude(
-                username=settings.BARTENDER_USERNAME,
-            ).exclude(
-                is_superuser=True,
-            ).order_by("username")
+            self.fields["members"].queryset = eligible_guests().exclude(pk=user.pk).order_by("username")
         if room and not self.is_bound:
             self.initial["name"] = room.name
             self.initial["members"] = room.members.exclude(id=user.id)
