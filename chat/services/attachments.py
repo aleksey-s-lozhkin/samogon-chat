@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 
 from django.conf import settings
+from users.services.safety import pair_blocked, lock_pair
 from django.core.files.uploadedfile import SimpleUploadedFile, UploadedFile
 from django.db import transaction
 from PIL import Image, UnidentifiedImageError
@@ -304,6 +305,8 @@ def create_attachment(
     metadata: AttachmentMetadata | None = None,
 ) -> Attachment:
     """Создаёт вложение только после полной проверки его содержимого."""
+    if pair_blocked(message.user_id, message.recipient_id):
+        raise AttachmentValidationError("Получатель недоступен.")
     if message.attachments.count() >= settings.ATTACHMENT_MAX_COUNT:
         raise AttachmentValidationError("К сообщению можно добавить не больше трёх файлов.")
     if metadata is None:
@@ -335,6 +338,10 @@ def create_attachments(
         for uploaded_file in uploaded_files
     ]
     with transaction.atomic():
+        if message.recipient_id:
+            lock_pair(message.user_id, message.recipient_id)
+            if pair_blocked(message.user_id, message.recipient_id):
+                raise AttachmentValidationError("Получатель недоступен.")
         return [
             Attachment.objects.create(
                 message=message,

@@ -68,8 +68,11 @@ def send_push_payload(*, subscriptions, payload: dict) -> PushDeliveryResult:
     return PushDeliveryResult(delivered=delivered, failed=failed, removed=removed)
 
 
-def send_direct_message_push(*, recipient_id: int, room_slug: str) -> int:
+def send_direct_message_push(*, recipient_id: int, room_slug: str, sender_id: int | None = None) -> int:
     """Доставляет нейтральное уведомление и удаляет мёртвые endpoint."""
+    from users.services.safety import pair_blocked
+    if sender_id and pair_blocked(sender_id, recipient_id):
+        return 0
     if not settings.WEB_PUSH_ENABLED:
         return 0
 

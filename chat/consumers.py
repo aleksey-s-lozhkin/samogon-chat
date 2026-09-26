@@ -6,6 +6,10 @@ from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
+from users.services.safety import blocked_ids, pair_blocked
+from chat.services.guests import eligible_guests
+from chat.selectors import get_visible_rooms
 from django.contrib.auth import get_user_model
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -36,12 +40,13 @@ def finish_push_task(task) -> None:
         task.exception()
 
 
-def schedule_direct_message_push(*, recipient_id: int, room_slug: str) -> None:
+def schedule_direct_message_push(*, recipient_id: int, room_slug: str, sender_id: int | None = None) -> None:
     """Запускает best-effort push, не задерживая WebSocket-ответ."""
     task = asyncio.create_task(
         sync_to_async(send_direct_message_push, thread_sensitive=False)(
             recipient_id=recipient_id,
             room_slug=room_slug,
+            sender_id=sender_id,
         )
     )
     PUSH_TASKS.add(task)
@@ -260,12 +265,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 )
                 recipient = await self.get_user_by_id(other_id)
 
-        message = await self.create_message(
-            user=self.user,
-            text=message_text,
-            recipient=recipient,
-            reply_to=reply_to,
-        )
+        try:
+            message = await self.create_message(
+                user=self.user,
+                text=message_text,
+                recipient=recipient,
+                reply_to=reply_to,
+            )
+        except PermissionDenied:
+            await self.send_error("Получатель недоступен.")
+            return
         event = {
             "type": "direct_message" if recipient else "chat_message",
             "id": message.id,
@@ -292,6 +301,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.channel_layer.group_send(f"chat_user_{recipient.id}", event)
             if recipient.username != settings.BARTENDER_USERNAME:
                 schedule_direct_message_push(
+                    sender_id=self.user.pk,
                     recipient_id=recipient.id,
                     room_slug=self.room.slug,
                 )
@@ -316,6 +326,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def room_activity(self, event):
         """Сообщает другим вкладкам о новой общей реплике в комнате."""
+        if not await self.visible_activity(event, event.get("username")): return
         await self.send(
             text_data=json.dumps(
                 {
@@ -344,7 +355,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.channel_layer.group_send(group_name, event)
 
     async def send_message(self, event):
-        """Преобразует событие Channels в формат сообщения клиента."""
+        """Recheck each recipient at delivery, including queued events."""
+        payload = await self.visible_event_message(event["id"])
+        if payload is None:
+            return
+        event = {**event, **payload, "timestamp": payload["created_at"]}
         await self.send(
             text_data=json.dumps(
                 {
@@ -368,6 +383,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def attachment_update(self, event):
         """Передаёт клиентам добавленные к уже существующей реплике файлы."""
+        payload = await self.visible_event_message(event["message_id"])
+        if payload is None: return
+        event = {**event, "attachments": payload["attachments"]}
         await self.send(
             text_data=json.dumps(
                 {
@@ -393,6 +411,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def reaction_update(self, event):
         """Рассылает новый счётчик только тем, кто видит исходную реплику."""
+        payload = await self.visible_event_message(event["message_id"])
+        if payload is None or not await self.visible_activity(event, event.get("actor_username")): return
+        reaction = next((item for item in payload["reactions"] if item["emoji"] == event["emoji"]), {"count": 0, "users": []})
+        event = {**event, "count": reaction["count"], "users": reaction["users"]}
         await self.send(
             text_data=json.dumps(
                 {
@@ -410,6 +432,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def typing_update(self, event):
         """Передаёт краткоживущий индикатор набора без сохранения в БД."""
+        if not await self.visible_activity(event, event.get("username")): return
         await self.send(
             text_data=json.dumps(
                 {
@@ -423,6 +446,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def online_users(self, event):
+        names = await self.visible_guest_names()
+        event = {**event, "users": [u for u in event["users"] if u in names]}
         await self.send(
             text_data=json.dumps(
                 {"type": "online_users", "users": event["users"]}
@@ -430,6 +455,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def presence_update(self, event):
+        names = await self.visible_guest_names()
+        event = {**event, "users": [u for u in event["users"] if u["username"] in names], "online": [u for u in event["online"] if u in names]}
         await self.send(
             text_data=json.dumps(
                 {
@@ -578,6 +605,41 @@ class ChatConsumer(AsyncWebsocketConsumer):
         """Закрывает открытую вкладку после выхода или исключения из беседы."""
         if event.get("room_slug") == self.room.slug:
             await self.close(code=4403)
+
+    async def visibility_changed(self, event):
+        if not await self.can_access_room(self.user.pk):
+            await self.close(code=4403)
+            return
+        messages, has_more = await self.get_messages()
+        await self.send(text_data=json.dumps({"type": "history", "messages": messages, "has_more": has_more}))
+        await self.send(text_data=json.dumps({"type": "unread_snapshot", "rooms": await self.unread_snapshot()}))
+        await self.presence_update({"users": await self.get_all_users(), "online": await online_users.get_all_users()})
+
+    @database_sync_to_async
+    def unread_snapshot(self):
+        return {r.slug: MessageService.get_unread_state(room=r, user_id=self.user.pk) for r in get_visible_rooms(self.user)}
+
+    @database_sync_to_async
+    def visible_guest_names(self):
+        return set(eligible_guests().exclude(pk__in=blocked_ids(self.user.pk)).values_list("username", flat=True))
+
+    @database_sync_to_async
+    def visible_activity(self, event, username):
+        if not get_visible_rooms(self.user).filter(slug=event.get("room_slug")).exists():
+            return False
+        author = User.objects.filter(username=username).first()
+        if author and author.pk in blocked_ids(self.user.pk):
+            return False
+        if event.get("recipient") and author and pair_blocked(self.user.pk, author.pk):
+            return False
+        return True
+
+    @database_sync_to_async
+    def visible_event_message(self, message_id):
+        message = Message.objects.select_related("room", "user", "recipient", "reply_to__user", "reply_to__recipient").filter(pk=message_id).first()
+        if message is None or not MessageService.can_view_message(message=message, user=self.user):
+            return None
+        return MessageService.serialize_message(message, viewer_id=self.user.pk)
 
     @database_sync_to_async
     def get_room(self, room_slug):

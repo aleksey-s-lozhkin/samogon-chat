@@ -495,6 +495,13 @@ function collectViewportDiagnostics(panel) {
 }
 
 function handleServerEvent(data) {
+    if (data.type === "unread_snapshot") {
+        document.querySelectorAll(".room-unread-marker").forEach(marker => marker.remove());
+        for (const [slug, state] of Object.entries(data.rooms || {})) {
+            if (state.general || state.personal) showUnreadMarker({room_slug: slug, personal: state.personal});
+        }
+        return;
+    }
     if (data.type === "history") {
         loadingHistory = true;
         historyHasMore = Boolean(data.has_more);

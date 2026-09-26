@@ -2,6 +2,7 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.exceptions import PermissionDenied
 from django.http import HttpResponse, JsonResponse
 from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
 from rest_framework.decorators import api_view
@@ -18,6 +19,8 @@ from chat.services.reports import create_message_report
 from chat.validators import MESSAGE_MAX_LENGTH
 from config.rate_limit import is_allowed
 from users.services.push import send_direct_message_push
+
+from .mobile_serializers import RoomWriteSerializer, RoomDetailSerializer
 
 from .serializers import (
     AttachmentsResponseSerializer,
@@ -81,10 +84,14 @@ def room_data(room, user):
 
 
 @extend_schema(tags=("chat",), auth=({"cookieAuth": []},), responses={200: RoomsResponseSerializer, 401: ChatApiErrorSerializer, 403: ChatApiErrorSerializer})
-@api_view(("GET",))
+@extend_schema(methods=["POST"], request=RoomWriteSerializer, responses={201: RoomDetailSerializer, 400: ChatApiErrorSerializer, 409: ChatApiErrorSerializer})
+@api_view(("GET", "POST"))
 def api_rooms(request):
     if error := auth_error(request):
         return error
+    if request.method == "POST":
+        from .mobile_views import create_room_response
+        return create_room_response(request)
     rooms = list(visible_rooms(request.user))
     return JsonResponse({"api_version": "v1", "rooms": [room_data(room, request.user) for room in rooms]})
 
@@ -213,7 +220,10 @@ def api_room_messages(request, room_slug):
         if reply_to.recipient_id:
             other_id = reply_to.recipient_id if reply_to.user_id == request.user.id else reply_to.user_id
             recipient = User.objects.filter(pk=other_id).first()
-    message = MessageService.create_message(user_id=request.user.id, room=room, text=text, recipient_id=recipient.id if recipient else None, reply_to_id=reply_to.id if reply_to else None)
+    try:
+        message = MessageService.create_message(user_id=request.user.id, room=room, text=text, recipient_id=recipient.id if recipient else None, reply_to_id=reply_to.id if reply_to else None)
+    except PermissionDenied:
+        return JsonResponse({"error": "recipient_unavailable"}, status=403)
     payload = MessageService.serialize_message(message, viewer_id=request.user.id)
     event = {"type": "direct_message" if recipient else "chat_message", **payload, "timestamp": payload["created_at"], "room_slug": room.slug, "room_private": room.is_private}
     channel_layer = get_channel_layer()
@@ -221,7 +231,7 @@ def api_room_messages(request, room_slug):
     for group in set(groups):
         async_to_sync(channel_layer.group_send)(group, event)
     if recipient and recipient.username != settings.BARTENDER_USERNAME:
-        send_direct_message_push(recipient_id=recipient.id, room_slug=room.slug)
+        send_direct_message_push(recipient_id=recipient.id, room_slug=room.slug, sender_id=request.user.pk)
     return JsonResponse(payload, status=201)
 
 
@@ -281,7 +291,8 @@ def api_message_reactions(request, room_slug, message_id):
     channel_layer = get_channel_layer()
     for group in message_group_names(message):
         async_to_sync(channel_layer.group_send)(group, event)
-    return JsonResponse(payload)
+    visible = next((r for r in MessageService.serialize_reactions(message, request.user.pk) if r["emoji"] == emoji), {"count": 0, "users": []})
+    return JsonResponse({**payload, "count": visible["count"], "users": visible["users"]})
 
 
 @extend_schema(
