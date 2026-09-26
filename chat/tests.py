@@ -20,6 +20,8 @@ from django.test import TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from users.models import ChatStatus
+
 from .consumers import ChatConsumer
 from .models import (
     Attachment,
@@ -2154,14 +2156,18 @@ class ChatLayoutViewsTests(TestCase):
             slug="layout-test-room",
         )
 
-    def test_chat_has_separate_people_panel_and_sidebar_bartender_action(self):
+    def test_chat_has_bartender_actions_only_in_people_panel(self):
         self.client.force_login(self.user)
 
         response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
 
         self.assertContains(response, 'class="rooms-sidebar"')
         self.assertContains(response, 'class="presence-sidebar"')
-        self.assertContains(response, 'data-chat-action="bartender"')
+        self.assertContains(response, 'data-bartender-action="public"')
+        self.assertContains(response, 'data-bartender-action="private"')
+        self.assertContains(response, 'Бармен · ИИ')
+        self.assertNotContains(response, 'data-chat-action="bartender"')
+        self.assertContains(response, 'placeholder="Сообщение…"')
         self.assertNotContains(response, 'id="bartender-trigger"')
 
     def test_people_panel_has_current_presence_status_control(self):
@@ -2302,18 +2308,12 @@ class ChatLayoutViewsTests(TestCase):
             source,
         )
 
-    def test_composer_uses_short_external_hint_set(self):
+    def test_composer_uses_short_hint_with_separate_audience(self):
         self.client.force_login(self.user)
         response = self.client.get(reverse("chat:chat", args=[self.room.slug]))
-        with open(
-            settings.BASE_DIR / "static/chat/js/composer-hints.js",
-            encoding="utf-8",
-        ) as script:
-            hints = script.read()
-
-        self.assertContains(response, "chat/js/composer-hints.js")
-        self.assertNotIn("Семён нальёт контекст", hints)
-        self.assertIn("Ваша реплика…", hints)
+        self.assertContains(response, 'placeholder="Сообщение…"')
+        self.assertContains(response, 'id="composer-audience"')
+        self.assertNotContains(response, "chat/js/composer-hints.js")
 
     def test_scroll_waits_for_layout_and_loaded_images(self):
         with open(settings.BASE_DIR / "static/chat/js/chat.js", encoding="utf-8") as script:
@@ -2947,6 +2947,9 @@ class WelcomeMessageTests(TestCase):
 
 class ChatConsumerTests(TransactionTestCase):
     def setUp(self):
+        # TransactionTestCase flushes data migrations between tests.
+        for code, label in User.PresenceStatus.choices:
+            ChatStatus.objects.get_or_create(code=code, defaults={"label": label})
         self.user = User.objects.create_user(username="alex")
         self.room = Room.objects.create(name="General", slug="general")
         self.application = URLRouter(websocket_urlpatterns)
@@ -3004,6 +3007,24 @@ class ChatConsumerTests(TransactionTestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.presence_status, User.PresenceStatus.BACK_SOON)
         consumer.broadcast_presence.assert_awaited_once()
+
+    def test_presence_status_uses_live_catalog_and_rejects_disabled_status(self):
+        status = ChatStatus.objects.create(code="coding", label="Пишу код")
+        consumer = ChatConsumer()
+        consumer.user = self.user
+        consumer.is_rate_allowed = AsyncMock(return_value=True)
+        consumer.broadcast_presence = AsyncMock()
+        consumer.send_error = AsyncMock()
+        async_to_sync(consumer.handle_presence_status)({"status": "coding"})
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.presence_status, "coding")
+        status.is_active = False
+        status.save()
+        async_to_sync(consumer.handle_presence_status)({"status": "coding"})
+        consumer.send_error.assert_awaited_once_with("Такой статус недоступен.")
+        async_to_sync(consumer.handle_presence_status)({"status": ""})
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.presence_status, "")
 
     def test_presence_status_rejects_unknown_value(self):
         consumer = ChatConsumer()

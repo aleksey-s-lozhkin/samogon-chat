@@ -18,6 +18,7 @@ from .services.jobs import enqueue_bartender_job
 from .services.messages import MessageService
 from .services.presence import online_users
 from .services.welcome import ensure_welcome_message
+from users.models import ChatStatus
 from users.services.push import send_direct_message_push
 from .validators import validate_message
 
@@ -546,8 +547,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def handle_presence_status(self, data):
         """Сохраняет выбранный статус и сразу обновляет список гостей."""
         status = data.get("status")
-        valid_statuses = {"", *(value for value, _label in User.PresenceStatus.choices)}
-        if not isinstance(status, str) or status not in valid_statuses:
+        if not isinstance(status, str) or not await self.is_presence_status_available(status):
             await self.send_error("Такой статус недоступен.")
             return
         if not await self.is_rate_allowed(
@@ -633,17 +633,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
             .order_by("-glasses_poured", "username")
         )
+        status_labels = dict(ChatStatus.objects.values_list("code", "label"))
         return [
             {
                 "username": user.username,
                 "avatar_url": MessageService.get_avatar_url(user),
-                "status": user.get_presence_status_display(),
+                "status": status_labels.get(user.presence_status, user.presence_status),
                 "last_seen_at": (
                     user.last_seen_at.isoformat() if user.last_seen_at else None
                 ),
             }
             for user in users
         ]
+
+    @database_sync_to_async
+    def is_presence_status_available(self, status):
+        return not status or ChatStatus.objects.filter(code=status, is_active=True).exists()
 
     @database_sync_to_async
     def update_presence_status(self, status):
