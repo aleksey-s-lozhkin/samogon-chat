@@ -1812,7 +1812,7 @@ html[data-theme="light"] .message-skeleton-line::after {
     border: 1px solid var(--border-strong);
     border-radius: 8px;
 
-    background: rgba(10, 10, 10, 0.24);
+    background: transparent;
 }
 
 .message-attachment-image {
@@ -5266,3 +5266,39 @@ html[data-theme="light"] .recipient-cancel {
 
 .message.from-bartender .message-content { border-color:var(--primary); background:linear-gradient(135deg,var(--primary-soft),transparent),var(--message-surface); }
 @media (min-width:701px) { .message { max-width:min(82%, 640px); } }
+
+/* Semen stays with the guests; actions use the existing composer modes. */
+.bartender-guest {
+    flex: 0 0 auto;
+    margin: 12px 0;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--panel);
+}
+.bartender-guest summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    cursor: pointer;
+    list-style: none;
+}
+.bartender-guest summary::-webkit-details-marker { display: none; }
+.bartender-guest summary::after { content: "+"; margin-left: auto; }
+.bartender-guest[open] summary::after { content: "−"; }
+.bartender-guest summary:focus-visible { outline: 2px solid var(--primary); }
+.bartender-guest-actions { display: grid; gap: 6px; margin-top: 10px; }
+.bartender-guest-actions button {
+    min-height: 44px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.bartender-guest-actions button:hover,
+.bartender-guest-actions button:focus-visible { background: var(--primary-soft); }

@@ -79,6 +79,7 @@ JAZZMIN_SETTINGS = {
     ],
     "icons": {
         "users.User": "fas fa-users",
+        "users.ChatStatus": "fas fa-comment",
         "users.PushSubscription": "fas fa-bell",
         "chat.Room": "fas fa-comments",
         "chat.Message": "fas fa-comment-dots",

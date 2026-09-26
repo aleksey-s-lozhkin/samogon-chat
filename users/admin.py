@@ -1,15 +1,18 @@
 from datetime import timedelta
 
+from django import forms
+from django.contrib.auth.forms import UserChangeForm
 from django.contrib import admin
 from django.contrib import messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.core.exceptions import PermissionDenied
+from django.db.models import OuterRef, Subquery
 from django.shortcuts import redirect, render
 from django.urls import path, reverse
 from django.utils import timezone
 
 from users.forms import AdminPushForm
-from users.models import PushSubscription, User
+from users.models import ChatStatus, PushSubscription, User
 from users.services.push import send_admin_push
 
 
@@ -82,11 +85,41 @@ class PushSubscriptionAdmin(admin.ModelAdmin):
         return False
 
 
+@admin.register(ChatStatus)
+class ChatStatusAdmin(admin.ModelAdmin):
+    list_display = ("label", "code", "position", "is_active")
+    list_editable = ("position", "is_active")
+    search_fields = ("label", "code")
+    list_filter = ("is_active",)
+
+    def get_readonly_fields(self, request, obj=None):
+        return ("code",) if obj else ()
+
+    def has_delete_permission(self, request, obj=None):
+        # Codes remain valid for users who already selected a retired status.
+        return False
+
+
+class ChatUserChangeForm(UserChangeForm):
+    presence_status = forms.ChoiceField(label="Статус в чате", required=False)
+
+    class Meta(UserChangeForm.Meta):
+        model = User
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "presence_status" in self.fields:
+            self.fields["presence_status"].choices = ChatStatus.choices_for(
+                self.instance.presence_status,
+            )
+
+
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     """Класс вывода пользователей в админке."""
 
     model = User
+    form = ChatUserChangeForm
 
     list_display = (
         'id',
@@ -95,6 +128,7 @@ class UserAdmin(BaseUserAdmin):
         'is_staff',
         'is_active',
         'ban_status',
+        'presence_status_label',
         'date_joined',
     )
     search_fields = ('email',)
@@ -143,6 +177,7 @@ class UserAdmin(BaseUserAdmin):
                 )
             },
         ),
+        ('Профиль в чате', {'fields': ('presence_status',)}),
         (
             'Модерация',
             {
@@ -154,6 +189,17 @@ class UserAdmin(BaseUserAdmin):
             },
         ),
     )
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).annotate(
+            chat_status_label=Subquery(
+                ChatStatus.objects.filter(code=OuterRef("presence_status")).values("label")[:1],
+            ),
+        )
+
+    @admin.display(description="Статус в чате")
+    def presence_status_label(self, user):
+        return user.chat_status_label or "Без статуса"
 
     @admin.display(description='Блокировка', boolean=True)
     def ban_status(self, user):
@@ -182,6 +228,18 @@ class UserAdmin(BaseUserAdmin):
             }
         }
 
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if request.user.is_superuser:
+            return fieldsets
+        return tuple(
+            (name, {**options, "fields": tuple(
+                "presence_status_label" if field == "presence_status" else field
+                for field in options["fields"]
+            )})
+            for name, options in fieldsets
+        )
+
     def get_readonly_fields(self, request, obj=None):
         """Модератор работает только действиями, а не редактирует профиль."""
         if request.user.is_superuser:
@@ -189,6 +247,7 @@ class UserAdmin(BaseUserAdmin):
         return tuple(field.name for field in self.model._meta.fields) + (
             "groups",
             "user_permissions",
+            "presence_status_label",
         )
 
     def has_add_permission(self, request):

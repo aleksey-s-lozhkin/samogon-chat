@@ -88,9 +88,7 @@ const FALLBACK_TAGLINES = [
 const TAGLINES = chatConfig.atmosphereLines?.length
     ? chatConfig.atmosphereLines
     : FALLBACK_TAGLINES;
-const COMPOSER_HINTS = window.SAMOGON_COMPOSER_HINTS || ["Ваша реплика…"];
 let taglineIndex = 0;
-let composerHintIndex = 0;
 
 if (isAuthenticated) {
     connectWebSocket();
@@ -104,6 +102,7 @@ window.addEventListener("resize", handleViewportResize);
 
 function handleViewportResize() {
     updateAppHeight();
+    updateInputSize();
     const input = document.getElementById("chat-message-input");
     const chatLog = document.getElementById("chat-log");
     if (followLatestWhileTyping && input === document.activeElement && chatLog) {
@@ -908,13 +907,13 @@ function clearNoteMode(focus = true) {
     updateComposerAudience();
 }
 
-function activateBartender() {
+function activateBartender(isPrivate = false) {
     stopTyping();
     clearReply();
     clearDirectRecipient(false);
     clearNoteMode(false);
     bartenderMode = true;
-    bartenderPrivate = false;
+    bartenderPrivate = isPrivate;
     updateBartenderMode();
 
     const input = document.getElementById("chat-message-input");
@@ -2440,9 +2439,15 @@ function updateInputSize() {
         return;
     }
 
-    input.style.height = "46px";
+    const style = window.getComputedStyle(input);
+    const borders = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+    const singleLineHeight = Math.max(46, Math.ceil(
+        parseFloat(style.lineHeight) + parseFloat(style.paddingTop)
+        + parseFloat(style.paddingBottom) + borders,
+    ));
+    input.style.height = `${singleLineHeight}px`;
     if (input.value) {
-        input.style.height = `${Math.min(Math.max(input.scrollHeight, 46), 96)}px`;
+        input.style.height = `${Math.min(Math.max(input.scrollHeight + borders, singleLineHeight), 96)}px`;
     }
     const remaining = MESSAGE_MAX_LENGTH - input.value.length;
     counter.textContent = `${input.value.length} / ${MESSAGE_MAX_LENGTH}`;
@@ -2506,7 +2511,6 @@ function initialiseAtmosphere() {
     window.setInterval(() => {
         if (!document.hidden) {
             rotateTagline(tagline);
-            rotateComposerHint(input);
         }
     }, 30000);
 }
@@ -2524,37 +2528,11 @@ function rotateTagline(tagline) {
     }, 180);
 }
 
-function rotateComposerHint(input) {
-    if (!input || input.value || directRecipient || bartenderMode || noteMode) {
-        return;
-    }
-
-    composerHintIndex = (composerHintIndex + 1) % COMPOSER_HINTS.length;
-    setComposerPlaceholder(input);
-}
-
 function setComposerPlaceholder(input) {
     if (!input) return;
-    if (noteMode) input.placeholder = "Запишите мысль для себя…";
-    else if (directRecipient) input.placeholder = `Лично для @${directRecipient}…`;
-    else if (bartenderMode) input.placeholder = bartenderPrivate
-        ? "Это увидит только Семён…"
-        : "Спросите Семёна в общем чате…";
-    else {
-        const chatLog = document.getElementById("chat-log");
-        const latest = Array.from(chatLog?.querySelectorAll(".message") || []).at(-1);
-        const latestAuthor = latest?.dataset.groupAuthor;
-        if (chatLog?.querySelector(".chat-empty-state")) {
-            input.placeholder = "Начните разговор…";
-        } else if (latestAuthor && latestAuthor !== normalizeUsername(currentUsername)) {
-            const name = latest.querySelector(".message-author-name")?.textContent?.trim();
-            input.placeholder = name && name.length <= 20
-                ? `Продолжите разговор с ${name}…`
-                : "Продолжите разговор…";
-        } else {
-            input.placeholder = COMPOSER_HINTS[composerHintIndex];
-        }
-    }
+    // Recipient and privacy are shown in the composer audience, not in a
+    // potentially multiline placeholder inside a single-line empty field.
+    input.placeholder = noteMode ? "Заметка…" : "Сообщение…";
 }
 
 function createMessageAction(className, title, icon) {
@@ -2588,8 +2566,10 @@ document.getElementById("chat-attachment-input")?.addEventListener("change", han
 document.getElementById("cancel-direct-message")?.addEventListener("click", clearDirectRecipient);
 document.getElementById("cancel-reply")?.addEventListener("click", clearReply);
 document.getElementById("note-trigger")?.addEventListener("click", activateNoteMode);
-document.querySelectorAll('[data-chat-action="bartender"]').forEach((button) => {
-    button.addEventListener("click", activateBartender);
+document.querySelectorAll("[data-bartender-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+        activateBartender(button.dataset.bartenderAction === "private");
+    });
 });
 document.getElementById("emoji-trigger")?.addEventListener("click", toggleEmojiPicker);
 document.querySelectorAll("#emoji-picker [data-emoji]").forEach((button) => {

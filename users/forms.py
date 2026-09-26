@@ -8,6 +8,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
 
+from .models import ChatStatus
 from .utils import resize_avatar
 
 User = get_user_model()
@@ -141,9 +142,15 @@ class ProfileForm(forms.ModelForm):
 
     presence_status = forms.ChoiceField(
         label="Статус в чате",
-        choices=(("", "Без статуса"), *User.PresenceStatus.choices),
+        choices=(),
         required=False,
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["presence_status"].choices = ChatStatus.choices_for(
+            self.instance.presence_status,
+        )
 
     class Meta:
         model = User
