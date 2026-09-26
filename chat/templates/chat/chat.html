@@ -18,7 +18,7 @@
 
     <link
         rel="stylesheet"
-        href="{% static 'chat/css/chat.css' %}?v=60"
+        href="{% static 'chat/css/chat.css' %}?v=61"
     >
 
     <script
@@ -46,6 +46,7 @@
 <div
     class="chat-container chat-page"
     x-data="{ roomsOpen: false, peopleOpen: false }"
+    @close-guests.window="peopleOpen = false"
 >
 
     {% include "chat/partials/site_header.html" with header_tagline="Здесь баги разбирают по душам." show_sidebar_toggle=True ajax_logout=True hide_account_links=True %}
@@ -103,7 +104,8 @@
     };
 </script>
 
-    <script src="{% static 'chat/js/chat.js' %}?v=mobile-api-1"></script>
+    <script src="{% static 'chat/js/chat.js' %}?v=60"></script>
+<script src="{% static 'chat/js/date-navigation.js' %}?v=1"></script>
 <script src="{% static 'chat/js/auth.js' %}?v=9"></script>
 <script src="{% static 'chat/js/theme.js' %}?v=1"></script>
 

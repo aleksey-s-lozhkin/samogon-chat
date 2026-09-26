@@ -30,16 +30,24 @@
         </label>
     {% endif %}
 
+    <section class="online-users user-presence-panel">
+        <div class="presence-panel-title">
+            <div class="online-title">
+                <span class="online-dot"></span>
+                Сейчас в баре
+            </div>
+            <span id="online-users-count" class="presence-count">0</span>
+        </div>
     {% if user.is_authenticated %}
-    <details class="bartender-guest" id="bartender-guest">
-        <summary>
+    <details class="guest-entry" id="bartender-guest">
+        <summary class="online-user user-contact">
             <span class="user-avatar" aria-hidden="true">СЕ</span>
             <span class="user-contact-identity">
                 <span class="user-contact-name">Семён</span>
                 <span class="user-contact-status">Бармен · ИИ</span>
             </span>
         </summary>
-        <div class="bartender-guest-actions">
+        <div class="guest-actions">
             <button type="button" data-bartender-action="public"
                 @click="peopleOpen = false; $el.closest('details').open = false">
                 Обратиться в беседе
@@ -52,14 +60,6 @@
     </details>
     {% endif %}
 
-    <section class="online-users user-presence-panel">
-        <div class="presence-panel-title">
-            <div class="online-title">
-                <span class="online-dot"></span>
-                Сейчас в баре
-            </div>
-            <span id="online-users-count" class="presence-count">0</span>
-        </div>
         <div id="online-users-list"></div>
         <button
             id="toggle-online-users"

@@ -116,3 +116,12 @@ deploy в production. Перед новым выпуском сверяйте в
 обновляет группу Moderators после миграций. Точный production-образ и результат
 smoke ещё не известны: деплой выполняет владелец. PR, порядок объединения с
 UI-пакетом и команды приёмки: [mobile-api-release.md](mobile-api-release.md).
+## Этап интерфейса: даты и гости
+
+Локально подготовлены стопка дат глубиной до трёх слоёв, раскрываемый список
+дат загруженной истории, вложения и даты без рамок, Семён внутри онлайн-блока
+и одинаковые действия с гостями. Этот этап не требует миграций БД и может
+выпускаться независимо от мобильного API после CI. Коммит:
+`Refine date navigation and unify guest actions`. PR в develop:
+`Improve date navigation, attachments and guest menus`. Выпускной PR в main:
+`Release chat date navigation and guest menus`. PR и deploy выполняет владелец.
