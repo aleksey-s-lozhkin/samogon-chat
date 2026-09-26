@@ -125,3 +125,12 @@ UI-пакетом и команды приёмки: [mobile-api-release.md](mobi
 `Refine date navigation and unify guest actions`. PR в develop:
 `Improve date navigation, attachments and guest menus`. Выпускной PR в main:
 `Release chat date navigation and guest menus`. PR и deploy выполняет владелец.
+
+## Локальная правка после приёмки: мобильный статус и даты
+
+Поле статуса в мобильной панели расширено на всю внутреннюю ширину. Стопка
+дат получила меньший шрифт, компактные непрозрачные слои и тень; зона нажатия
+сохранена 44px. Версия CSS — 62. Миграций нет. Визуальная приёмка на устройствах
+остаётся после выпуска; браузер локально не запускался.
+Коммит: `Polish mobile status width and compact date stack`.
+PR в develop: `Fix mobile status width and refine date stack`.
