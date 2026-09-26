@@ -79,6 +79,9 @@
         </section>
     {% endif %}
 
+    {% if perms.chat.view_messagereport %}
+    <a class="room-navigation-item" href="{% url 'moderation' %}">Жалобы · {{ pending_report_count|default:0 }}</a>
+    {% endif %}
     <section class="sidebar-utilities" aria-label="Инструменты бара">
         <div class="sidebar-section-title">У стойки</div>
         <div class="rooms-navigation">

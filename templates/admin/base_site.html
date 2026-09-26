@@ -1,0 +1,6 @@
+{% extends 'admin/base.html' %}
+{% block footer %}
+{% if not is_popup %}
+<footer class="app-footer"><strong>© {% now 'Y' %} Самогон.</strong> Управление приложением.</footer>
+{% endif %}
+{% endblock %}

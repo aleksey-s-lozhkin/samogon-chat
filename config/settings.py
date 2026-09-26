@@ -63,6 +63,7 @@ JAZZMIN_SETTINGS = {
     "copyright": "Самогон",
     "search_model": ["users.User", "chat.Message"],
     "topmenu_links": [
+        {"name": "Модерация", "url": "moderation", "permissions": ["chat.view_messagereport"]},
         {"name": "Статистика", "url": "admin_diagnostics", "permissions": ["chat.view_message"]},
         {"name": "Открыть чат", "url": "chat:rooms", "new_window": True},
     ],
@@ -89,6 +90,8 @@ JAZZMIN_SETTINGS = {
         "chat.AtmosphereLine": "fas fa-quote-left",
     },
     "custom_css": "admin/samogon.css",
+    "custom_js": "admin/samogon.js",
+    "use_google_fonts_cdn": False,
     "show_ui_builder": False,
     "show_theme_chooser": False,
     "changeform_format": "collapsible",
@@ -199,6 +202,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 # Русская локаль применяется и к встроенной административной панели Django.
 LANGUAGE_CODE = 'ru'
+LOCALE_PATHS = [BASE_DIR / 'locale']
 
 TIME_ZONE = 'UTC'
 

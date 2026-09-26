@@ -221,3 +221,6 @@ __marimo__/
 .streamlit/secrets.toml.DS_Store
 .DS_Store
 test-results/
+
+# Ship the small application translation catalog in the runtime image.
+!locale/ru/LC_MESSAGES/*.mo

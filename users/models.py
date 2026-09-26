@@ -18,6 +18,7 @@ class User(AbstractUser):
         upload_to="avatars/%Y/%m",
         blank=True,
         null=True,
+        verbose_name="Аватар",
     )
     message_color = models.CharField(
         max_length=16,
@@ -28,6 +29,7 @@ class User(AbstractUser):
             ("plum", "Сливовый"),
         ),
         default="amber",
+        verbose_name="Цвет сообщений",
     )
     presence_status = models.CharField(
         "Статус в чате",
@@ -40,10 +42,10 @@ class User(AbstractUser):
         blank=True,
         null=True,
     )
-    banned_at = models.DateTimeField(blank=True, null=True)
-    banned_until = models.DateTimeField(blank=True, null=True)
-    ban_reason = models.CharField(blank=True, max_length=240)
-    welcome_pending = models.BooleanField(default=False)
+    banned_at = models.DateTimeField(blank=True, null=True, verbose_name="Заблокирован")
+    banned_until = models.DateTimeField(blank=True, null=True, verbose_name="Блокировка до")
+    ban_reason = models.CharField(blank=True, max_length=240, verbose_name="Причина блокировки")
+    welcome_pending = models.BooleanField(default=False, verbose_name="Ожидает приветствия")
 
     @property
     def is_banned(self) -> bool:
@@ -60,16 +62,19 @@ class PushSubscription(models.Model):
         User,
         on_delete=models.CASCADE,
         related_name="push_subscriptions",
+        verbose_name="Пользователь",
     )
-    endpoint = models.URLField(max_length=1000, unique=True)
-    p256dh = models.CharField(max_length=255)
-    auth = models.CharField(max_length=255)
-    enabled = models.BooleanField(default=True)
-    direct_messages_enabled = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+    endpoint = models.URLField(max_length=1000, unique=True, verbose_name="Адрес push-службы")
+    p256dh = models.CharField(max_length=255, verbose_name="Открытый ключ подписки")
+    auth = models.CharField(max_length=255, verbose_name="Секрет подписки")
+    enabled = models.BooleanField(default=True, verbose_name="Включена")
+    direct_messages_enabled = models.BooleanField(default=True, verbose_name="Уведомления о личных сообщениях")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
 
     class Meta:
+        verbose_name = "Подписка на уведомления"
+        verbose_name_plural = "Подписки на уведомления"
         ordering = ("-updated_at",)
 
     def __str__(self):

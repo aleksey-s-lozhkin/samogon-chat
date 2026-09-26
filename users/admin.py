@@ -8,8 +8,6 @@ from django.shortcuts import redirect, render
 from django.urls import path, reverse
 from django.utils import timezone
 
-from chat.models import ModerationEvent
-
 from users.forms import AdminPushForm
 from users.models import PushSubscription, User
 from users.services.push import send_admin_push
@@ -201,25 +199,10 @@ class UserAdmin(BaseUserAdmin):
 
     def apply_ban(self, request, queryset, expires_at):
         """Блокирует обычные аккаунты и сохраняет решение в журнале."""
-        users = queryset.filter(is_staff=False).exclude(pk=request.user.pk)
-        now = timezone.now()
-        users.update(
-            banned_at=now,
-            banned_until=expires_at,
-            ban_reason='Решение модератора.',
-        )
-        ModerationEvent.objects.bulk_create(
-            [
-                ModerationEvent(
-                    action=ModerationEvent.Action.BAN,
-                    moderator=request.user,
-                    target_user=user,
-                    reason='Решение модератора.',
-                    expires_at=expires_at,
-                )
-                for user in users
-            ]
-        )
+        from chat.services.moderation import set_user_ban
+        users = queryset.filter(is_staff=False, is_superuser=False).exclude(pk=request.user.pk).exclude(groups__name="Moderators")
+        for user_id in users.values_list("pk", flat=True):
+            set_user_ban(actor=request.user, user_id=user_id, reason="Решение модератора.", expires_at=expires_at)
 
     @admin.action(description='Заблокировать на сутки')
     def ban_for_day(self, request, queryset):
@@ -236,16 +219,7 @@ class UserAdmin(BaseUserAdmin):
     @admin.action(description='Снять блокировку')
     def unban_users(self, request, queryset):
         """Снимает активные и истёкшие блокировки с выбранных пользователей."""
-        users = queryset.filter(is_staff=False)
-        users.update(banned_at=None, banned_until=None, ban_reason='')
-        ModerationEvent.objects.bulk_create(
-            [
-                ModerationEvent(
-                    action=ModerationEvent.Action.UNBAN,
-                    moderator=request.user,
-                    target_user=user,
-                    reason='Блокировка снята модератором.',
-                )
-                for user in users
-            ]
-        )
+        from chat.services.moderation import set_user_ban
+        users = queryset.filter(is_staff=False, is_superuser=False).exclude(groups__name="Moderators")
+        for user_id in users.values_list("pk", flat=True):
+            set_user_ban(actor=request.user, user_id=user_id, reason="Блокировка снята модератором.", remove=True)

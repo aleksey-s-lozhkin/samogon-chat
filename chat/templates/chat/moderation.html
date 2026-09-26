@@ -1,0 +1,55 @@
+{% load static %}
+<!doctype html><html lang="ru"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Модерация — Самогон</title>{% include 'pwa/head.html' %}
+<link rel="stylesheet" href="{% static 'chat/css/moderation.css' %}">
+<script src="{% static 'chat/js/moderation.js' %}" defer></script>
+<script src="{% static 'chat/js/local-datetime.js' %}" defer></script>
+</head><body>
+<header class="mod-header"><h1>Модерация</h1><a href="{% url 'chat:rooms' %}">В чат</a></header>
+<main>
+{% for message in messages %}<p class="notice" role="status">{{ message }}</p>{% endfor %}
+<p id="network-status" role="status" hidden>Нет связи. Решение не отправлено. Дождитесь подключения.</p>
+<nav class="tabs" aria-label="Состояние жалоб">
+<a href="{% url 'moderation' %}" {% if section == 'new' %}aria-current="page"{% endif %}>Новые · {{ pending }}</a>
+<a href="{% url 'moderation' %}?state=resolved" {% if section == 'resolved' %}aria-current="page"{% endif %}>Рассмотренные</a>
+</nav>
+<div class="mod-layout {% if selected %}has-detail{% endif %}">
+<section class="queue" aria-label="Очередь жалоб">
+{% for item in page %}
+<a class="report-card" id="message-{{ item.pk }}" href="{% url 'moderation_detail' item.queue_report.pk %}?state={{ section }}&amp;page={{ page.number }}" {% if selected.message_id == item.pk %}aria-current="true"{% endif %}>
+<strong>{{ item.queue_report.get_reason_display }}</strong><span>{{ item.room.name }} · {{ item.user.username }}</span>
+<p>{{ item.text|truncatechars:140|default:'Сообщение с вложением' }}</p>
+<small><time class="local-datetime" datetime="{{ item.queue_report.created_at|date:'c' }}">{{ item.queue_report.created_at|date:'d.m.Y H:i' }}</time> · Жалоб: {{ item.report_count }}</small></a>
+{% empty %}<p class="empty">{% if section == 'new' %}Новых жалоб нет.{% else %}Рассмотренных жалоб пока нет.{% endif %}</p>{% endfor %}
+<nav class="pagination" aria-label="Страницы жалоб">
+{% if page.has_previous %}<a href="?state={{ section }}&amp;page={{ page.previous_page_number }}">Назад</a>{% endif %}
+<span>{{ page.number }} / {{ page.paginator.num_pages }}</span>
+{% if page.has_next %}<a href="?state={{ section }}&amp;page={{ page.next_page_number }}">Далее</a>{% endif %}
+</nav></section>
+<section class="detail" aria-label="Рассмотрение жалобы">
+{% if selected %}
+<a class="back-link" href="{% url 'moderation' %}?state={{ section }}&amp;page={{ page.number }}#message-{{ selected.message_id }}">← К списку</a>
+<h2>{{ selected.message.room.name }}</h2>
+<p>{{ selected.message.user.username }} · <time class="local-datetime" datetime="{{ selected.message.created_at|date:'c' }}">{{ selected.message.created_at|date:'d.m.Y H:i' }}</time>{% if selected.message.recipient_id %} · Личное сообщение{% endif %}</p>
+{% if selected.message.hidden_at %}<p class="badge">Сообщение скрыто</p>{% endif %}
+<blockquote>{{ selected.message.text|default:'Сообщение с вложением' }}</blockquote>
+{% for attachment in selected.message.attachments.all %}
+<p><a href="{% url 'moderation_attachment' selected.pk attachment.pk %}">Скачать: {{ attachment.original_name }}</a></p>
+{% endfor %}
+<h3>Жалобы на сообщение</h3>
+{% for complaint in complaints %}<article class="complaint">
+<strong>{{ complaint.get_reason_display }}</strong><p>{{ complaint.reporter.username }} · <time class="local-datetime" datetime="{{ complaint.created_at|date:'c' }}">{{ complaint.created_at|date:'d.m.Y H:i' }}</time></p>
+{% if complaint.details %}<p>{{ complaint.details }}</p>{% endif %}
+{% if complaint.resolved_at %}<p>{{ complaint.get_outcome_display|default:'Рассмотрено ранее' }} · {{ complaint.resolved_by|default:'Аккаунт удалён' }}</p><p>{{ complaint.resolution_note }}</p>{% endif %}
+</article>{% endfor %}
+{% if can_decide %}{% if not selected.resolved_at or selected.message.hidden_at %}
+<form method="post" id="decision-form">{% csrf_token %}<h3>Решение</h3>
+<p>Решение закроет все новые жалобы на это сообщение. При блокировке можно также скрыть сообщение.</p>
+{{ form.as_p }}<div class="decision-actions"><button type="submit">Применить решение</button></div>
+</form>{% endif %}{% endif %}
+{{ form.non_field_errors }}
+<h3>История решений</h3>
+{% for event in events %}<p class="event"><strong>{{ event.get_action_display }}</strong> · {{ event.moderator|default:'Аккаунт удалён' }} · <time class="local-datetime" datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:'d.m.Y H:i' }}</time><br>{{ event.reason }}{% if event.expires_at %} · До <time class="local-datetime" datetime="{{ event.expires_at|date:'c' }}">{{ event.expires_at|date:'d.m.Y H:i' }}</time>{% endif %}</p>{% empty %}<p>Решений ещё нет.</p>{% endfor %}
+{% else %}<p class="empty">Выберите жалобу для рассмотрения.</p>{% endif %}
+</section></div></main></body></html>
