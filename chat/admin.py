@@ -69,43 +69,17 @@ class MessageAdmin(admin.ModelAdmin):
     @admin.action(description="Скрыть выбранные сообщения")
     def hide_messages(self, request, queryset):
         """Убирает сообщения из чата, сохраняя их для проверки в админке."""
-        messages = queryset.filter(hidden_at__isnull=True)
-        now = timezone.now()
-        messages.update(
-            hidden_at=now,
-            hidden_by=request.user,
-            hidden_reason="Скрыто модератором.",
-        )
-        ModerationEvent.objects.bulk_create(
-            [
-                ModerationEvent(
-                    action=ModerationEvent.Action.HIDE_MESSAGE,
-                    moderator=request.user,
-                    target_user=message.user,
-                    message=message,
-                    reason="Скрыто модератором.",
-                )
-                for message in messages.select_related("user")
-            ]
-        )
+        from chat.services.moderation import set_message_visibility
+        for message_id in queryset.values_list("pk", flat=True):
+            set_message_visibility(actor=request.user, message_id=message_id,
+                                   hidden=True, reason="Скрыто модератором.")
 
     @admin.action(description="Вернуть выбранные сообщения")
     def restore_messages(self, request, queryset):
-        """Возвращает в ленту ранее скрытые сообщения."""
-        messages = queryset.filter(hidden_at__isnull=False)
-        messages.update(hidden_at=None, hidden_by=None, hidden_reason="")
-        ModerationEvent.objects.bulk_create(
-            [
-                ModerationEvent(
-                    action=ModerationEvent.Action.RESTORE_MESSAGE,
-                    moderator=request.user,
-                    target_user=message.user,
-                    message=message,
-                    reason="Сообщение возвращено модератором.",
-                )
-                for message in messages.select_related("user")
-            ]
-        )
+        from chat.services.moderation import set_message_visibility
+        for message_id in queryset.values_list("pk", flat=True):
+            set_message_visibility(actor=request.user, message_id=message_id,
+                                   hidden=False, reason="Сообщение возвращено модератором.")
 
     def get_readonly_fields(self, request, obj=None):
         """Модератор скрывает сообщения действием, но не редактирует текст."""
@@ -187,10 +161,15 @@ class MessageReportAdmin(admin.ModelAdmin):
         "details",
         "resolved_at",
         "resolved_by",
+        "outcome",
+        "resolution_note",
         "created_at",
     )
     list_select_related = ("message__user", "reporter", "resolved_by")
     actions = ("mark_resolved",)
+
+    def get_actions(self, request):
+        return super().get_actions(request) if request.user.has_perm("chat.moderate_message") else {}
 
     @admin.display(description="Автор сообщения")
     def message_author(self, report):
@@ -198,14 +177,17 @@ class MessageReportAdmin(admin.ModelAdmin):
 
     @admin.display(description="Статус")
     def status(self, report):
-        return "Рассмотрено" if report.resolved_at else "Новая"
+        return (report.get_outcome_display() or "Рассмотрено ранее") if report.resolved_at else "Новая"
 
     @admin.action(description="Отметить выбранные жалобы рассмотренными", permissions=["view"])
     def mark_resolved(self, request, queryset):
-        queryset.filter(resolved_at__isnull=True).update(
-            resolved_at=timezone.now(),
-            resolved_by=request.user,
-        )
+        from chat.services.moderation import DecisionConflict, decide_report
+        for report_id in queryset.filter(resolved_at__isnull=True).values_list("pk", flat=True):
+            try:
+                decide_report(actor=request.user, report_id=report_id, action="dismiss",
+                              reason="Рассмотрено в админке без скрытия сообщения.")
+            except DecisionConflict:
+                continue
 
     def has_add_permission(self, request):
         return False

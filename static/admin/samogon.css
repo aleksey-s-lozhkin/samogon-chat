@@ -1,12 +1,12 @@
 :root {
-    --samogon-ink: #f4e7d2;
-    --samogon-muted: #b9a58f;
-    --samogon-bg: #171311;
-    --samogon-panel: #251e1a;
-    --samogon-panel-soft: #30251f;
-    --samogon-border: #584536;
-    --samogon-amber: #c6753a;
-    --samogon-amber-bright: #e6a15f;
+    --samogon-ink: #20262d;
+    --samogon-muted: #515b66;
+    --samogon-bg: #30363d;
+    --samogon-panel: #ffffff;
+    --samogon-panel-soft: #e8ebef;
+    --samogon-border: #c5cbd2;
+    --samogon-amber: #39434f;
+    --samogon-amber-bright: #344d65;
 }
 
 .main-header.navbar,
@@ -18,7 +18,7 @@
 
 .content-wrapper,
 body {
-    background: #1d1815 !important;
+    background: #f1f3f5 !important;
 }
 
 .brand-link,
@@ -33,7 +33,7 @@ body {
 .samogon-primary-action {
     border-color: var(--samogon-amber) !important;
     background: var(--samogon-amber) !important;
-    color: #1c120c !important;
+    color: #ffffff !important;
 }
 
 .nav-sidebar .nav-link:hover,
@@ -245,4 +245,101 @@ body {
         grid-column: 1;
         grid-row: auto;
     }
+}
+
+/* Shared neutral palette for Jazzmin, forms and custom diagnostic pages. */
+.main-header.navbar { background:#fff !important; border-bottom:1px solid #c5cbd2; }
+.main-header .navbar-nav .nav-link { color:#303943 !important; }
+.main-sidebar .brand-link, .main-sidebar .nav-link, .main-sidebar .nav-header,
+.main-sidebar .user-panel a { color:#f2f4f6 !important; }
+.main-sidebar .nav-link.active { background:#56616e !important; }
+body, .content-wrapper, .card, .card-body, .card-header, .main-footer { color:#20262d; }
+.card, .modal-content, .dropdown-menu { background:#fff; color:#20262d; border-color:#c5cbd2; }
+.content-wrapper a, .main-footer a { color:#304f6c; }
+.card-header { background:#f7f8fa; border-bottom:1px solid #c5cbd2; }
+.table { color:#20262d; }
+.table thead th { background:#e8ecf0; color:#20262d; border-bottom:2px solid #9ea8b3; }
+.table td, .table th { border-color:#d5dbe1; vertical-align:middle; }
+.table-striped tbody tr:nth-of-type(odd) { background:#f4f6f8; }
+.table-hover tbody tr:hover, tr.selected { background:#e6ebf0 !important; }
+.form-control, select, textarea, input:not([type=checkbox]):not([type=radio]):not([type=submit]) {
+ background:#fff; color:#20262d; border-color:#84909c; min-height:40px;
+}
+.form-control::placeholder { color:#5c6772; opacity:1; }
+.help, .help-block, .text-muted, small.form-text { color:#53606c !important; }
+.btn-primary, .btn-info, .btn-success, .btn-secondary, a.btn-primary, a.btn-info, a.btn-success {
+ background:#39434f !important; border-color:#39434f !important; color:#fff !important; min-height:40px;
+}
+.btn:hover { filter:brightness(.92); }
+.btn-danger { background:#8e3333; border-color:#8e3333; color:#fff !important; }
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+ outline:3px solid #496887 !important; outline-offset:3px;
+}
+.select2-container--default .select2-selection--single, .select2-container--default .select2-selection--multiple {
+ background:#fff; border-color:#84909c; color:#20262d; min-height:40px;
+}
+.select2-container--default .select2-selection__rendered { color:#20262d; }
+.login-page .card { background:#fff; }
+.login-page .login-logo { color:#fff; }
+@media(max-width:767px) {
+ .content-wrapper { overflow-x:hidden; }
+ .content { padding:0 8px !important; }
+ .main-header .navbar-nav { flex-wrap:wrap; }
+ .main-header .form-inline { max-width:100%; }
+ .main-header input { max-width:150px; }
+ .card-body { padding:12px; }
+ .change-list .actions { display:flex;flex-wrap:wrap;gap:8px; }
+ .btn, .nav-link { min-height:44px; }
+ .samogon-panel { overflow-x:auto; }
+ .samogon-table { min-width:420px; }
+}
+
+/* Jazzmin/AdminLTE 4 uses app-* and sidebar-menu class names. */
+:root, [data-bs-theme="light"] {
+ --bs-body-color:#20262d; --bs-body-bg:#f1f3f5; --bs-secondary-color:#53606c;
+ --bs-border-color:#c5cbd2; --bs-link-color:#304f6c; --bs-link-hover-color:#1d3347;
+}
+.app-header.navbar { background:#fff !important; border-bottom:1px solid #c5cbd2; }
+.app-header .navbar-nav .nav-link { color:#303943 !important; }
+.app-sidebar, .sidebar-brand { background:#30363d !important; }
+.app-sidebar .nav-link, .app-sidebar .nav-header, .app-sidebar .brand-link,
+.app-sidebar .user-panel a, .app-sidebar .user-panel span { color:#f2f4f6 !important; }
+.app-sidebar .nav-link.active { background:#56616e !important; }
+.app-sidebar .nav-link:hover { background:#424c57; }
+.app-main { background:#f1f3f5; color:#20262d; min-width:0; }
+.app-main a, .app-footer a { color:#304f6c; }
+.app-footer { background:#fff; color:#515b66; }
+.app-main .card { box-shadow:0 1px 3px #20262d12; }
+.form-select { color:#20262d; background-color:#fff; border-color:#84909c; min-height:40px; }
+@media(max-width:767px) {
+ .app-main { overflow-x:hidden; }
+ .app-content { padding:0 8px !important; }
+ .app-header .container-fluid, .app-header .navbar-nav { flex-wrap:wrap; }
+ .app-header form { max-width:100%; }
+ .app-header input { max-width:140px; }
+ #changelist-search input { min-width:0 !important; width:100% !important; }
+ .app-content .table-responsive { max-width:100%; }
+}
+
+/* Long Russian action labels must wrap instead of being cut off. */
+#jazzy-actions .btn, .submit-row .btn, .submit-row input[type=submit] {
+ white-space:normal; overflow-wrap:anywhere; height:auto;
+}
+.breadcrumb { overflow-wrap:anywhere; }
+.module.aligned .form-row { margin-bottom:16px; }
+.module.aligned textarea { max-width:100%; }
+@media(max-width:767px) {
+ .related-widget-wrapper { max-width:100%; }
+ .related-widget-wrapper .select2-container { max-width:100%; }
+ .module.aligned input:not([type=checkbox]):not([type=radio]), .module.aligned select { max-width:100%; }
+}
+
+.app-main textarea, .content-wrapper textarea {
+ width:100%; max-width:100% !important; min-width:0; background:#fff;
+}
+.app-main .form-group, .app-main .related-widget-wrapper, .app-main .card-body { min-width:0; }
+.app-main .breadcrumb-item.active { line-height:1.5; }
+.app-main input[type=submit].default {
+ appearance:none; min-height:44px; padding:10px 16px; border-radius:5px;
+ background:#39434f; border:1px solid #39434f; color:#fff;
 }

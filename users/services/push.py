@@ -139,7 +139,7 @@ def send_moderator_report_push() -> PushDeliveryResult:
         payload={
             "title": "Новая жалоба",
             "body": "В Самогоне появилась новая жалоба.",
-            "url": reverse("admin:chat_messagereport_changelist"),
+            "url": reverse("moderation"),
             "tag": "moderation-report",
         },
     )
