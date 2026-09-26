@@ -1,5 +1,7 @@
 from django.urls import path
 
+from .mobile_views import api_room_detail, api_room_leave, api_guests
+
 from .views import (
     api_message_attachments,
     api_bartender_job,
@@ -15,6 +17,9 @@ from .views import (
 
 
 urlpatterns = [
+    path("guests/", api_guests, name="api_v1_guests"),
+    path("rooms/<slug:room_slug>/", api_room_detail, name="api_v1_room_detail"),
+    path("rooms/<slug:room_slug>/leave/", api_room_leave, name="api_v1_room_leave"),
     path("rooms/", api_rooms, name="api_v1_chat_rooms"),
     path(
         "rooms/<slug:room_slug>/participants/",

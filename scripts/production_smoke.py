@@ -86,7 +86,55 @@ async def check_authenticated(session, base_url, room_slug, timeout):
     return {"chat_http_ms": http_ms, "websocket_history_ms": websocket_ms}
 
 
+MOBILE_OPERATIONS = {
+    "/api/v1/chat/rooms/": {"get", "post"},
+    "/api/v1/chat/rooms/{room_slug}/": {"get", "patch", "delete"},
+    "/api/v1/chat/rooms/{room_slug}/leave/": {"post"},
+    "/api/v1/chat/guests/": {"get"},
+    "/api/v1/users/statuses/": {"get"},
+    "/api/v1/users/{user_id}/reports/": {"post"},
+    "/api/v1/users/me/blocks/": {"get"},
+    "/api/v1/users/me/blocks/{user_id}/": {"put", "delete"},
+}
+
+
+async def check_mobile_api(session, base_url):
+    """Read-only checks; never print account/room data or session credentials."""
+    async def get(path):
+        async with session.get(base_url + path, allow_redirects=False,
+                               headers={"Accept": "application/json"}) as response:
+            if response.status != 200:
+                raise RuntimeError(f"Mobile API returned HTTP {response.status}")
+            return await response.json()
+
+    schema = await get("/api/schema/?format=json")
+    for path, methods in MOBILE_OPERATIONS.items():
+        if not methods.issubset(schema.get("paths", {}).get(path, {})):
+            raise RuntimeError("Published mobile schema is incomplete")
+    guests = await get("/api/v1/chat/guests/")
+    statuses = await get("/api/v1/users/statuses/")
+    blocks = await get("/api/v1/users/me/blocks/")
+    rooms = await get("/api/v1/chat/rooms/")
+    if not all(payload.get("api_version") == "v1" for payload in (guests, statuses, blocks, rooms)):
+        raise RuntimeError("Unexpected mobile API version")
+    if not isinstance(guests.get("online"), list) or not isinstance(statuses.get("statuses"), list):
+        raise RuntimeError("Incomplete presence or status response")
+    checked = 0
+    private_checked = 0
+    for room in rooms["rooms"]:
+        detail = await get("/api/v1/chat/rooms/" + room["slug"] + "/")
+        if not all(key in detail for key in ("owner", "members", "can_manage", "can_leave", "can_delete")):
+            raise RuntimeError("Room management metadata is missing")
+        checked += 1
+        private_checked += detail["owner"] is not None
+    return {"schema": "ok", "guests": "ok", "statuses": "ok", "blocks": "ok",
+            "room_details_checked": checked, "private_rooms_checked": private_checked,
+            "mutations": "not_run"}
+
+
 async def run(args):
+    if args.mobile_api and not args.credentials:
+        raise ValueError("--mobile-api requires --credentials")
     base_url = args.base_url.rstrip("/")
     timeout = aiohttp.ClientTimeout(total=args.timeout)
     async with aiohttp.ClientSession(
@@ -117,6 +165,8 @@ async def run(args):
                 args.room,
                 args.timeout,
             )
+            if args.mobile_api:
+                report["mobile_api"] = await check_mobile_api(session, base_url)
     return report
 
 
@@ -125,6 +175,7 @@ def main():
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--credentials", type=Path)
     parser.add_argument("--room", default="release-audit")
+    parser.add_argument("--mobile-api", action="store_true", help="Check published schema and authenticated mobile GET endpoints")
     parser.add_argument("--timeout", type=float, default=30)
     args = parser.parse_args()
     try:

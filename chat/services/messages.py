@@ -1,4 +1,6 @@
 from django.conf import settings
+from django.core.exceptions import PermissionDenied
+from users.services.safety import blocked_ids, pair_blocked, lock_pair
 from django.db import transaction
 from django.db.models import Q
 from django.urls import reverse
@@ -26,6 +28,7 @@ class MessageService:
         return user.avatar.url if user.avatar else None
 
     @staticmethod
+    @transaction.atomic
     def create_message(
         *,
         user_id: int,
@@ -34,6 +37,10 @@ class MessageService:
         recipient_id: int | None = None,
         reply_to_id: int | None = None,
     ) -> Message:
+        if recipient_id:
+            lock_pair(user_id, recipient_id)
+            if pair_blocked(user_id, recipient_id):
+                raise PermissionDenied("Получатель недоступен.")
         return Message.objects.create(
             user_id=user_id,
             room=room,
@@ -200,6 +207,8 @@ class MessageService:
         """Не раскрывает личные реплики, тайные комнаты и скрытые сообщения."""
         if not user.is_authenticated or message.hidden_at is not None:
             return False
+        if message.user_id in blocked_ids(user.pk):
+            return False
         if message.recipient_id and user.id not in {
             message.user_id,
             message.recipient_id,
@@ -219,10 +228,12 @@ class MessageService:
         before_message_id: int | None = None,
     ) -> list[dict]:
         # Личные сообщения видят только отправитель и получатель.
+        hidden_ids = set(blocked_ids(viewer_id))
         messages = (
             Message.objects
             .filter(room=room)
             .filter(hidden_at__isnull=True)
+            .exclude(user_id__in=hidden_ids)
             .filter(
                 Q(recipient__isnull=True)
                 if viewer_id is None
@@ -231,7 +242,7 @@ class MessageService:
                 | Q(recipient_id=viewer_id),
             )
             .select_related("user", "recipient", "reply_to__user", "reply_to__recipient")
-            .prefetch_related("attachments", "reactions")
+            .prefetch_related("attachments", "reactions__user")
             .order_by("created_at")
         )
 
@@ -279,15 +290,16 @@ class MessageService:
                 "attachments": MessageService.serialize_attachments(message),
                 "reactions": MessageService.serialize_reactions(
                     message,
-                    viewer_id=viewer_id,
+                    viewer_id=viewer_id, hidden_ids=hidden_ids,
                 ),
-                "reply_to": MessageService.serialize_reply(message, viewer_id),
+                "reply_to": MessageService.serialize_reply(message, viewer_id, hidden_ids=hidden_ids),
             }
             for message in messages
         ]
 
     @staticmethod
     def serialize_message(message: Message, viewer_id: int | None = None) -> dict:
+        hidden_ids = set(blocked_ids(viewer_id))
         return {
             "id": message.id,
             "username": MessageService.display_username(message.user.username),
@@ -306,17 +318,19 @@ class MessageService:
             "attachments": MessageService.serialize_attachments(message),
             "reactions": MessageService.serialize_reactions(
                 message,
-                viewer_id=viewer_id,
+                viewer_id=viewer_id, hidden_ids=hidden_ids,
             ),
-            "reply_to": MessageService.serialize_reply(message, viewer_id),
+            "reply_to": MessageService.serialize_reply(message, viewer_id, hidden_ids=hidden_ids),
         }
 
     @staticmethod
-    def serialize_reply(message: Message, viewer_id: int | None) -> dict | None:
+    def serialize_reply(message: Message, viewer_id: int | None, *, hidden_ids=None) -> dict | None:
         source = message.reply_to
         if source is None:
             return None
-        unavailable = source.hidden_at is not None or (
+        if hidden_ids is None:
+            hidden_ids = set(blocked_ids(viewer_id))
+        unavailable = source.hidden_at is not None or source.user_id in hidden_ids or (
             source.recipient_id is not None
             and viewer_id not in {source.user_id, source.recipient_id}
         )
@@ -330,9 +344,11 @@ class MessageService:
         }
 
     @staticmethod
-    def serialize_reactions(message: Message, viewer_id: int | None = None) -> list[dict]:
+    def serialize_reactions(message: Message, viewer_id: int | None = None, *, hidden_ids=None) -> list[dict]:
         """Собирает счётчики без раскрытия списка участников реакции."""
-        reactions = list(message.reactions.all())
+        if hidden_ids is None:
+            hidden_ids = set(blocked_ids(viewer_id))
+        reactions = [r for r in message.reactions.all() if r.user_id not in hidden_ids]
         result = []
         for emoji in MessageReaction.Emoji.values:
             emoji_reactions = [item for item in reactions if item.emoji == emoji]
@@ -367,7 +383,7 @@ class MessageService:
             room=room,
             user_id=user_id,
         ).only("last_read_at").first()
-        messages = room.messages.exclude(user_id=user_id)
+        messages = room.messages.filter(hidden_at__isnull=True).exclude(user_id=user_id).exclude(user_id__in=blocked_ids(user_id)).filter(Q(recipient__isnull=True) | Q(recipient_id=user_id))
         if read_state:
             messages = messages.filter(created_at__gt=read_state.last_read_at)
 
@@ -382,7 +398,7 @@ class MessageService:
             room=room,
             user_id=user_id,
         ).only("last_read_at").first()
-        messages = room.messages.filter(hidden_at__isnull=True).exclude(user_id=user_id)
+        messages = room.messages.filter(hidden_at__isnull=True).exclude(user_id=user_id).exclude(user_id__in=blocked_ids(user_id))
         if read_state:
             messages = messages.filter(created_at__gt=read_state.last_read_at)
 

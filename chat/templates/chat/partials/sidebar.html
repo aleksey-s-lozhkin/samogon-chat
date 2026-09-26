@@ -82,6 +82,9 @@
     {% if perms.chat.view_messagereport %}
     <a class="room-navigation-item" href="{% url 'moderation' %}">Жалобы · {{ pending_report_count|default:0 }}</a>
     {% endif %}
+    {% if perms.users.view_userreport %}
+    <a class="room-navigation-item" href="{% url 'admin:users_userreport_changelist' %}">Жалобы на пользователей</a>
+    {% endif %}
     <section class="sidebar-utilities" aria-label="Инструменты бара">
         <div class="sidebar-section-title">Личное</div>
         <nav class="rooms-navigation" aria-label="Личные разделы">
