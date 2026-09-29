@@ -13,11 +13,10 @@ from django.contrib.auth import get_user_model
 
 from chat.services.bartender_context import BartenderContextEntry
 from chat.services.bartender_guardrails import guardrail_reply
+from chat.services.language import needs_language_retry
 
 
 BARTENDER_MENTION = re.compile(r"^@(?:сем[её]н|semen)\b[,:!]?\s*", re.IGNORECASE)
-HAN_CHARACTERS = re.compile(r"[\u3400-\u9fff]")
-CYRILLIC_CHARACTERS = re.compile(r"[А-Яа-яЁё]")
 BARTENDER_SYSTEM_PROMPT = (
     Path(__file__).with_name("prompts") / "semen.txt"
 ).read_text(encoding="utf-8").strip()
@@ -154,9 +153,7 @@ class BartenderService:
     @staticmethod
     def _needs_language_retry(content: str) -> bool:
         """Не публикуем ответы без русской речи или с китайскими символами."""
-        return bool(HAN_CHARACTERS.search(content)) or not bool(
-            CYRILLIC_CHARACTERS.search(content)
-        )
+        return needs_language_retry(content)
 
     def _request_reply(self, messages: list[dict[str, str]]) -> str:
         payload = {

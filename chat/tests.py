@@ -104,6 +104,22 @@ class AttachmentServiceTests(TestCase):
         )
 
     @staticmethod
+    def make_large_jpeg_file(name="photo.jpg", size=(1600, 1200)):
+        """Шумная картинка: сжимается плохо, поэтому превью выходит меньше."""
+        image_data = BytesIO()
+        image = Image.new("RGB", size)
+        pixels = image.load()
+        for x in range(size[0]):
+            for y in range(size[1]):
+                pixels[x, y] = ((x * 7 + y * 13) % 256, (x * 31) % 256, (y * 17) % 256)
+        image.save(image_data, format="JPEG", quality=95)
+        return SimpleUploadedFile(
+            name,
+            image_data.getvalue(),
+            content_type="image/jpeg",
+        )
+
+    @staticmethod
     def make_webm_file(name="voice.webm"):
         return SimpleUploadedFile(
             name,
@@ -271,6 +287,88 @@ class AttachmentServiceTests(TestCase):
         self.assertFalse(self.message.attachments.exists())
 
 
+    def test_large_image_gets_a_smaller_thumbnail(self):
+        attachment = create_attachment(
+            message=self.message,
+            uploaded_file=self.make_large_jpeg_file(),
+        )
+
+        self.assertTrue(attachment.thumbnail)
+        with Image.open(attachment.thumbnail.path) as thumbnail:
+            self.assertLessEqual(max(thumbnail.size), 640)
+        self.assertLess(attachment.thumbnail.size, attachment.size)
+
+    def test_small_image_keeps_the_original_without_thumbnail(self):
+        attachment = create_attachment(
+            message=self.message,
+            uploaded_file=self.make_png_file(),
+        )
+
+        # Двухпиксельная картинка после перекодирования только выросла бы.
+        self.assertFalse(attachment.thumbnail)
+
+    def test_documents_and_audio_have_no_thumbnail(self):
+        document = create_attachment(
+            message=self.message,
+            uploaded_file=SimpleUploadedFile("note.txt", b"text-content"),
+        )
+
+        self.assertFalse(document.thumbnail)
+
+    @patch("chat.services.attachments.subprocess.run")
+    def test_audio_attachment_has_no_thumbnail(self, run):
+        run.return_value = ffprobe_result()
+
+        audio = create_attachment(
+            message=self.message,
+            uploaded_file=self.make_webm_file(),
+        )
+
+        self.assertFalse(audio.thumbnail)
+
+    def test_thumbnail_drops_exif_metadata(self):
+        uploaded = self.make_large_jpeg_file()
+        with Image.open(uploaded) as image:
+            exif = image.getexif()
+            exif[271] = "SecretCamera"  # Make
+            buffer = BytesIO()
+            image.save(buffer, format="JPEG", exif=exif)
+        uploaded = SimpleUploadedFile(
+            "photo.jpg",
+            buffer.getvalue(),
+            content_type="image/jpeg",
+        )
+
+        attachment = create_attachment(message=self.message, uploaded_file=uploaded)
+
+        with Image.open(attachment.thumbnail.path) as thumbnail:
+            self.assertNotIn("SecretCamera", str(thumbnail.getexif()))
+
+    def test_serialized_image_payload_carries_thumbnail_url(self):
+        attachment = create_attachment(
+            message=self.message,
+            uploaded_file=self.make_large_jpeg_file(),
+        )
+
+        payload = MessageService.serialize_attachment(attachment)
+
+        self.assertEqual(
+            payload["thumbnail_url"],
+            reverse("chat:attachment_thumbnail", args=[attachment.id]),
+        )
+        self.assertNotEqual(payload["thumbnail_url"], payload["preview_url"])
+
+    def test_serialized_document_payload_has_no_thumbnail_url(self):
+        attachment = create_attachment(
+            message=self.message,
+            uploaded_file=SimpleUploadedFile("note.txt", b"text-content"),
+        )
+
+        payload = MessageService.serialize_attachment(attachment)
+
+        self.assertNotIn("thumbnail_url", payload)
+
+
 class AttachmentDownloadTests(TestCase):
     def setUp(self):
         self.media_directory = tempfile.TemporaryDirectory()
@@ -300,6 +398,79 @@ class AttachmentDownloadTests(TestCase):
     def tearDown(self):
         self.settings_override.disable()
         self.media_directory.cleanup()
+
+    @staticmethod
+    def make_large_jpeg(name="photo.jpg", size=(1200, 900)):
+        buffer = BytesIO()
+        image = Image.new("RGB", size)
+        pixels = image.load()
+        for x in range(size[0]):
+            for y in range(size[1]):
+                pixels[x, y] = ((x * 5) % 256, (y * 11) % 256, (x + y) % 256)
+        image.save(buffer, format="JPEG", quality=95)
+        return SimpleUploadedFile(name, buffer.getvalue(), content_type="image/jpeg")
+
+    @override_settings(DEBUG=True)
+    def test_thumbnail_route_serves_a_smaller_jpeg(self):
+        image_attachment = create_attachment(
+            message=self.message,
+            uploaded_file=self.make_large_jpeg(),
+        )
+        self.client.force_login(self.recipient)
+
+        response = self.client.get(
+            reverse("chat:attachment_thumbnail", args=[image_attachment.id])
+        )
+        preview = self.client.get(
+            reverse("chat:attachment", args=[image_attachment.id])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/jpeg")
+        self.assertNotIn("attachment;", response["Content-Disposition"])
+        thumbnail_bytes = b"".join(response.streaming_content)
+        original_bytes = b"".join(preview.streaming_content)
+        self.assertLess(len(thumbnail_bytes), len(original_bytes))
+
+    @override_settings(DEBUG=True)
+    def test_thumbnail_falls_back_to_the_original_without_preview(self):
+        image_attachment = create_attachment(
+            message=self.message,
+            uploaded_file=SimpleUploadedFile(
+                "tiny.png",
+                AttachmentDownloadTests.make_tiny_png(),
+                content_type="image/png",
+            ),
+        )
+        self.assertFalse(image_attachment.thumbnail)
+        self.client.force_login(self.recipient)
+
+        response = self.client.get(
+            reverse("chat:attachment_thumbnail", args=[image_attachment.id])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+
+    @staticmethod
+    def make_tiny_png():
+        buffer = BytesIO()
+        Image.new("RGB", (2, 2), color="#c6753a").save(buffer, format="PNG")
+        return buffer.getvalue()
+
+    @override_settings(DEBUG=True)
+    def test_outsider_cannot_fetch_the_thumbnail(self):
+        image_attachment = create_attachment(
+            message=self.message,
+            uploaded_file=self.make_large_jpeg(),
+        )
+        self.client.force_login(self.outsider)
+
+        response = self.client.get(
+            reverse("chat:attachment_thumbnail", args=[image_attachment.id])
+        )
+
+        self.assertEqual(response.status_code, 404)
 
     @override_settings(DEBUG=True)
     def test_recipient_can_download_personal_attachment(self):
@@ -1075,6 +1246,32 @@ class NotesViewTests(TestCase):
         with note_attachment.file.open("rb") as copied_file:
             self.assertEqual(copied_file.read(), b"ship it")
 
+    def test_note_copy_keeps_the_thumbnail(self):
+        buffer = BytesIO()
+        image = Image.new("RGB", (1400, 1000))
+        pixels = image.load()
+        for x in range(1400):
+            for y in range(1000):
+                pixels[x, y] = ((x * 3) % 256, (y * 7) % 256, (x * y) % 256)
+        image.save(buffer, format="JPEG", quality=95)
+        source = create_attachment(
+            message=self.message,
+            uploaded_file=SimpleUploadedFile(
+                "photo.jpg", buffer.getvalue(), content_type="image/jpeg",
+            ),
+        )
+        self.assertTrue(source.thumbnail)
+
+        note = MessageService.save_note(
+            user=self.reader,
+            text=self.message.text,
+            source_message=self.message,
+        )[0]
+
+        copied = note.attachments.get()
+        self.assertTrue(copied.thumbnail)
+        self.assertLess(copied.thumbnail.size, copied.size)
+
     def test_notes_and_profile_return_to_last_open_room(self):
         self.client.force_login(self.reader)
         self.client.get(reverse("chat:chat", args=[self.room.slug]))
@@ -1085,6 +1282,37 @@ class NotesViewTests(TestCase):
         room_url = reverse("chat:chat", args=[self.room.slug])
         self.assertContains(notes_response, f'href="{room_url}"')
         self.assertContains(profile_response, f'href="{room_url}"')
+
+    def test_backfill_command_generates_missing_thumbnails(self):
+        buffer = BytesIO()
+        image = Image.new("RGB", (1400, 1000))
+        pixels = image.load()
+        for x in range(1400):
+            for y in range(1000):
+                pixels[x, y] = ((x * 3) % 256, (y * 7) % 256, (x * y) % 256)
+        image.save(buffer, format="JPEG", quality=95)
+        # Вложение из прошлой версии: поле превью ещё пустое.
+        legacy = Attachment.objects.create(
+            message=self.message,
+            file=SimpleUploadedFile("legacy.jpg", buffer.getvalue(), content_type="image/jpeg"),
+            original_name="legacy.jpg",
+            content_type="image/jpeg",
+            size=len(buffer.getvalue()),
+            kind=Attachment.Kind.IMAGE,
+        )
+        self.assertFalse(legacy.thumbnail)
+
+        output = StringIO()
+        call_command("backfill_attachment_thumbnails", stdout=output)
+
+        legacy.refresh_from_db()
+        self.assertTrue(legacy.thumbnail)
+        self.assertIn("превью создано — 1", output.getvalue())
+
+        # Повторный запуск ничего не переделывает.
+        second_output = StringIO()
+        call_command("backfill_attachment_thumbnails", stdout=second_output)
+        self.assertIn("превью создано — 0", second_output.getvalue())
 
     def test_backfill_command_copies_attachments_to_old_note(self):
         create_attachment(

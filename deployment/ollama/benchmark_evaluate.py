@@ -10,13 +10,18 @@ from pathlib import Path
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = SCRIPT_DIR.parents[1]
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
+from chat.services.language import HAN_CHARACTERS, CYRILLIC_CHARACTERS
+
+
 DEFAULT_SCENARIOS = SCRIPT_DIR / "benchmark-dialogues.json"
 DRINK_PATTERN = re.compile(r"\b(?:пив\w*|вино|вина|вину|вином|вине|водк\w*|виски|коктейл\w*|напит\w*|выпи\w*|рюм\w*|бокал\w*|кофе|ча[йяю]|пей|пь[её]шь)\b", re.I)
 MARKDOWN_PATTERN = re.compile(r"(?:`|\*\*|^\s*#{1,6}\s|^\s*[-*]\s)", re.M)
 SPEAKER_PREFIX = re.compile(r"^\s*(?:сем[её]н|assistant|ассистент)\s*:", re.I)
 FORMAL_ADDRESS = re.compile(r"\b(?:вы|вам|вас|ваш(?:и|а|е)?|обратитесь|попробуйте|посмотрите)\b", re.I)
-HAN_CHARACTERS = re.compile(r"[\u3400-\u9fff]")
-CYRILLIC_CHARACTERS = re.compile(r"[А-Яа-яЁё]")
 
 
 def parse_args():

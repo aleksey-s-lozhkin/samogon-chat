@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from chat.models import (
+    Attachment,
     Message,
     MessageReaction,
     ModerationEvent,
@@ -147,13 +148,23 @@ class MessageService:
                 )
             finally:
                 attachment.file.close()
+            if attachment.thumbnail:
+                attachment.thumbnail.open("rb")
+                try:
+                    copied_attachment.thumbnail.save(
+                        attachment.original_name,
+                        attachment.thumbnail,
+                        save=False,
+                    )
+                finally:
+                    attachment.thumbnail.close()
             copied_attachment.save()
 
     @staticmethod
     def serialize_attachment(attachment) -> dict:
         """Не раскрывает путь в хранилище: клиент получает только защищённые URL."""
         preview_url = reverse("chat:attachment", args=[attachment.id])
-        return {
+        payload = {
             "id": str(attachment.id),
             "name": attachment.original_name,
             "size": attachment.size,
@@ -163,6 +174,13 @@ class MessageService:
             "preview_url": preview_url,
             "download_url": reverse("chat:download_attachment", args=[attachment.id]),
         }
+        if attachment.kind == Attachment.Kind.IMAGE:
+            # Лента берёт превью, просмотр и сохранение — оригинал.
+            payload["thumbnail_url"] = reverse(
+                "chat:attachment_thumbnail",
+                args=[attachment.id],
+            )
+        return payload
 
     @staticmethod
     def serialize_attachments(message: Message) -> list[dict]:
@@ -174,7 +192,7 @@ class MessageService:
     @staticmethod
     def serialize_note_attachment(attachment) -> dict:
         """Возвращает только защищённые URL личной копии вложения."""
-        return {
+        payload = {
             "id": str(attachment.id),
             "name": attachment.original_name,
             "size": attachment.size,
@@ -187,6 +205,12 @@ class MessageService:
                 args=[attachment.id],
             ),
         }
+        if attachment.kind == Attachment.Kind.IMAGE:
+            payload["thumbnail_url"] = reverse(
+                "chat:note_attachment_thumbnail",
+                args=[attachment.id],
+            )
+        return payload
 
     @staticmethod
     def serialize_note(note: Note) -> dict:
