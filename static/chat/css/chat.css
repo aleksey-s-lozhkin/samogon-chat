@@ -3189,6 +3189,86 @@ body.is-audio-recording * {
     color: var(--text-muted);
 }
 
+/* Чекбокс согласия не должен наследовать стили текстовых полей:
+   .form-group input растягивает его на всю ширину и рисует рамку поля. */
+.form-consent label {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+
+    margin-bottom: 0;
+
+    color: var(--text-soft);
+
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.45;
+
+    cursor: pointer;
+}
+
+.form-consent label span {
+    display: block;
+    min-width: 0;
+}
+
+.form-consent a {
+    color: var(--amber-light);
+}
+
+.form-consent input[type="checkbox"] {
+    position: relative;
+
+    flex: 0 0 auto;
+
+    width: 20px;
+    height: 20px;
+
+    margin: 1px 0 0;
+    padding: 0;
+
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+
+    appearance: none;
+    -webkit-appearance: none;
+
+    background: rgba(255, 255, 255, 0.04);
+
+    cursor: pointer;
+
+    transition:
+        border-color 0.2s ease,
+        background 0.2s ease;
+}
+
+.form-consent input[type="checkbox"]:checked {
+    border-color: var(--primary);
+    background: var(--primary);
+}
+
+.form-consent input[type="checkbox"]:checked::after {
+    content: "";
+
+    position: absolute;
+    top: 2px;
+    left: 6px;
+
+    width: 5px;
+    height: 10px;
+
+    border: solid #25190b;
+    border-width: 0 2px 2px 0;
+
+    transform: rotate(45deg);
+}
+
+.form-consent input[type="checkbox"]:focus-visible {
+    outline: 2px solid var(--primary-hover);
+    outline-offset: 2px;
+    box-shadow: none;
+}
+
 .password-field {
     position: relative;
 }
