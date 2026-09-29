@@ -91,6 +91,25 @@ class OnlineUsersService:
             self._prune_local()
             return self._local_users(room_slug)
 
+    async def connection_count(self, username):
+        """Считает живые соединения одного гостя во всех беседах."""
+        if settings.REDIS_URL:
+            client = await self._get_redis()
+            key = self._redis_all_key()
+            await client.zremrangebyscore(key, "-inf", time.time())
+            members = await client.zrange(key, 0, -1)
+            return sum(
+                1 for member in members if self._username(member) == username
+            )
+
+        async with self._local_lock:
+            self._prune_local()
+            return sum(
+                1
+                for name, _expires_at in self._local_all_connections.values()
+                if name == username
+            )
+
     async def _get_redis(self):
         if self._redis is None:
             import redis.asyncio as redis
