@@ -17,7 +17,7 @@
 
     <link
         rel="stylesheet"
-        href="{% static 'chat/css/chat.css' %}?v=63"
+        href="{% static 'chat/css/chat.css' %}?v=64"
     >
 
     <script
@@ -163,8 +163,9 @@
                         <span class="eyebrow">ЗАКРЫТАЯ БЕСЕДА</span>
                         <h2>{% if owned_private_room %}Управление беседой{% else %}Новая закрытая беседа{% endif %}</h2>
                         <p>
-                            Создайте одну собственную беседу и добавьте одного
-                            или двух участников. Приглашений в чужие беседы может быть сколько угодно.
+                            Создайте одну собственную беседу и пригласите участников —
+                            ограничений на количество нет. Приглашений в чужие беседы
+                            может быть сколько угодно.
                         </p>
                     </div>
                 </div>
@@ -194,7 +195,7 @@
                         <fieldset class="private-room-members">
                             <div class="private-room-members-heading">
                                 <legend>{{ private_room_form.members.label }}</legend>
-                                <span id="private-room-members-count">0 из 2</span>
+                                <span id="private-room-members-count">Выбрано: 0</span>
                             </div>
                             <div class="private-room-members-list">{{ private_room_form.members }}</div>
                             {{ private_room_form.members.errors }}
@@ -219,7 +220,7 @@
                         <fieldset class="private-room-members">
                             <div class="private-room-members-heading">
                                 <legend>{{ private_room_form.members.label }}</legend>
-                                <span id="private-room-members-count">0 из 2</span>
+                                <span id="private-room-members-count">Выбрано: 0</span>
                             </div>
                             <div class="private-room-members-list">
                                 {{ private_room_form.members }}
@@ -240,8 +241,8 @@
                         <span class="eyebrow">ЗАКРЫТАЯ БЕСЕДА</span>
                         <h2>Разговор только для своих</h2>
                         <p>
-                            Войдите, чтобы создать закрытую беседу и добавить
-                            одного или двух участников.
+                            Войдите, чтобы создать закрытую беседу и пригласить
+                            участников.
                         </p>
                     </div>
                 </div>

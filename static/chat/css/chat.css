@@ -900,7 +900,7 @@ a {
 
 .presence-status-control {
     display: grid;
-    gap: 4px;
+    gap: 8px;
     color: var(--text-muted);
     font-size: 10px;
     font-weight: 700;
@@ -936,63 +936,6 @@ a {
     max-width: none;
 }
 
-.presence-sidebar-status > label {
-    display: block;
-}
-
-.presence-custom-status {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 6px;
-    align-items: center;
-    margin-top: 10px;
-}
-
-.presence-custom-status label {
-    grid-column: 1 / -1;
-    color: var(--text-muted);
-    font-size: 11px;
-    font-weight: 600;
-}
-
-.presence-custom-status input {
-    width: 100%;
-    min-width: 0;
-    min-height: 36px;
-    padding: 6px 10px;
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    background: rgba(10, 10, 10, 0.25);
-    color: var(--text);
-    font: inherit;
-    font-size: 12px;
-}
-
-.presence-custom-status input:focus-visible {
-    outline: 2px solid var(--primary-hover);
-    outline-offset: 1px;
-}
-
-.presence-custom-status button {
-    min-height: 36px;
-    padding: 0 12px;
-    border: 1px solid rgba(198, 117, 58, 0.45);
-    border-radius: 9px;
-    background: rgba(198, 117, 58, 0.12);
-    color: var(--amber-light);
-    font-size: 12px;
-    font-weight: 700;
-}
-
-.presence-custom-status button:hover,
-.presence-custom-status button:focus-visible {
-    border-color: var(--primary-hover);
-    background: rgba(198, 117, 58, 0.2);
-}
-
-.presence-custom-status.is-saved button {
-    border-color: var(--primary-hover);
-}
 
 .room-title {
     display: flex;
@@ -5501,3 +5444,120 @@ html[data-theme="light"] .recipient-cancel {
 .date-options button { display: block; width: 100%; min-height: 44px; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
 .date-options button:hover, .date-options button:focus-visible, .date-options button[aria-current="date"] { background: var(--primary-soft); }
 .date-navigation[hidden], .date-options[hidden] { display: none; }
+
+/* =========================================================
+   ATTACHMENT LIGHTBOX
+   ========================================================= */
+
+.attachment-lightbox {
+    position: fixed;
+    z-index: 1000;
+    inset: 0;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 16px;
+}
+
+.attachment-lightbox.hidden {
+    display: none;
+}
+
+.attachment-lightbox-backdrop {
+    position: absolute;
+    inset: 0;
+
+    background: rgba(0, 0, 0, 0.82);
+    backdrop-filter: blur(3px);
+}
+
+.attachment-lightbox-card {
+    position: relative;
+    z-index: 1;
+
+    display: flex;
+    max-width: min(100%, 900px);
+    max-height: 100%;
+    flex-direction: column;
+    gap: 10px;
+
+    margin: 0;
+    padding: 12px;
+
+    border: 1px solid var(--border);
+    border-radius: 16px;
+
+    background: var(--surface);
+    box-shadow: var(--shadow);
+}
+
+.attachment-lightbox-image {
+    max-width: 100%;
+    max-height: min(68vh, 100%);
+
+    border-radius: 10px;
+
+    object-fit: contain;
+}
+
+.attachment-lightbox-caption {
+    overflow: hidden;
+
+    color: var(--text-soft);
+
+    font-size: 12px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.attachment-lightbox-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.attachment-lightbox-actions a,
+.attachment-lightbox-actions button {
+    display: inline-flex;
+    flex: 1 1 auto;
+    align-items: center;
+    justify-content: center;
+
+    min-height: 44px;
+
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+
+    font: inherit;
+    font-size: 13px;
+    font-weight: 700;
+    text-decoration: none;
+
+    cursor: pointer;
+}
+
+.attachment-lightbox-actions .attachment-lightbox-save {
+    border-color: rgba(198, 117, 58, 0.45);
+    background: rgba(198, 117, 58, 0.12);
+    color: var(--amber-light);
+}
+
+.attachment-lightbox-actions .attachment-lightbox-save:hover,
+.attachment-lightbox-actions .attachment-lightbox-save:focus-visible {
+    border-color: var(--primary-hover);
+    background: rgba(198, 117, 58, 0.2);
+}
+
+.attachment-lightbox-actions .attachment-lightbox-dismiss:hover,
+.attachment-lightbox-actions .attachment-lightbox-dismiss:focus-visible {
+    border-color: var(--primary-hover);
+}
+
+body.has-lightbox {
+    overflow: hidden;
+}

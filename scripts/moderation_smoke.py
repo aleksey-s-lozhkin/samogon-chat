@@ -12,6 +12,7 @@ def run():
     with tempfile.TemporaryDirectory(prefix='samogon-moderation-smoke-') as directory:
         environment = {**os.environ, 'DJANGO_SETTINGS_MODULE': 'config.settings_smoke',
                        'SAMOGON_SMOKE_DB': str(Path(directory) / 'smoke.sqlite3'),
+                       'SAMOGON_SMOKE_MEDIA': str(Path(directory) / 'media'),
                        'DATABASE_URL': '', 'REDIS_URL': '', 'DEBUG': '1',
                        'WEB_PUSH_ENABLED': '0'}
         prepare_database(environment)
