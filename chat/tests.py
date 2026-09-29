@@ -335,12 +335,81 @@ class AttachmentDownloadTests(TestCase):
         self.assertIn("internal;", protected_location)
         self.assertIn("alias /var/www/samogon/media/chat/;", protected_location)
 
+    def test_nginx_rate_limits_administrative_login(self):
+        nginx_config = (
+            settings.BASE_DIR / "deployment/nginx/samogon-site.conf"
+        ).read_text(encoding="utf-8")
+
+        admin_location = nginx_config.split(
+            "location = /admin/login/ {",
+            maxsplit=1,
+        )[1].split("}", maxsplit=1)[0]
+
+        self.assertIn("limit_req zone=samogon_auth", admin_location)
+
+    def test_scripts_are_served_from_the_project_not_public_cdns(self):
+        """Плавающая CDN-версия без SRI — это исполнение чужого кода."""
+        offenders = []
+        for directory in ("templates", "chat/templates", "users/templates"):
+            for path in (settings.BASE_DIR / directory).rglob("*.html"):
+                text = path.read_text(encoding="utf-8")
+                if "cdn.jsdelivr.net" in text or "unpkg.com" in text:
+                    offenders.append(str(path.relative_to(settings.BASE_DIR)))
+
+        self.assertEqual(offenders, [])
+        self.assertTrue(
+            (
+                settings.BASE_DIR
+                / "static/vendor/alpine/alpine-3.15.0.min.js"
+            ).is_file(),
+        )
+
     def test_outsider_cannot_download_personal_attachment(self):
         self.client.force_login(self.outsider)
 
         response = self.client.get(self.url)
 
         self.assertEqual(response.status_code, 404)
+
+    @override_settings(DEBUG=True)
+    def test_document_preview_url_forces_download_instead_of_inline(self):
+        """Недоверенный документ не должен открываться внутри origin."""
+        self.client.force_login(self.author)
+
+        response = self.client.get(
+            reverse("chat:attachment", args=[self.attachment.id]),
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("attachment", response["Content-Disposition"])
+        self.assertEqual(response["Content-Type"], "application/octet-stream")
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
+
+    @override_settings(DEBUG=True)
+    def test_image_preview_stays_inline_for_thumbnails(self):
+        self.client.force_login(self.author)
+
+        image = create_attachment(
+            message=self.message,
+            uploaded_file=AttachmentServiceTests.make_png_file(),
+        )
+
+        response = self.client.get(reverse("chat:attachment", args=[image.id]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertNotIn("attachment", response.get("Content-Disposition", ""))
+
+    def test_javascript_attachment_is_rejected(self):
+        """Расширение .js не принимается: inline-выдача давала stored XSS."""
+        with self.assertRaises(AttachmentValidationError):
+            validate_attachment(
+                SimpleUploadedFile(
+                    "payload.js",
+                    b"alert(document.cookie)",
+                    content_type="text/javascript",
+                ),
+            )
 
     def test_hidden_message_makes_attachment_unavailable(self):
         self.message.hidden_at = timezone.now()
@@ -1596,6 +1665,31 @@ class PresenceServiceTests(TestCase):
             users = async_to_sync(service.get_room_users)("general")
 
         self.assertEqual(users, [])
+
+    def test_connection_count_tracks_live_tabs_and_drops_stale_ones(self):
+        service = OnlineUsersService()
+        with patch("chat.services.presence.time.time", return_value=100):
+            for channel in ("channel-one", "channel-two"):
+                async_to_sync(service.connect)(
+                    room_slug="general",
+                    channel_name=channel,
+                    username="alex",
+                )
+            async_to_sync(service.connect)(
+                room_slug="general",
+                channel_name="channel-three",
+                username="maria",
+            )
+            self.assertEqual(
+                async_to_sync(service.connection_count)("alex"),
+                2,
+            )
+
+        with patch("chat.services.presence.time.time", return_value=176):
+            self.assertEqual(
+                async_to_sync(service.connection_count)("alex"),
+                0,
+            )
 
 
 class ChatApiTests(TestCase):
@@ -3040,6 +3134,100 @@ class ChatConsumerTests(TransactionTestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.presence_status, "")
         consumer.send_error.assert_awaited_once_with("Такой статус недоступен.")
+
+    def test_presence_status_saves_custom_text(self):
+        consumer = ChatConsumer()
+        consumer.user = self.user
+        consumer.broadcast_presence = AsyncMock()
+        consumer.send_error = AsyncMock()
+
+        async_to_sync(consumer.handle_presence_status)(
+            {"status": "", "custom_status": "  чиню   прод "},
+        )
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.custom_status, "чиню прод")
+        consumer.send_error.assert_not_awaited()
+
+    def test_presence_status_rejects_links_in_custom_text(self):
+        consumer = ChatConsumer()
+        consumer.user = self.user
+        consumer.broadcast_presence = AsyncMock()
+        consumer.send_error = AsyncMock()
+
+        async_to_sync(consumer.handle_presence_status)(
+            {"status": "", "custom_status": "заходите на https://spam.example"},
+        )
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.custom_status, "")
+        consumer.send_error.assert_awaited_once_with(
+            "Ссылки в своём статусе не поддерживаются.",
+        )
+
+    def test_presence_list_prefers_custom_status_over_catalogue(self):
+        status = ChatStatus.objects.create(code="coding", label="Пишу код")
+        self.user.presence_status = status.code
+        self.user.custom_status = "правлю релиз"
+        self.user.save(update_fields=("presence_status", "custom_status"))
+
+        users = async_to_sync(ChatConsumer().get_all_users)()
+
+        self.assertEqual(users[0]["status"], "правлю релиз")
+
+    @override_settings(WEBSOCKET_MAX_FRAME_BYTES=1024)
+    def test_oversized_websocket_frame_is_closed_before_parsing(self):
+        consumer = ChatConsumer()
+        consumer.user = self.user
+        consumer.room = self.room
+        consumer.close = AsyncMock()
+
+        async_to_sync(consumer.receive)(text_data="x" * 4096)
+
+        consumer.close.assert_awaited_once_with(code=1009)
+
+    def test_binary_websocket_frame_is_rejected(self):
+        consumer = ChatConsumer()
+        consumer.user = self.user
+        consumer.room = self.room
+        consumer.close = AsyncMock()
+
+        async_to_sync(consumer.receive)(text_data=None, bytes_data=b"\x00\x01")
+
+        consumer.close.assert_awaited_once_with(code=1003)
+
+    @override_settings(WEBSOCKET_MAX_CONNECTIONS_PER_USER=2)
+    def test_connection_limit_rejects_extra_tabs(self):
+        consumer = ChatConsumer()
+        consumer.user = self.user
+
+        with patch(
+            "chat.consumers.online_users.connection_count",
+            AsyncMock(return_value=1),
+        ):
+            self.assertFalse(
+                async_to_sync(consumer.too_many_connections)("alex"),
+            )
+        with patch(
+            "chat.consumers.online_users.connection_count",
+            AsyncMock(return_value=2),
+        ):
+            self.assertTrue(
+                async_to_sync(consumer.too_many_connections)("alex"),
+            )
+
+    @override_settings(WEBSOCKET_MAX_CONNECTIONS_PER_USER=0)
+    def test_connection_limit_can_be_disabled(self):
+        consumer = ChatConsumer()
+        consumer.user = self.user
+
+        with patch(
+            "chat.consumers.online_users.connection_count",
+            AsyncMock(return_value=99),
+        ):
+            self.assertFalse(
+                async_to_sync(consumer.too_many_connections)("alex"),
+            )
 
     def test_revoked_room_access_closes_matching_connection(self):
         consumer = ChatConsumer()

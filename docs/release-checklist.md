@@ -15,8 +15,8 @@ docker ps --format 'table {{.Names}}\t{{.Status}}' \
   --filter name=samogon-worker \
   --filter name=postgres \
   --filter name=redis
-curl -fsS https://sam.pyconstrictor.ru/health/live/
-curl -fsS https://sam.pyconstrictor.ru/health/ready/
+curl -fsS https://app.example.invalid/health/live/
+curl -fsS https://app.example.invalid/health/ready/
 ```
 
 Если readiness не возвращает `status: ok`, остальные проверки не запускаются.
@@ -104,7 +104,7 @@ docker run --rm \
   CURRENT_IMAGE \
   /app/scripts/performance_audit.py \
   --base-url http://samogon-web:8000 \
-  --host-header sam.pyconstrictor.ru \
+  --host-header app.example.invalid \
   --forwarded-proto https \
   --room release-audit \
   --credentials /run/audit-sessions.json \
@@ -142,7 +142,7 @@ docker run --rm \
   CURRENT_IMAGE \
   /app/scripts/performance_audit.py \
   --base-url http://samogon-web:8000 \
-  --host-header sam.pyconstrictor.ru \
+  --host-header app.example.invalid \
   --forwarded-proto https \
   --room release-audit \
   --credentials /run/audit-sessions.json \
@@ -165,7 +165,7 @@ docker run --rm \
   --volume /srv/config/release-audit-sessions.json:/run/audit-sessions.json:ro \
   CURRENT_IMAGE \
   /app/scripts/production_smoke.py \
-  --base-url https://sam.pyconstrictor.ru \
+  --base-url https://app.example.invalid \
   --room release-audit \
   --credentials /run/audit-sessions.json
 ```

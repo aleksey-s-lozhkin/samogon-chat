@@ -737,6 +737,7 @@ def check_registration_retry(playwright, server):
             page.locator("#register-username").fill("retry-visitor")
             page.locator("#register-email").fill("retry@example.invalid")
             page.locator("#register-password").fill(PASSWORD)
+            page.locator("#register-accept-rules").check()
             # Mock only the external challenge; exercise real HTMX requests/events.
             page.evaluate("""() => {
                 const widget = document.createElement('div');
@@ -794,6 +795,7 @@ def check_auth_without_htmx(playwright, server):
                 page.locator("#register-username").fill(f"native-{engine.name}-{javascript}")
                 page.locator("#register-email").fill(f"native-{engine.name}-{javascript}@example.invalid")
                 page.locator("#register-password").fill(PASSWORD)
+                page.locator("#register-accept-rules").check()
                 page.locator('#register-form button[type="submit"]').click()
                 page.wait_for_url(f"{server.base_url}/chat/")
                 assert any(method == "POST" and url.endswith("/users/register/") for method, url in requests)

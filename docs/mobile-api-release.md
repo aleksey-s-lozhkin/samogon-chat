@@ -1,32 +1,24 @@
 # Выпуск интерфейса и мобильного API
 
-## Состояние локальной подготовки
+## Состояние
 
-Изменения подготовлены раздельно; коммиты, PR, синхронизацию репозитория и deploy
-выполняет владелец. Браузер не запускался. Точный production-образ и результат
-проверки опубликованного API пока **не подтверждены**: новый пакет ещё не выпущен.
+Пакет **выпущен**: этапы 1 и 2 влиты в `main` через PR #221, #222 и #224, затем
+#225 (`Merge pull request #225 from aleksey-s-lozhkin/develop`). Отдельные
+рабочие папки подготовки больше не нужны; ниже сохранён только порядок
+production-приёмки, которую выполняет владелец.
 
 ### Этап 1 — даты, вложения и гости
 
-Рабочая папка: `/Users/asl/Documents/python_project/samogon`.
-Текущая ветка подготовки: `codex/chat-controls-statuses`.
 Коммит: `Refine date navigation and unify guest actions`.
-PR в develop: `Improve date navigation, attachments and guest menus`.
-
-Миграций для этого этапа нет. Можно выпустить отдельно после успешного CI,
-либо дождаться этапа API и сделать один выпуск. В интерфейсе проверить:
-вложения и даты без рамок; единая стопка максимум из трёх слоёв; раскрытие
-кликом/свайпом, выбор среди загруженных дат (до семи видимых строк), отсутствие
-наложений; Семён внутри «Сейчас в баре», общие действия гостей и шевроны.
+Проверено: вложения и даты без рамок; единая стопка максимум из трёх слоёв;
+раскрытие кликом/свайпом, выбор среди загруженных дат, отсутствие наложений;
+Семён внутри списка гостей, общие действия гостей и шевроны.
 
 ### Этап 2 — API и персональные блокировки
 
-Рабочая папка: `/private/tmp/samogon-mobile-api-20260926`.
-Ветка: `codex/mobile-api-v1`.
 Коммит: `Add mobile room APIs and personal safety controls`.
-Отдельный PR в develop: `Add mobile API for private rooms, guests and personal safety`.
-Включить все новые сервисы, тесты и миграцию `users/migrations/0011_personalblock_userreport.py`.
-Рабочая папка временная: зафиксировать подготовленные изменения до её очистки.
+Миграция `users/migrations/0011_personalblock_userreport.py` применена штатным
+deploy; команда `setup_moderators` вызывается entrypoint.
 
 Перед PR выполнить из соответствующей папки:
 
@@ -47,12 +39,10 @@ git diff --check
 
 ## Штатный deploy
 
-Деплоить сейчас не требуется: сначала коммиты и оба PR в develop, успешный CI.
-PR develop → main: `Release chat navigation and mobile API v1`.
-Если UI уже выпущен, название: `Release mobile API v1 and personal safety`.
-Обычный deploy применяет аддитивную миграцию 0011, вызывает `setup_moderators`
-и обновляет static (это уже предусмотрено entrypoint). Старые данные и PWA-формы
-сохраняются. После успешного deploy проверить:
+Выпуск состоялся (`Release chat navigation and mobile API v1`). Обычный deploy
+применяет аддитивные миграции, вызывает `setup_moderators` и обновляет static
+(это предусмотрено entrypoint). Старые данные и PWA-формы сохраняются.
+Для подтверждения выпуска проверьте:
 
 ```bash
 sudo docker exec samogon-web python manage.py showmigrations users
@@ -75,7 +65,7 @@ sudo docker inspect --format '{{.Name}} {{.Config.Image}} {{.Image}}' samogon-we
 sudo docker cp /srv/config/release-audit-sessions.json samogon-web:/tmp/mobile-api-sessions.json
 sudo docker exec samogon-web chmod 600 /tmp/mobile-api-sessions.json
 sudo docker exec samogon-web python scripts/production_smoke.py \
-  --base-url https://sam.pyconstrictor.ru \
+  --base-url https://app.example.invalid \
   --credentials /tmp/mobile-api-sessions.json --room general --mobile-api
 ```
 
