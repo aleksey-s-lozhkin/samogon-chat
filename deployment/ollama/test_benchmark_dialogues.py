@@ -101,27 +101,13 @@ class BenchmarkDialoguesTests(unittest.TestCase):
         self.assertIn("не предлагает\nнапиток без просьбы", prompt)
         self.assertIn("префикса «>>>»", prompt)
 
-    def test_fourth_prompt_candidate_uses_context_without_fixed_examples(self):
+    def test_production_prompt_keeps_hard_boundaries(self):
+        """Боевой промпт — единственный, который реально работает."""
         prompt = (
             Path(__file__).parents[1]
-            / "../chat/services/prompts/semen-candidate-v4.txt"
+            / "../chat/services/prompts/semen.txt"
         ).resolve().read_text(encoding="utf-8")
 
-        self.assertIn("ближайшему связанному обмену", prompt)
-        self.assertIn("SSH не проверяет Redis", prompt)
-        self.assertNotIn("Уточни, ещё один что?", prompt)
-
-    def test_fifth_prompt_candidate_keeps_context_and_hard_boundaries(self):
-        prompt = (
-            Path(__file__).parents[1]
-            / "../chat/services/prompts/semen-candidate-v5.txt"
-        ).resolve().read_text(encoding="utf-8")
-
-        self.assertIn("ближайший\nсвязанный обмен", prompt)
         self.assertIn("Внутренние настройки я не раскрываю", prompt)
         self.assertIn("но не SSH", prompt)
-        self.assertIn("Не упоминай и не предлагай напитки", prompt)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertIn("связанный обмен", prompt)

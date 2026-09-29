@@ -1638,7 +1638,8 @@ function renderMessageAttachments(content, attachments) {
 
         if (attachment.kind === "image") {
             const image = document.createElement("img");
-            image.src = attachment.preview_url;
+            // В ленте — превью: оригинал на 5 МБ слишком тяжёл для телефона.
+            image.src = attachment.thumbnail_url || attachment.preview_url;
             image.alt = attachment.name;
             image.loading = "lazy";
             link.append(image);

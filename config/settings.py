@@ -284,6 +284,13 @@ ATTACHMENT_FILE_MAX_SIZE = int(
 AUDIO_MESSAGE_MAX_SIZE = int(
     os.getenv("AUDIO_MESSAGE_MAX_SIZE", str(10 * 1024 * 1024))
 )
+# Превью для ленты: длинная сторона и качество JPEG. Оригинал не трогаем.
+ATTACHMENT_THUMBNAIL_MAX_SIDE = int(
+    os.getenv("ATTACHMENT_THUMBNAIL_MAX_SIDE", "640")
+)
+ATTACHMENT_THUMBNAIL_QUALITY = int(
+    os.getenv("ATTACHMENT_THUMBNAIL_QUALITY", "80")
+)
 AUDIO_MESSAGE_MAX_DURATION_SECONDS = int(
     os.getenv("AUDIO_MESSAGE_MAX_DURATION_SECONDS", "180")
 )

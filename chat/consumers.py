@@ -257,7 +257,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 return
             if recipient.id == self.user.id:
                 await self.send_error(
-                    "Себе можно написать только в заметки — их пока нет"
+                    "Себе написать нельзя. Сохраните реплику в личные заметки."
                 )
                 return
             if self.room.is_private and not await self.is_room_member(recipient.id):

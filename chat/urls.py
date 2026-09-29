@@ -17,6 +17,11 @@ urlpatterns = [
         name="download_attachment",
     ),
     path(
+        "attachments/<uuid:attachment_id>/thumbnail/",
+        views.serve_attachment,
+        name="attachment_thumbnail",
+    ),
+    path(
         "notes/attachments/<uuid:attachment_id>/",
         views.serve_note_attachment,
         name="note_attachment",
@@ -25,6 +30,11 @@ urlpatterns = [
         "notes/attachments/<uuid:attachment_id>/download/",
         views.serve_note_attachment,
         name="download_note_attachment",
+    ),
+    path(
+        "notes/attachments/<uuid:attachment_id>/thumbnail/",
+        views.serve_note_attachment,
+        name="note_attachment_thumbnail",
     ),
     path(
         "messages/<int:message_id>/attachments/",

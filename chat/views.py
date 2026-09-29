@@ -59,27 +59,6 @@ def add_unread_counts(rooms, user):
     return rooms
 
 
-def private_room_slug(name):
-    """Создаёт уникальный URL для закрытой беседы."""
-    base_slug = slugify(name) or "zakrytaya-beseda"
-    slug = base_slug
-    number = 2
-    while Room.objects.filter(slug=slug).exists():
-        slug = f"{base_slug}-{number}"
-        number += 1
-    return slug
-
-
-def revoke_private_room_access(*, room_slug, user_ids):
-    """Закрывает активные WebSocket-вкладки бывших участников беседы."""
-    channel_layer = get_channel_layer()
-    for user_id in user_ids:
-        async_to_sync(channel_layer.group_send)(
-            f"chat_user_{user_id}",
-            {"type": "room_access_revoked", "room_slug": room_slug},
-        )
-
-
 def rooms_page(request):
     rooms = list(get_visible_rooms(request.user))
     add_unread_counts(rooms, request.user)
@@ -228,6 +207,21 @@ def attachment_delivery(attachment, *, download_path: bool) -> tuple[bool, str]:
     return download_path, attachment.content_type
 
 
+def attachment_file_for(attachment, request_path):
+    """Выбирает, что отдать: превью для ленты или оригинал.
+
+    Превью — всегда inline JPEG и существует только у изображений. Запрос
+    оригинала или скачивания работает как раньше.
+    """
+    if request_path.endswith("/thumbnail/") and attachment.thumbnail:
+        return attachment.thumbnail, "image/jpeg", False
+    as_attachment, content_type = attachment_delivery(
+        attachment,
+        download_path=request_path.endswith("/download/"),
+    )
+    return attachment.file, content_type, as_attachment
+
+
 @login_required
 def serve_attachment(request, attachment_id):
     """Выдаёт файл только участнику чата; в production тело отдаёт Nginx."""
@@ -244,13 +238,13 @@ def serve_attachment(request, attachment_id):
     ):
         raise Http404("Вложение не найдено")
 
-    as_attachment, content_type = attachment_delivery(
+    stored_file, content_type, as_attachment = attachment_file_for(
         attachment,
-        download_path=request.path.endswith("/download/"),
+        request.path,
     )
     if settings.DEBUG:
         response = FileResponse(
-            attachment.file.open("rb"),
+            stored_file.open("rb"),
             as_attachment=as_attachment,
             filename=attachment.original_name,
             content_type=content_type,
@@ -263,7 +257,7 @@ def serve_attachment(request, attachment_id):
         as_attachment=as_attachment,
         filename=attachment.original_name,
     )
-    response["X-Accel-Redirect"] = f"/media/{attachment.file.name}"
+    response["X-Accel-Redirect"] = f"/media/{stored_file.name}"
     response["X-Content-Type-Options"] = "nosniff"
     return response
 
@@ -276,13 +270,13 @@ def serve_note_attachment(request, attachment_id):
         id=attachment_id,
         note__user=request.user,
     )
-    as_attachment, content_type = attachment_delivery(
+    stored_file, content_type, as_attachment = attachment_file_for(
         attachment,
-        download_path=request.path.endswith("/download/"),
+        request.path,
     )
     if settings.DEBUG:
         response = FileResponse(
-            attachment.file.open("rb"),
+            stored_file.open("rb"),
             as_attachment=as_attachment,
             filename=attachment.original_name,
             content_type=content_type,
@@ -295,7 +289,7 @@ def serve_note_attachment(request, attachment_id):
         as_attachment=as_attachment,
         filename=attachment.original_name,
     )
-    response["X-Accel-Redirect"] = f"/media/{attachment.file.name}"
+    response["X-Accel-Redirect"] = f"/media/{stored_file.name}"
     response["X-Content-Type-Options"] = "nosniff"
     return response
 
