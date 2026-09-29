@@ -1,11 +1,15 @@
 .git
-.env
-.env.production
+# Любой .env целиком: локальные файлы вроде .env.docker не должны попадать
+# в слои образа. Dockerfile делает COPY . .
+.env*
 .venv
 __pycache__
 *.py[cod]
 db.sqlite3
 media
 staticfiles
+test-results
+.idea
+.DS_Store
 .pytest_cache
 .mypy_cache
