@@ -95,8 +95,14 @@ def prepare_database(environment):
     from django.conf import settings as django_settings
     from PIL import Image
 
+    # Шумная картинка крупного размера: у маленькой превью не создаётся,
+    # и проверка ленты на превью потеряла бы смысл.
     image_buffer = BytesIO()
-    Image.new("RGB", (240, 160), color="#c6753a").save(image_buffer, format="PNG")
+    Image.frombytes("RGB", (1600, 1200), os.urandom(1600 * 1200 * 3)).save(
+        image_buffer,
+        format="JPEG",
+        quality=95,
+    )
     image_path = Path(django_settings.MEDIA_ROOT) / "chat/attachments/smoke-image.png"
     image_path.parent.mkdir(parents=True, exist_ok=True)
     image_path.write_bytes(image_buffer.getvalue())
@@ -347,6 +353,13 @@ def assert_attachment_lightbox(page):
             return Boolean(image) && image.complete && image.naturalWidth > 0;
         }"""
     )
+    feed_source = image_link.locator("img").get_attribute("src") or ""
+    if not feed_source.endswith("/thumbnail/"):
+        raise AssertionError(f"Лента грузит оригинал вместо превью: {feed_source}")
+    lightbox_source = image_link.get_attribute("data-lightbox-image") or ""
+    if lightbox_source.endswith("/thumbnail/"):
+        raise AssertionError("Модальное окно должно открывать оригинал")
+
     image_link.scroll_into_view_if_needed()
     image_link.click()
 

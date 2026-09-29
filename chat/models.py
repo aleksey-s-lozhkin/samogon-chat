@@ -267,6 +267,15 @@ def note_attachment_upload_to(instance, filename):
     return f"chat/note-attachments/{instance.id.hex}{suffix}"
 
 
+def attachment_thumbnail_upload_to(instance, filename):
+    """Имя превью отличается от оригинала, иначе они перезаписали бы друг друга."""
+    return f"chat/attachments/{instance.id.hex}-preview.jpg"
+
+
+def note_attachment_thumbnail_upload_to(instance, filename):
+    return f"chat/note-attachments/{instance.id.hex}-preview.jpg"
+
+
 class NoteAttachment(models.Model):
     """Личная копия вложения из сохранённой реплики."""
 
@@ -278,6 +287,11 @@ class NoteAttachment(models.Model):
         verbose_name="Заметка",
     )
     file = models.FileField(upload_to=note_attachment_upload_to, verbose_name="Файл")
+    thumbnail = models.FileField(
+        upload_to=note_attachment_thumbnail_upload_to,
+        blank=True,
+        verbose_name="Превью",
+    )
     original_name = models.CharField(max_length=255, verbose_name="Исходное имя файла")
     content_type = models.CharField(max_length=100, verbose_name="Тип содержимого")
     size = models.PositiveIntegerField( verbose_name="Размер в байтах")
@@ -319,6 +333,11 @@ class Attachment(models.Model):
         verbose_name="Сообщение",
     )
     file = models.FileField(upload_to=attachment_upload_to, verbose_name="Файл")
+    thumbnail = models.FileField(
+        upload_to=attachment_thumbnail_upload_to,
+        blank=True,
+        verbose_name="Превью",
+    )
     original_name = models.CharField(max_length=255, verbose_name="Исходное имя файла")
     content_type = models.CharField(max_length=100, verbose_name="Тип содержимого")
     size = models.PositiveIntegerField( verbose_name="Размер в байтах")

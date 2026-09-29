@@ -18,6 +18,7 @@ if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
 from chat.services.bartender_guardrails import guardrail_reply
+from chat.services.language import HAN_CHARACTERS, needs_language_retry
 
 
 DEFAULT_SCENARIOS = SCRIPT_DIR / "benchmark-dialogues.json"
@@ -25,8 +26,6 @@ DEFAULT_SYSTEM_PROMPT = (
     SCRIPT_DIR / "../../chat/services/prompts/semen.txt"
 ).resolve()
 BARTENDER_MENTION = re.compile(r"^@(?:сем[её]н|semen)\b[,:!]?\s*", re.IGNORECASE)
-HAN_CHARACTERS = re.compile(r"[\u3400-\u9fff]")
-CYRILLIC_CHARACTERS = re.compile(r"[А-Яа-яЁё]")
 LANGUAGE_RETRY_PROMPT = (
     "Перепиши свой ответ ниже только грамотным русским языком, "
     "без иероглифов, английского текста и markdown. Сохрани смысл и ответь коротко."
@@ -160,11 +159,6 @@ def request_reply(*, url, model, messages, options, timeout):
         raise ValueError(data.get("error", "Ollama вернула пустой ответ."))
     return data, content, elapsed_ms
 
-
-def needs_language_retry(content):
-    return bool(HAN_CHARACTERS.search(content)) or not bool(
-        CYRILLIC_CHARACTERS.search(content)
-    )
 
 
 def modes(selected_mode):

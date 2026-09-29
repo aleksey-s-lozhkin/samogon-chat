@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from io import BytesIO
 import json
 from pathlib import Path
 import subprocess
@@ -6,9 +7,10 @@ import tempfile
 
 from django.conf import settings
 from users.services.safety import pair_blocked, lock_pair
+from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile, UploadedFile
 from django.db import transaction
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from chat.models import Attachment, Message
 
@@ -92,6 +94,41 @@ def _validate_image(uploaded_file: UploadedFile, suffix: str) -> AttachmentMetad
         size=uploaded_file.size,
         kind=Attachment.Kind.IMAGE,
     )
+
+
+def build_image_thumbnail(uploaded_file: UploadedFile) -> ContentFile | None:
+    """Готовит уменьшенное превью для ленты.
+
+    Экономит трафик на телефоне и попутно убирает EXIF с геометкой. Если
+    изображение и так маленькое, превью не сохраняем: после перекодирования
+    оно может оказаться больше исходника, и лента станет только тяжелее.
+    """
+    try:
+        uploaded_file.seek(0)
+        image = Image.open(uploaded_file)
+        image = ImageOps.exif_transpose(image)
+        if image.mode not in ("RGB", "L"):
+            image = image.convert("RGB")
+        image.thumbnail(
+            (settings.ATTACHMENT_THUMBNAIL_MAX_SIDE,) * 2,
+            Image.Resampling.LANCZOS,
+        )
+        buffer = BytesIO()
+        image.save(
+            buffer,
+            format="JPEG",
+            quality=settings.ATTACHMENT_THUMBNAIL_QUALITY,
+            optimize=True,
+        )
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
+        return None
+    finally:
+        uploaded_file.seek(0)
+
+    data = buffer.getvalue()
+    if len(data) >= uploaded_file.size:
+        return None
+    return ContentFile(data, name="preview.jpg")
 
 
 def _validate_document(
@@ -301,6 +338,16 @@ def normalize_audio_attachment(
     )
 
 
+def _thumbnail_for(
+    uploaded_file: UploadedFile,
+    metadata: AttachmentMetadata,
+) -> ContentFile | None:
+    """Превью нужно только изображениям: у документов и аудио его не бывает."""
+    if metadata.kind != Attachment.Kind.IMAGE:
+        return None
+    return build_image_thumbnail(uploaded_file)
+
+
 def create_attachment(
     *,
     message: Message,
@@ -317,6 +364,7 @@ def create_attachment(
     return Attachment.objects.create(
         message=message,
         file=uploaded_file,
+        thumbnail=_thumbnail_for(uploaded_file, metadata),
         original_name=metadata.original_name,
         content_type=metadata.content_type,
         size=metadata.size,
@@ -349,6 +397,7 @@ def create_attachments(
             Attachment.objects.create(
                 message=message,
                 file=uploaded_file,
+                thumbnail=_thumbnail_for(uploaded_file, metadata),
                 original_name=metadata.original_name,
                 content_type=metadata.content_type,
                 size=metadata.size,
