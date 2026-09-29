@@ -28,12 +28,15 @@ from chat.models import Message, Room
 from users.services.push import (
     PushDeliveryResult,
     device_id_for_subscription,
+    enqueue_admin_push,
+    enqueue_direct_message_push,
     is_acceptable_push_endpoint,
     send_admin_push,
     send_direct_message_push,
     send_moderator_report_push,
     send_push_self_test,
 )
+from users.tasks import deliver_admin_push
 from users.statuses import RULES_VERSION
 
 
@@ -265,6 +268,91 @@ class HomeEntryTests(TestCase):
         response = self.client.get("/")
 
         self.assertContains(response, 'href="/chat/"')
+
+
+class PushQueueTests(TestCase):
+    """Push уходит через очередь, а не внутри запроса."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="queue-user", password="password")
+        self.subscription = PushSubscription.objects.create(
+            user=self.user,
+            endpoint="https://push.example/queue/one",
+            p256dh="public-device-key",
+            auth="auth-secret",
+            enabled=True,
+        )
+        self.disabled = PushSubscription.objects.create(
+            user=self.user,
+            endpoint="https://push.example/queue/two",
+            p256dh="public-device-key",
+            auth="auth-secret",
+            enabled=False,
+        )
+
+    @override_settings(WEB_PUSH_ENABLED=False)
+    @patch("users.tasks.deliver_direct_message_push.delay")
+    def test_disabled_push_is_not_queued(self, mocked_delay):
+        queued = enqueue_direct_message_push(recipient_id=self.user.id, room_slug="general")
+
+        self.assertFalse(queued)
+        mocked_delay.assert_not_called()
+
+    @override_settings(WEB_PUSH_ENABLED=True)
+    @patch("users.tasks.deliver_direct_message_push.delay")
+    def test_direct_message_push_is_queued(self, mocked_delay):
+        queued = enqueue_direct_message_push(
+            recipient_id=self.user.id,
+            room_slug="general",
+            sender_id=7,
+        )
+
+        self.assertTrue(queued)
+        self.assertEqual(
+            mocked_delay.call_args.kwargs,
+            {"recipient_id": self.user.id, "room_slug": "general", "sender_id": 7},
+        )
+
+    @patch("users.tasks.deliver_admin_push.delay", side_effect=OSError)
+    def test_queue_failure_is_reported_to_the_caller(self, mocked_delay):
+        queued = enqueue_admin_push(
+            subscription_ids=[self.subscription.id],
+            title="Важно",
+            body="Объявление",
+            url="/chat/",
+        )
+
+        self.assertFalse(queued)
+
+    @override_settings(
+        WEB_PUSH_ENABLED=True,
+        VAPID_PRIVATE_KEY="private-key",
+        VAPID_SUBJECT="mailto:test@example.com",
+    )
+    @patch("users.tasks.send_admin_push")
+    def test_task_skips_disabled_subscriptions(self, mocked_send):
+        mocked_send.return_value = PushDeliveryResult(delivered=1, failed=0, removed=0)
+
+        delivered = deliver_admin_push.run(
+            subscription_ids=[self.subscription.id, self.disabled.id],
+            title="Важно",
+            body="Объявление",
+            url="/chat/",
+        )
+
+        self.assertEqual(delivered, 1)
+        self.assertEqual(
+            list(mocked_send.call_args.kwargs["subscriptions"]),
+            [self.subscription],
+        )
+
+    def test_server_and_security_errors_are_logged(self):
+        loggers = settings.LOGGING["loggers"]
+
+        self.assertEqual(loggers["django.request"]["level"], "ERROR")
+        self.assertEqual(loggers["django.security"]["level"], "WARNING")
+        for name in ("django.request", "django.security"):
+            self.assertIn("console", loggers[name]["handlers"])
 
 
 class PushSubscriptionTests(TestCase):
@@ -1563,11 +1651,9 @@ class AdminPushTests(TestCase):
         self.assertContains(send_response, "Только мои устройства")
         self.assertContains(list_response, "Отправить Web Push")
 
-    @patch("users.admin.send_admin_push")
-    def test_self_test_only_selects_admin_devices(self, mocked_send):
-        mocked_send.return_value = type(
-            "Result", (), {"delivered": 1, "failed": 0, "removed": 0}
-        )()
+    @patch("users.admin.enqueue_admin_push")
+    def test_self_test_only_selects_admin_devices(self, mocked_enqueue):
+        mocked_enqueue.return_value = True
         self.client.force_login(self.admin)
 
         response = self.client.post(
@@ -1585,11 +1671,33 @@ class AdminPushTests(TestCase):
             response,
             reverse("admin:users_pushsubscription_changelist"),
         )
-        subscriptions = mocked_send.call_args.kwargs["subscriptions"]
-        self.assertEqual(list(subscriptions), [self.admin_subscription])
+        self.assertEqual(
+            mocked_enqueue.call_args.kwargs["subscription_ids"],
+            [self.admin_subscription.id],
+        )
 
-    @patch("users.admin.send_admin_push")
-    def test_broadcast_requires_explicit_confirmation(self, mocked_send):
+    @patch("users.admin.enqueue_admin_push")
+    def test_broadcast_reports_queue_failure(self, mocked_enqueue):
+        """При недоступном брокере админ должен узнать, а не ждать молча."""
+        mocked_enqueue.return_value = False
+        self.client.force_login(self.admin)
+
+        response = self.client.post(
+            self.url,
+            {
+                "audience": "all",
+                "title": "Важно",
+                "body": "Объявление",
+                "url": "/chat/",
+                "confirm": "on",
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Не удалось поставить рассылку в очередь")
+
+    @patch("users.admin.enqueue_admin_push")
+    def test_broadcast_requires_explicit_confirmation(self, mocked_enqueue):
         self.client.force_login(self.admin)
 
         response = self.client.post(
@@ -1604,7 +1712,7 @@ class AdminPushTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Подтверждаю отправку")
-        mocked_send.assert_not_called()
+        mocked_enqueue.assert_not_called()
 
     @override_settings(
         WEB_PUSH_ENABLED=True,

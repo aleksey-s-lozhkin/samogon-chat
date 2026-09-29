@@ -168,6 +168,15 @@ class Message(models.Model):
         permissions = [
             ("moderate_message", "Can moderate chat messages"),
         ]
+        indexes = [
+            # История комнаты и подсчёт непрочитанного идут по этим полям.
+            models.Index(fields=["room", "created_at"], name="msg_room_created_idx"),
+            # Личные сообщения выбираются по получателю.
+            models.Index(
+                fields=["recipient", "created_at"],
+                name="msg_recipient_created_idx",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.user.username}: {self.text}"
@@ -446,6 +455,10 @@ class MessageReport(models.Model):
         verbose_name = "Жалоба"
         verbose_name_plural = "Жалобы"
         ordering = ("-created_at",)
+        indexes = [
+            # Очередь модерации постоянно фильтрует нерассмотренные жалобы.
+            models.Index(fields=["resolved_at"], name="report_resolved_idx"),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=("message", "reporter"),
