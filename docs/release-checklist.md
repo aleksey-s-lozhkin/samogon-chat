@@ -56,6 +56,10 @@ media-архив и SHA-256 нужно перенести на отдельны�
 ### Если audit-комната ещё не создавалась
 
 ```bash
+# Однократно после первого релиза с превью: готовит превью для старых фото.
+docker exec samogon-web python manage.py backfill_attachment_thumbnails --dry-run
+docker exec samogon-web python manage.py backfill_attachment_thumbnails
+
 docker exec samogon-web python manage.py release_audit_accounts prepare \
   --credentials /tmp/release-audit-sessions.json \
   --count 60 \
