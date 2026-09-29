@@ -2,16 +2,13 @@ from django.conf import settings
 from django.http import JsonResponse
 from django.urls import reverse
 from django.views.decorators.csrf import ensure_csrf_cookie
-from asgiref.sync import async_to_sync
-from channels.layers import get_channel_layer
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.decorators import api_view
 
 from config.rate_limit import is_allowed
 from users.models import PushSubscription
 from users.services.push import device_id_for_subscription, send_push_self_test
-from chat.consumers import ChatConsumer, PRESENCE_GROUP_NAME
-from chat.services.presence import online_users
+from chat.services.events import broadcast_presence_snapshot
 
 from .serializers import (
     ErrorSerializer,
@@ -82,14 +79,7 @@ def api_current_user(request):
             request.user.custom_status = serializer.validated_data["custom_status"]
             update_fields.append("custom_status")
         request.user.save(update_fields=update_fields)
-        async_to_sync(get_channel_layer().group_send)(
-            PRESENCE_GROUP_NAME,
-            {
-                "type": "presence_update",
-                "users": async_to_sync(ChatConsumer().get_all_users)(),
-                "online": async_to_sync(online_users.get_all_users)(),
-            },
-        )
+        broadcast_presence_snapshot()
     return JsonResponse(current_user_data(request.user))
 
 

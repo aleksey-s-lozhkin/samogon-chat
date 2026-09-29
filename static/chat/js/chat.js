@@ -17,7 +17,10 @@ const {
 const MESSAGE_MAX_LENGTH = 1000;
 const BARTENDER_USERNAME = "Семён";
 const MESSAGE_SOUND_STORAGE_KEY = "samogon-message-sound-enabled";
-const REACTION_EMOJI = ["👍", "👎", "❤️", "😂", "🔥", "😮", "😢", "🤔", "🤝", "🎉"];
+const REACTION_EMOJI = [
+    "👍", "👎", "❤️", "😂", "🔥", "😮", "😢", "🤔", "🤝", "🎉",
+    "😍", "😎", "🙏", "👏", "💯", "🤯",
+];
 const TYPING_DEBOUNCE_MS = 250;
 const TYPING_IDLE_MS = 1600;
 const TYPING_TTL_MS = 3500;

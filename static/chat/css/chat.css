@@ -1778,8 +1778,13 @@ html[data-theme="light"] .message-skeleton-line::after {
     bottom: calc(100% + 7px);
     left: 0;
     display: flex;
+    flex-wrap: wrap;
     gap: 4px;
     padding: 6px;
+
+    /* Ширину задаём явно: без неё палитра схлопывается в один столбец. */
+    width: max-content;
+    max-width: min(88vw, 300px);
 
     border: 1px solid var(--border-strong);
     border-radius: 10px;
@@ -2530,6 +2535,11 @@ body.is-audio-recording * {
     grid-template-columns: repeat(4, 34px);
     gap: 5px;
     padding: 8px;
+
+    /* Набор большой: ограничиваем высоту и прокручиваем внутри панели. */
+    max-height: min(46vh, 340px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
 
     border: 1px solid var(--border-strong);
     border-radius: 12px;
@@ -5012,7 +5022,17 @@ html[data-theme="light"] .message-code-block {
 .message-reaction { padding: 0 4px; }
 .message-reaction-toggle { font-size: 17px; }
 .message-reaction-users { font-size: 12px; }
-.message-reaction-picker, .emoji-picker { background: var(--surface-strong); }
+/* Палитры — плавающие панели. Полупрозрачный фон просвечивал лентой
+   сообщений, а с большим набором emoji это стало особенно заметно, поэтому
+   задаём непрозрачные цвета для обеих тем. */
+.message-reaction-picker, .emoji-picker {
+    background: #2a2420;
+}
+
+html[data-theme="light"] .message-reaction-picker,
+html[data-theme="light"] .emoji-picker {
+    background: #fffaf4;
+}
 
 .message[data-color],
 .message.own[data-color] {

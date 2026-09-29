@@ -47,7 +47,11 @@
                     <p class="lead">«Самогон» — место для живых разговоров после длинного дня. Выбирайте комнату, знакомьтесь и общайтесь в реальном времени.</p>
                 {% endif %}
                 <div class="actions">
-                    <a href="{% url 'chat:rooms' %}" class="button button-primary">Войти в бар <span aria-hidden="true">→</span></a>
+                    {% if user.is_authenticated %}
+                        <a href="{% url 'chat:rooms' %}" class="button button-primary">Войти в бар <span aria-hidden="true">→</span></a>
+                    {% else %}
+                        <a href="{% url 'account_login' %}?next={% url 'chat:rooms' %}" class="button button-primary">Войти в бар <span aria-hidden="true">→</span></a>
+                    {% endif %}
                     {% if user.is_authenticated %}<a href="{% url 'profile' %}" class="button button-secondary">Мой профиль</a>{% endif %}
                     <button id="pwa-install-trigger" class="button button-secondary" type="button">Установить приложение</button>
                 </div>

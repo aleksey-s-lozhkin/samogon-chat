@@ -2,6 +2,25 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
 
+def broadcast_presence_snapshot():
+    """Рассылает всем подключённым клиентам актуальный список гостей.
+
+    Нужен, когда статус меняют по HTTP (профиль или API): без этого другие
+    гости видят прежний статус до перезагрузки страницы.
+    """
+    from chat.consumers import PRESENCE_GROUP_NAME, ChatConsumer
+    from chat.services.presence import online_users
+
+    async_to_sync(get_channel_layer().group_send)(
+        PRESENCE_GROUP_NAME,
+        {
+            "type": "presence_update",
+            "users": async_to_sync(ChatConsumer().get_all_users)(),
+            "online": async_to_sync(online_users.get_all_users)(),
+        },
+    )
+
+
 def message_group_names(message):
     """Возвращает группы Channels только для участников конкретной реплики."""
     if message.recipient_id:
