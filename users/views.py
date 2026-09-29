@@ -14,6 +14,7 @@ from django.views.decorators.http import require_GET, require_POST
 from allauth.socialaccount.models import SocialAccount
 
 from config.rate_limit import request_is_allowed
+from chat.services.events import broadcast_presence_snapshot
 from chat.services.navigation import get_last_room_url
 
 from .forms import ProfileForm, RegistrationForm
@@ -309,6 +310,12 @@ def profile(request):
     """Отображает и изменяет профиль пользователя."""
 
     if request.method == "POST":
+        # Снимок нужен до валидации: form.is_valid() уже подменяет поля
+        # instance данными формы, и сравнение «до/после» перестало бы работать.
+        previous_status = (
+            request.user.presence_status,
+            request.user.custom_status,
+        )
         form = ProfileForm(
             request.POST,
             request.FILES,
@@ -325,6 +332,13 @@ def profile(request):
                     "Не удалось сохранить изображение. Попробуйте ещё раз.",
                 )
             else:
+                if (
+                    request.user.presence_status,
+                    request.user.custom_status,
+                ) != previous_status:
+                    # Без рассылки другие гости видят прежний статус до
+                    # перезагрузки страницы.
+                    broadcast_presence_snapshot()
                 return redirect("profile")
 
     else:
