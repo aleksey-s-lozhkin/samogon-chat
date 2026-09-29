@@ -1,6 +1,8 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from users.models import ChatStatus
+from users.statuses import CUSTOM_STATUS_MAX_LENGTH, normalize_custom_status
 
 
 class ErrorSerializer(serializers.Serializer):
@@ -53,12 +55,24 @@ class CurrentUserSerializer(serializers.Serializer):
     message_color = serializers.CharField()
     presence_status = serializers.CharField(allow_blank=True)
     presence_status_label = serializers.CharField(allow_blank=True)
+    custom_status = serializers.CharField(allow_blank=True)
 
 
 class PresenceStatusUpdateSerializer(serializers.Serializer):
     presence_status = serializers.CharField(allow_blank=True, max_length=24)
+    custom_status = serializers.CharField(
+        allow_blank=True,
+        max_length=CUSTOM_STATUS_MAX_LENGTH,
+        required=False,
+    )
 
     def validate_presence_status(self, value):
         if value and not ChatStatus.objects.filter(code=value, is_active=True).exists():
             raise serializers.ValidationError("Такой статус недоступен.")
         return value
+
+    def validate_custom_status(self, value):
+        try:
+            return normalize_custom_status(value)
+        except DjangoValidationError as error:
+            raise serializers.ValidationError(error.messages) from error
