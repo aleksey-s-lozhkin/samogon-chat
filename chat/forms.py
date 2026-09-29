@@ -22,7 +22,7 @@ class PrivateRoomForm(forms.Form):
         queryset=User.objects.none(),
         required=False,
         widget=forms.CheckboxSelectMultiple,
-        help_text="Выберите одного или двух участников.",
+        help_text="Выберите хотя бы одного участника — ограничений на количество нет.",
     )
 
     def __init__(self, *args, user=None, room=None, **kwargs):
@@ -39,10 +39,6 @@ class PrivateRoomForm(forms.Form):
         if not members:
             raise forms.ValidationError(
                 "Добавьте хотя бы одного участника в закрытую беседу."
-            )
-        if members.count() > 2:
-            raise forms.ValidationError(
-                "В закрытой беседе может быть только два приглашённых участника."
             )
         return members
 

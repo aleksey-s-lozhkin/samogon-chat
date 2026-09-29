@@ -18,7 +18,7 @@
 
     <link
         rel="stylesheet"
-        href="{% static 'chat/css/chat.css' %}?v=62"
+        href="{% static 'chat/css/chat.css' %}?v=64"
     >
 
     <script
@@ -104,8 +104,11 @@
     };
 </script>
 
+{% include "chat/partials/attachment_lightbox.html" %}
+
     <script src="{% static 'chat/js/chat.js' %}?v=60"></script>
 <script src="{% static 'chat/js/date-navigation.js' %}?v=1"></script>
+<script src="{% static 'chat/js/attachment-lightbox.js' %}?v=1"></script>
 <script src="{% static 'chat/js/auth.js' %}?v=9"></script>
 <script src="{% static 'chat/js/theme.js' %}?v=1"></script>
 

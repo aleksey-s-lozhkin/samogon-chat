@@ -8,7 +8,7 @@ function updatePrivateRoomMembersCount() {
     const selected = document.querySelectorAll(
         'input[name="members"]:checked',
     ).length;
-    membersCount.textContent = `${selected} из 2`;
+    membersCount.textContent = `Выбрано: ${selected}`;
 }
 
 document.querySelectorAll('input[name="members"]').forEach((checkbox) => {

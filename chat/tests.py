@@ -957,6 +957,25 @@ class NotesViewTests(TestCase):
         self.settings_override.disable()
         self.media_directory.cleanup()
 
+    def test_no_image_lightbox_and_no_attachment_for_outsider_view(self):
+        """Страница заметок подключает общее модальное окно просмотра."""
+        note = Note.objects.create(user=self.reader, text="С картинкой")
+        NoteAttachment.objects.create(
+            note=note,
+            file="chat/note-attachments/smoke.png",
+            original_name="схема.png",
+            content_type="image/png",
+            size=128,
+            kind="image",
+        )
+        self.client.force_login(self.reader)
+
+        response = self.client.get(reverse("chat:notes"))
+
+        self.assertContains(response, 'id="attachment-lightbox"')
+        self.assertContains(response, "data-lightbox-image=")
+        self.assertContains(response, "attachment-lightbox.js")
+
     def test_user_can_save_visible_message_once(self):
         self.client.force_login(self.reader)
 
@@ -1399,7 +1418,7 @@ class PrivateRoomViewsTests(TestCase):
         self.first_guest = User.objects.create_user(username="maria")
         self.second_guest = User.objects.create_user(username="ivan")
 
-    def test_owner_can_create_one_private_room_for_up_to_two_guests(self):
+    def test_owner_can_create_private_room_with_two_guests(self):
         self.client.force_login(self.owner)
 
         response = self.client.post(
@@ -1417,6 +1436,49 @@ class PrivateRoomViewsTests(TestCase):
             set(room.members.values_list("username", flat=True)),
             {"alex", "maria", "ivan"},
         )
+
+    def test_private_room_has_no_limit_on_invited_members(self):
+        """Ограничение в двух приглашённых снято: раньше форма не сохранялась."""
+        guests = [
+            User.objects.create_user(username=f"guest-{index}")
+            for index in range(5)
+        ]
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("chat:create_private_room"),
+            {
+                "name": "Большой стол",
+                "members": [guest.id for guest in guests],
+            },
+        )
+
+        room = Room.objects.get(owner=self.owner)
+        self.assertRedirects(response, reverse("chat:chat", args=[room.slug]))
+        self.assertEqual(room.members.count(), len(guests) + 1)
+
+        # Обновление беседы с тем же числом участников тоже проходит.
+        response = self.client.post(
+            reverse("chat:update_private_room", args=[room.id]),
+            {
+                "name": "Большой стол",
+                "members": [guest.id for guest in guests],
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        room.refresh_from_db()
+        self.assertEqual(room.members.count(), len(guests) + 1)
+
+    def test_private_room_still_requires_at_least_one_member(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("chat:create_private_room"),
+            {"name": "Пустая беседа", "members": []},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Room.objects.filter(owner=self.owner).exists())
 
     def test_private_room_is_hidden_from_uninvited_guest(self):
         outsider = User.objects.create_user(username="outsider")

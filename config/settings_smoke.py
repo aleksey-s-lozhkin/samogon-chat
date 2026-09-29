@@ -13,6 +13,8 @@ DATABASES = {
         "NAME": os.environ["SAMOGON_SMOKE_DB"],
     },
 }
+# Медиа smoke-теста держим вне рабочего каталога проекта.
+MEDIA_ROOT = os.environ.get("SAMOGON_SMOKE_MEDIA") or BASE_DIR / "media"
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels.layers.InMemoryChannelLayer",

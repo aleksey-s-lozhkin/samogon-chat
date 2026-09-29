@@ -1,0 +1,23 @@
+{% comment %}
+Модальное окно просмотра изображения. Общее для чата и личных заметок:
+разметка и скрипт подключаются в обоих местах, поведение одинаковое.
+{% endcomment %}
+<div
+    id="attachment-lightbox"
+    class="attachment-lightbox hidden"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Просмотр изображения"
+>
+    <div class="attachment-lightbox-backdrop" data-lightbox-close></div>
+    <figure class="attachment-lightbox-card">
+        <img class="attachment-lightbox-image" data-lightbox-target alt="">
+        <figcaption class="attachment-lightbox-caption" data-lightbox-caption></figcaption>
+        <div class="attachment-lightbox-actions">
+            <a class="attachment-lightbox-save" data-lightbox-save download>Сохранить</a>
+            <button class="attachment-lightbox-dismiss" type="button" data-lightbox-close>
+                Закрыть
+            </button>
+        </div>
+    </figure>
+</div>
