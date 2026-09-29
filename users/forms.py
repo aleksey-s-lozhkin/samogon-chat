@@ -7,12 +7,27 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.core.files.base import ContentFile
+from django.utils import timezone
 
 from .models import ChatStatus
+from .statuses import (
+    CUSTOM_STATUS_MAX_LENGTH,
+    RESERVED_USERNAMES,
+    RULES_VERSION,
+    normalize_custom_status,
+)
 from .utils import resize_avatar
 
 User = get_user_model()
 PUBLIC_USERNAME_MAX_LENGTH = 32
+
+
+def validate_public_username(value: str) -> str:
+    """Проверяет публичное имя на занятость служебных вариантов."""
+    username = (value or "").strip()
+    if username.casefold() in RESERVED_USERNAMES:
+        raise forms.ValidationError("Это имя занято барменом. Выберите другое.")
+    return username
 
 
 class RegistrationForm(forms.ModelForm):
@@ -37,6 +52,17 @@ class RegistrationForm(forms.ModelForm):
         widget=forms.PasswordInput(attrs={"autocomplete": "off"}),
     )
 
+    accept_rules = forms.BooleanField(
+        label=(
+            "Мне 18 лет, я принимаю правила сервиса и уведомлён об обработке "
+            "данных"
+        ),
+        required=True,
+        error_messages={
+            "required": "Отметьте согласие с правилами, чтобы продолжить.",
+        },
+    )
+
     class Meta:
         model = User
         fields = (
@@ -49,6 +75,9 @@ class RegistrationForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         if settings.REGISTRATION_OPEN:
             self.fields.pop("invite_code", None)
+
+    def clean_username(self):
+        return validate_public_username(self.cleaned_data["username"])
 
     def clean_email(self):
         email = self.cleaned_data["email"].strip().lower()
@@ -93,6 +122,9 @@ class RegistrationForm(forms.ModelForm):
 
         user.set_password(self.cleaned_data["password"])
         user.welcome_pending = True
+        # Фиксируем факт и версию принятых правил: иначе доказать согласие нечем.
+        user.accepted_rules_at = timezone.now()
+        user.accepted_rules_version = RULES_VERSION
 
         if commit:
             user.save()
@@ -160,6 +192,7 @@ class ProfileForm(forms.ModelForm):
             "avatar",
             "message_color",
             "presence_status",
+            "custom_status",
         )
 
         labels = {
@@ -168,6 +201,7 @@ class ProfileForm(forms.ModelForm):
             "avatar": "Аватар",
             "message_color": "Цвет моих сообщений",
             "presence_status": "Статус в чате",
+            "custom_status": "Свой статус",
         }
 
         widgets = {
@@ -182,6 +216,12 @@ class ProfileForm(forms.ModelForm):
                     "placeholder": "Введите email",
                 }
             ),
+            "custom_status": forms.TextInput(
+                attrs={
+                    "placeholder": "Например: чиню прод",
+                    "maxlength": CUSTOM_STATUS_MAX_LENGTH,
+                }
+            ),
         }
 
     def clean_username(self):
@@ -193,7 +233,25 @@ class ProfileForm(forms.ModelForm):
             raise forms.ValidationError(
                 f"Используйте не больше {PUBLIC_USERNAME_MAX_LENGTH} символов."
             )
-        return username
+        return validate_public_username(username)
+
+    def clean_email(self):
+        """Не даёт занять email другого аккаунта.
+
+        Иначе вход по email перестаёт находить обоих пользователей.
+        """
+        email = self.cleaned_data["email"].strip().lower()
+        duplicate = User.objects.filter(email__iexact=email).exclude(
+            pk=self.instance.pk,
+        )
+        if email and duplicate.exists():
+            raise forms.ValidationError(
+                "Этот email уже используется другим аккаунтом."
+            )
+        return email
+
+    def clean_custom_status(self):
+        return normalize_custom_status(self.cleaned_data.get("custom_status", ""))
 
     def clean_avatar(self):
         avatar = self.cleaned_data.get("avatar")

@@ -3,11 +3,20 @@ from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
 from django.contrib.auth import get_user_model
 from django.shortcuts import redirect
 
+from .forms import RESERVED_USERNAMES
+
 User = get_user_model()
 
 
 class SamogonSocialAccountAdapter(DefaultSocialAccountAdapter):
     """Не объединяет OAuth и локальные аккаунты по одному совпавшему email."""
+
+    def populate_username(self, request, user):
+        """Не отдаёт служебное имя бармена гостю из внешнего провайдера."""
+        username = super().populate_username(request, user)
+        if username.casefold() in RESERVED_USERNAMES:
+            username = f"{username}-guest"
+        return username
 
     def pre_social_login(self, request, sociallogin):
         if sociallogin.is_existing or request.user.is_authenticated:

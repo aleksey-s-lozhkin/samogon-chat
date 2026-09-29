@@ -16,8 +16,45 @@ env:
   IMAGE_NAME: alserloz/samogon_chat
 
 jobs:
+  verify:
+    name: Verify before publishing
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Install dependencies
+        run: pip install poetry && poetry install --no-interaction --no-root --only main
+
+      - name: Check production configuration
+        env:
+          DEBUG: "0"
+          ALLOWED_HOSTS: testserver
+          SECRET_KEY: ci-only-release-check-secret-key-with-sufficient-length
+          ALLOW_SQLITE_FALLBACK: "1"
+        run: poetry run python manage.py check --deploy
+
+      - name: Check that migrations are complete
+        env:
+          DEBUG: "0"
+          ALLOWED_HOSTS: testserver
+          SECRET_KEY: ci-only-migration-check-secret-key-with-sufficient-length
+          ALLOW_SQLITE_FALLBACK: "1"
+        run: poetry run python manage.py makemigrations --check --dry-run
+
+      - name: Run tests
+        run: poetry run python manage.py test
+
   publish:
     name: Publish image to Docker Hub
+    needs: verify
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: production
 
@@ -171,7 +208,7 @@ jobs:
               /app/manage.py generate_vapid_keys > "$keys_file"
             grep -v '^VAPID_' "$env_file" > "$next_env" || true
             cat "$keys_file" >> "$next_env"
-            printf '%s\n' 'VAPID_SUBJECT=https://sam.pyconstrictor.ru' >> "$next_env"
+            printf '%s\n' 'VAPID_SUBJECT=mailto:noreply@example.invalid' >> "$next_env"
             chmod --reference="$env_file" "$next_env"
             chown --reference="$env_file" "$next_env"
             mv "$next_env" "$env_file"

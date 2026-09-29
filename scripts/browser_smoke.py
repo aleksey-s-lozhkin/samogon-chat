@@ -718,12 +718,21 @@ def check_auth_entry(playwright, server):
             page.locator("#login-password").fill(PASSWORD)
             page.locator('#login-form button[type="submit"]').click()
             page.wait_for_url(f"{server.base_url}/users/profile/")
-            page.context.clear_cookies()
-            page.goto(f"{server.base_url}/accounts/signup/")
-            page.locator("#register-username").wait_for()
-            assert not page.locator("#login-username").is_visible()
-            page.goto(f"{server.base_url}/accounts/password/reset/")
-            page.locator("#id_email").wait_for()
+            # См. комментарий в check_auth_without_htmx: без ожидания load
+            # следующий переход конкурирует с незавершённой навигацией.
+            page.wait_for_load_state("load")
+            page.context.close()
+
+            # Гостевые страницы открываются в чистом контексте: без cookie
+            # вошедшего гостя и без фоновых запросов страницы профиля.
+            guest_context = browser.new_context(viewport={"width": 390, "height": 844})
+            guest_page = guest_context.new_page()
+            guest_page.goto(f"{server.base_url}/accounts/signup/")
+            guest_page.locator("#register-username").wait_for()
+            assert not guest_page.locator("#login-username").is_visible()
+            guest_page.goto(f"{server.base_url}/accounts/password/reset/")
+            guest_page.locator("#id_email").wait_for()
+            guest_context.close()
         finally:
             browser.close()
 
@@ -737,6 +746,7 @@ def check_registration_retry(playwright, server):
             page.locator("#register-username").fill("retry-visitor")
             page.locator("#register-email").fill("retry@example.invalid")
             page.locator("#register-password").fill(PASSWORD)
+            page.locator("#register-accept-rules").check()
             # Mock only the external challenge; exercise real HTMX requests/events.
             page.evaluate("""() => {
                 const widget = document.createElement('div');
@@ -781,24 +791,38 @@ def check_auth_without_htmx(playwright, server):
                 page = context.new_page()
                 page.route("**/vendor/htmx/**", lambda route: route.abort())
                 requests = []
-                page.on("request", lambda request: requests.append((request.method, request.url)))
+                page.on("request", lambda request, sink=requests: sink.append((request.method, request.url)))
                 page.goto(f"{server.base_url}/accounts/login/?next=/users/profile/")
                 page.locator("#login-username").fill(USERNAME)
                 page.locator("#login-password").fill(PASSWORD)
                 page.locator('#login-form button[type="submit"]').click()
                 page.wait_for_url(f"{server.base_url}/users/profile/")
+                # wait_for_url возвращается раньше события load: без этой
+                # синхронизации следующий переход конкурирует с ещё не
+                # завершённой навигацией и падает с "interrupted by another
+                # navigation".
+                page.wait_for_load_state("load")
                 assert any(method == "POST" and url.endswith("/users/login/") for method, url in requests)
                 assert all(PASSWORD not in url and "password=" not in url for _, url in requests)
-                context.clear_cookies()
-                page.goto(f"{server.base_url}/accounts/signup/")
-                page.locator("#register-username").fill(f"native-{engine.name}-{javascript}")
-                page.locator("#register-email").fill(f"native-{engine.name}-{javascript}@example.invalid")
-                page.locator("#register-password").fill(PASSWORD)
-                page.locator('#register-form button[type="submit"]').click()
-                page.wait_for_url(f"{server.base_url}/chat/")
-                assert any(method == "POST" and url.endswith("/users/register/") for method, url in requests)
-                assert all("password=" not in url and "email=" not in url for _, url in requests)
                 context.close()
+
+                # Регистрация проверяется в отдельном контексте: там нет cookie
+                # вошедшего гостя и нет фоновых запросов страницы профиля.
+                guest_context = browser.new_context(java_script_enabled=javascript, viewport={"width": 390, "height": 844})
+                guest_page = guest_context.new_page()
+                guest_page.route("**/vendor/htmx/**", lambda route: route.abort())
+                guest_requests = []
+                guest_page.on("request", lambda request, sink=guest_requests: sink.append((request.method, request.url)))
+                guest_page.goto(f"{server.base_url}/accounts/signup/")
+                guest_page.locator("#register-username").fill(f"native-{engine.name}-{javascript}")
+                guest_page.locator("#register-email").fill(f"native-{engine.name}-{javascript}@example.invalid")
+                guest_page.locator("#register-password").fill(PASSWORD)
+                guest_page.locator("#register-accept-rules").check()
+                guest_page.locator('#register-form button[type="submit"]').click()
+                guest_page.wait_for_url(f"{server.base_url}/chat/")
+                assert any(method == "POST" and url.endswith("/users/register/") for method, url in guest_requests)
+                assert all("password=" not in url and "email=" not in url for _, url in guest_requests)
+                guest_context.close()
         finally:
             browser.close()
 

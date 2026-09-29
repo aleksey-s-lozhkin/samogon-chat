@@ -42,6 +42,8 @@ let historyHasMore = false;
 let lastMessageDay = null;
 let presenceUsers = [];
 let presenceOnlineUsers = [];
+// Список онлайна именно этой беседы. null означает «сервер ещё не прислал».
+let roomOnlineUsers = null;
 const guestEntries = new Map();
 let selectedAttachments = [];
 let pendingAttachmentUpload = null;
@@ -77,7 +79,12 @@ const IS_ANDROID = /Android/i.test(navigator.userAgent);
 const IS_IPHONE = /iPhone|iPod/i.test(navigator.userAgent);
 const SOCKET_RECONNECT_MAX_DELAY_MS = 30000;
 const PRESENCE_HEARTBEAT_INTERVAL_MS = 25000;
-const SOCKET_FATAL_CLOSE_CODES = new Set([4401, 4403, 4404]);
+const SOCKET_FATAL_CLOSE_CODES = new Set([4401, 4403, 4404, 4429, 1003, 1009]);
+const SOCKET_FATAL_MESSAGES = {
+    4429: "Слишком много открытых вкладок с чатом. Закройте лишние и обновите страницу.",
+    1009: "Сообщение слишком большое для отправки.",
+    1003: "Этот формат данных не поддерживается.",
+};
 
 const FALLBACK_TAGLINES = [
     "Семён протирает стакан и слушает логи.",
@@ -143,15 +150,34 @@ document.addEventListener("visibilitychange", () => {
 });
 
 const presenceStatusSelect = document.getElementById("presence-status-select");
-presenceStatusSelect?.addEventListener("change", () => {
+const presenceCustomStatusForm = document.querySelector("[data-presence-custom-status]");
+const presenceCustomStatusInput = document.getElementById("presence-custom-status-input");
+
+function sendPresenceStatus(customStatus) {
     if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
         showError("Нет связи с чатом. Попробуйте изменить статус ещё раз.");
-        return;
+        return false;
     }
-    chatSocket.send(JSON.stringify({
+    const payload = {
         type: "presence_status",
-        status: presenceStatusSelect.value,
-    }));
+        status: presenceStatusSelect?.value ?? "",
+    };
+    if (typeof customStatus === "string") {
+        payload.custom_status = customStatus;
+    }
+    chatSocket.send(JSON.stringify(payload));
+    return true;
+}
+
+presenceStatusSelect?.addEventListener("change", () => {
+    sendPresenceStatus();
+});
+
+presenceCustomStatusForm?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (sendPresenceStatus(presenceCustomStatusInput?.value ?? "")) {
+        presenceCustomStatusForm.classList.add("is-saved");
+    }
 });
 
 function connectWebSocket() {
@@ -204,7 +230,9 @@ function connectWebSocket() {
         }
         if (SOCKET_FATAL_CLOSE_CODES.has(code)) {
             reconnectBlocked = true;
-            showPersistentConnectionError("Доступ к этой беседе закрыт.");
+            showPersistentConnectionError(
+                SOCKET_FATAL_MESSAGES[code] || "Доступ к этой беседе закрыт.",
+            );
             return;
         }
         if (!socketOpened && code === 1006) {
@@ -546,6 +574,11 @@ function handleServerEvent(data) {
         updateTypingUser(data);
     }
 
+    if (data.type === "online_users") {
+        roomOnlineUsers = Array.isArray(data.users) ? data.users : [];
+        renderPresenceLists();
+    }
+
     if (data.type === "user_presence") {
         updateUserPresence(data.users, data.online);
     }
@@ -691,11 +724,19 @@ function showUnreadMarker(data) {
 function updateUserPresence(users, online) {
     presenceUsers = users;
     presenceOnlineUsers = online;
-    renderRoomLiveStatus();
+    renderPresenceLists();
+}
+
+function renderPresenceLists() {
+    // До первого события online_users показываем глобальный список, чтобы
+    // панель не пустовала; как только приходит список беседы — он главнее.
+    const onlineSource = roomOnlineUsers === null
+        ? presenceOnlineUsers
+        : roomOnlineUsers;
     const onlineUsers = new Set(
-        online.map((user) => normalizeUsername(user.username || user)),
+        onlineSource.map((user) => normalizeUsername(user.username || user)),
     );
-    const contacts = users.filter(
+    const contacts = presenceUsers.filter(
         (user) => normalizeUsername(user.username || user) !== normalizeUsername(currentUsername),
     );
 
@@ -703,11 +744,12 @@ function updateUserPresence(users, online) {
         if (!contacts.some(user => userDetails(user).username === name)) guestEntries.delete(name);
     }
 
+    renderRoomLiveStatus();
     renderUserList(
         "online-users-list",
         contacts.filter((user) => onlineUsers.has(normalizeUsername(user.username || user))),
         "online-user",
-        "Сейчас вы один у стойки",
+        "Сейчас в беседе только вы",
         "online-users-count",
         "toggle-online-users",
     );
@@ -715,7 +757,7 @@ function updateUserPresence(users, online) {
         "offline-users-list",
         contacts.filter((user) => !onlineUsers.has(normalizeUsername(user.username || user))),
         "offline-user",
-        "Все сейчас в баре",
+        "Все сейчас на месте",
         "offline-users-count",
         "toggle-offline-users",
     );
@@ -2406,7 +2448,9 @@ function renderRoomLiveStatus() {
         if (lastDigit >= 2 && lastDigit <= 4) return "гостя";
         return "гостей";
     };
-    const guestCount = presenceOnlineUsers.filter(
+    const guestCount = (
+        roomOnlineUsers === null ? presenceOnlineUsers : roomOnlineUsers
+    ).filter(
         (user) => normalizeUsername(user.username || user) !== normalizeUsername(currentUsername),
     ).length;
     let activity = "Пока никого, кроме вас";

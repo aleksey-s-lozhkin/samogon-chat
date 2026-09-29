@@ -47,8 +47,11 @@ TEXT_FILE_TYPES = {
     ".yaml": "application/x-yaml",
     ".yml": "application/x-yaml",
     ".py": "text/x-python",
-    ".js": "text/javascript",
 }
+# Документы, которые нельзя отдавать в браузер как исполняемое содержимое.
+# Расширение .js сознательно не поддерживается: вложение с таким типом,
+# отданное inline из своего origin, превращается в stored XSS.
+DOCUMENT_DOWNLOAD_CONTENT_TYPE = "application/octet-stream"
 PDF_CONTENT_TYPE = "application/pdf"
 AUDIO_TYPES = {
     ".webm": "audio/webm",

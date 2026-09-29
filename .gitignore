@@ -152,8 +152,12 @@ activemq-data/
 *.sage.py
 
 # Environments
-.env
-.env.docker
+# Любой .env, кроме публичных шаблонов: compose по умолчанию читает
+# .env.production, а он не должен попадать в историю.
+.env*
+!.env.example
+!.env.docker.example
+!.env.production.example
 .envrc
 .venv
 env/
@@ -218,7 +222,7 @@ marimo/_lsp/
 __marimo__/
 
 # Streamlit
-.streamlit/secrets.toml.DS_Store
+.streamlit/secrets.toml
 .DS_Store
 test-results/
 

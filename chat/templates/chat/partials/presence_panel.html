@@ -19,22 +19,36 @@
     </div>
 
     {% if user.is_authenticated %}
-        <label class="presence-status-control presence-sidebar-status" for="presence-status-select">
-            <span>Мой статус</span>
-            <select id="presence-status-select" aria-label="Мой статус">
-                <option value="" {% if not user.presence_status %}selected{% endif %}>Без статуса</option>
-                {% for value, label in presence_status_choices %}
-                    <option value="{{ value }}" {% if user.presence_status == value %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-            </select>
-        </label>
+        <div class="presence-status-control presence-sidebar-status">
+            <label for="presence-status-select">
+                <span>Мой статус</span>
+                <select id="presence-status-select" aria-label="Мой статус">
+                    <option value="" {% if not user.presence_status %}selected{% endif %}>Без статуса</option>
+                    {% for value, label in presence_status_choices %}
+                        <option value="{{ value }}" {% if user.presence_status == value %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <form class="presence-custom-status" data-presence-custom-status>
+                <label for="presence-custom-status-input">Свой статус</label>
+                <input
+                    id="presence-custom-status-input"
+                    type="text"
+                    maxlength="40"
+                    autocomplete="off"
+                    placeholder="Например: чиню прод"
+                    value="{{ user.custom_status }}"
+                >
+                <button type="submit">Сохранить</button>
+            </form>
+        </div>
     {% endif %}
 
     <section class="online-users user-presence-panel">
         <div class="presence-panel-title">
             <div class="online-title">
                 <span class="online-dot"></span>
-                Сейчас в баре
+                Сейчас в беседе
             </div>
             <span id="online-users-count" class="presence-count">0</span>
         </div>
@@ -68,21 +82,22 @@
         ></button>
     </section>
 
-    <section class="offline-users user-presence-panel">
-        <div class="presence-panel-title">
-            <div class="offline-title">
+    <details class="offline-users user-presence-panel">
+        <summary class="presence-panel-title">
+            <span class="offline-title">
                 <span class="offline-dot"></span>
                 Отошли
-            </div>
+            </span>
             <span id="offline-users-count" class="presence-count">0</span>
-        </div>
+        </summary>
+        <p class="offline-hint">Гости не в этой беседе — только для справки.</p>
         <div id="offline-users-list"></div>
         <button
             id="toggle-offline-users"
             class="presence-toggle hidden"
             type="button"
         ></button>
-    </section>
+    </details>
 </aside>
 
 <div

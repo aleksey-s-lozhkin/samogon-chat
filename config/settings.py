@@ -1,20 +1,65 @@
 import os
+import sys
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+
+from django.core.exceptions import ImproperlyConfigured
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def _load_env_file(path: Path) -> None:
+    """Подхватывает .env для локального запуска, не затирая окружение.
+
+    В контейнерах переменные приходят через env_file, поэтому файла может и не
+    быть. Уже заданные переменные окружения всегда имеют приоритет.
+    """
+    if not path.is_file():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        if key.startswith("export "):
+            key = key[len("export "):]
+        key = key.strip()
+        if key:
+            os.environ.setdefault(key, value.strip().strip('"').strip("'"))
+
+
+_load_env_file(BASE_DIR / ".env")
+
+
+def _env_flag(name: str, *, default: bool = False) -> bool:
+    """Читает булеву переменную окружения без сюрпризов регистра."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# Автотесты и браузерный smoke запускаются через ``manage.py test``: им нужен
+# прежний режим разработки (DEBUG, SQLite, раздача media силами Django) и не
+# нужны production-секреты. Флаг фиксируется до проверок ниже.
+TESTING = "test" in sys.argv or _env_flag("SAMOGON_TESTING")
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
-# Локальная разработка остаётся простой, а production получает секрет из .env.
-SECRET_KEY = os.getenv(
-    "SECRET_KEY",
-    "django-insecure-local-development-only",
-)
-DEBUG = os.getenv("DEBUG", "1") == "1"
+# Небезопасный режим включается только явным DEBUG=1 — иначе отказ на старте.
+DEBUG = True if TESTING else _env_flag("DEBUG")
+
+SECRET_KEY = os.getenv("SECRET_KEY", "").strip()
+if not SECRET_KEY:
+    if DEBUG:
+        # Локальная разработка: ключ предсказуем и намеренно небезопасен.
+        SECRET_KEY = "django-insecure-local-development-only"
+    else:
+        raise ImproperlyConfigured(
+            "SECRET_KEY обязателен при DEBUG=0. Задайте его в окружении."
+        )
 PRESENCE_TTL_SECONDS = int(os.getenv("PRESENCE_TTL_SECONDS", "75"))
 ALLOWED_HOSTS = [
     host.strip()
@@ -168,9 +213,17 @@ if database_url:
             "HOST": parsed_database_url.hostname or "localhost",
             "PORT": str(parsed_database_url.port or 5432),
             "CONN_MAX_AGE": 60,
+            "CONN_HEALTH_CHECKS": True,
         },
     }
 else:
+    if not DEBUG and not _env_flag("ALLOW_SQLITE_FALLBACK"):
+        # Молчаливый откат на SQLite вне DEBUG уже приводил бы к потере данных:
+        # файл лежит внутри контейнера и исчезает при его пересоздании.
+        raise ImproperlyConfigured(
+            "DATABASE_URL обязателен при DEBUG=0. Осознанный запуск на SQLite "
+            "разрешается переменной ALLOW_SQLITE_FALLBACK=1."
+        )
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
@@ -301,6 +354,12 @@ MESSAGE_RATE_LIMIT = int(os.getenv("MESSAGE_RATE_LIMIT", "20"))
 BARTENDER_RATE_LIMIT = int(os.getenv("BARTENDER_RATE_LIMIT", "5"))
 REACTION_RATE_LIMIT = int(os.getenv("REACTION_RATE_LIMIT", "30"))
 TYPING_RATE_LIMIT = int(os.getenv("TYPING_RATE_LIMIT", "60"))
+# Ограничения WebSocket: один кадр не должен занимать память процесса,
+# а число вкладок одного гостя — расти без предела.
+WEBSOCKET_MAX_FRAME_BYTES = int(os.getenv("WEBSOCKET_MAX_FRAME_BYTES", "16384"))
+WEBSOCKET_MAX_CONNECTIONS_PER_USER = int(
+    os.getenv("WEBSOCKET_MAX_CONNECTIONS_PER_USER", "5")
+)
 PRESENCE_STATUS_RATE_LIMIT = int(os.getenv("PRESENCE_STATUS_RATE_LIMIT", "20"))
 PUSH_SELF_TEST_RATE_LIMIT = int(os.getenv("PUSH_SELF_TEST_RATE_LIMIT", "3"))
 MESSAGE_REPORT_RATE_LIMIT = int(os.getenv("MESSAGE_REPORT_RATE_LIMIT", "10"))

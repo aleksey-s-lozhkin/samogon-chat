@@ -6,7 +6,7 @@ from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.conf import settings
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from users.services.safety import blocked_ids, pair_blocked
 from chat.services.guests import eligible_guests
 from chat.selectors import get_visible_rooms
@@ -23,6 +23,7 @@ from .services.messages import MessageService
 from .services.presence import online_users
 from .services.welcome import ensure_welcome_message
 from users.models import ChatStatus
+from users.statuses import normalize_custom_status
 from users.services.push import send_direct_message_push
 from .validators import validate_message
 
@@ -74,6 +75,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
         if not await self.can_access_room(user.id):
             await self.close(code=4403)
+            return
+        if await self.too_many_connections(user.username):
+            await self.close(code=4429)
             return
 
         self.user = user
@@ -140,7 +144,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
         await self.broadcast_presence()
 
-    async def receive(self, text_data):
+    async def receive(self, text_data=None, bytes_data=None):
         """Сохраняет сообщение и рассылает его адресатам.
 
         Личное обращение к Семёну не попадает в общий канал комнаты.
@@ -150,6 +154,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
         if self.room.is_private and not await self.can_access_room(self.user.id):
             await self.close(code=4403)
+            return
+
+        # Бинарные кадры и слишком крупные сообщения отсекаем до разбора JSON:
+        # иначе одна рамка может занять память процесса целиком.
+        if bytes_data is not None or text_data is None:
+            await self.close(code=1003)
+            return
+        if len(text_data) > settings.WEBSOCKET_MAX_FRAME_BYTES:
+            await self.close(code=1009)
             return
 
         try:
@@ -584,8 +597,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.send_error("Статус меняется слишком часто.")
             return
 
-        await self.update_presence_status(status)
+        custom_status = data.get("custom_status")
+        if custom_status is None:
+            custom_status = self.user.custom_status
+        elif not isinstance(custom_status, str):
+            await self.send_error("Свой статус указан некорректно.")
+            return
+        try:
+            custom_status = normalize_custom_status(custom_status)
+        except ValidationError as error:
+            await self.send_error(" ".join(error.messages))
+            return
+
+        await self.update_presence_status(status, custom_status)
         self.user.presence_status = status
+        self.user.custom_status = custom_status
         await self.broadcast_presence()
 
     async def is_rate_allowed(self, *, bucket, limit):
@@ -658,6 +684,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def is_room_member(self, user_id):
         return self.room.memberships.filter(user_id=user_id).exists()
 
+    async def too_many_connections(self, username):
+        """Не даёт одному гостю держать неограниченное число вкладок."""
+        limit = settings.WEBSOCKET_MAX_CONNECTIONS_PER_USER
+        if limit <= 0:
+            return False
+        return await online_users.connection_count(username) >= limit
+
     @database_sync_to_async
     def get_room_member_ids(self):
         return list(self.room.memberships.values_list("user_id", flat=True))
@@ -700,7 +733,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             {
                 "username": user.username,
                 "avatar_url": MessageService.get_avatar_url(user),
-                "status": status_labels.get(user.presence_status, user.presence_status),
+                # Свой текст важнее выбранного из справочника.
+                "status": user.custom_status
+                or status_labels.get(user.presence_status, user.presence_status),
                 "last_seen_at": (
                     user.last_seen_at.isoformat() if user.last_seen_at else None
                 ),
@@ -713,8 +748,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return not status or ChatStatus.objects.filter(code=status, is_active=True).exists()
 
     @database_sync_to_async
-    def update_presence_status(self, status):
-        User.objects.filter(pk=self.user.id).update(presence_status=status)
+    def update_presence_status(self, status, custom_status):
+        User.objects.filter(pk=self.user.id).update(
+            presence_status=status,
+            custom_status=custom_status,
+        )
 
     @database_sync_to_async
     def touch_last_seen(self):

@@ -56,7 +56,9 @@ def current_user_data(user):
         "avatar_url": user.avatar.url if user.avatar else None,
         "message_color": user.message_color,
         "presence_status": user.presence_status,
-        "presence_status_label": user.get_presence_status_display(),
+        "presence_status_label": user.custom_status
+        or user.get_presence_status_display(),
+        "custom_status": user.custom_status,
     }
 
 
@@ -75,7 +77,11 @@ def api_current_user(request):
         if not serializer.is_valid():
             return JsonResponse({"error": "invalid_request"}, status=400)
         request.user.presence_status = serializer.validated_data["presence_status"]
-        request.user.save(update_fields=("presence_status",))
+        update_fields = ["presence_status"]
+        if "custom_status" in serializer.validated_data:
+            request.user.custom_status = serializer.validated_data["custom_status"]
+            update_fields.append("custom_status")
+        request.user.save(update_fields=update_fields)
         async_to_sync(get_channel_layer().group_send)(
             PRESENCE_GROUP_NAME,
             {

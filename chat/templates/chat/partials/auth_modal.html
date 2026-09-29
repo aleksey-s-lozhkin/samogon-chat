@@ -181,12 +181,31 @@
                     <noscript><p>Для проверки безопасности включите JavaScript в браузере.</p></noscript>
                 {% endif %}
                 <div id="register-error" class="form-error" role="alert" aria-live="polite">{{ auth_error }}</div>
+                <div class="form-group form-consent">
+                    <label for="register-accept-rules">
+                        <input
+                            id="register-accept-rules"
+                            name="accept_rules"
+                            type="checkbox"
+                            value="1"
+                            required
+                            aria-describedby="register-error-accept_rules"
+                        >
+                        <span>
+                            Мне 18 лет, я принимаю
+                            <a href="{% url 'service_rules' %}" target="_blank" rel="noopener">правила сервиса</a>
+                            и уведомлён об обработке данных.
+                        </span>
+                    </label>
+                    <span id="register-error-accept_rules" class="field-error" aria-live="polite"></span>
+                </div>
                 <button type="submit" class="primary-button" data-pending-text="Создаём…">Создать аккаунт</button>
             </form>
 
             <p class="modal-footer auth-rules-note">
-                Создавая аккаунт, вы принимаете
-                <a href="{% url 'service_rules' %}">правила сервиса</a>.
+                Сервис — некоммерческий pet-проект и работает «как есть».
+                Подробнее — в
+                <a href="{% url 'service_rules' %}">правилах сервиса</a>.
             </p>
 
             <div class="modal-footer">
