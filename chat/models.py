@@ -187,6 +187,12 @@ class MessageReaction(models.Model):
         THINKING = "🤔", "Задумался"
         HANDSHAKE = "🤝", "Согласен"
         CELEBRATE = "🎉", "Праздную"
+        LOVE = "😍", "В восторге"
+        COOL = "😎", "Круто"
+        THANKS = "🙏", "Спасибо"
+        CLAP = "👏", "Аплодисменты"
+        HUNDRED = "💯", "Точно"
+        MIND_BLOWN = "🤯", "Взрыв мозга"
 
     message = models.ForeignKey(
         Message,
