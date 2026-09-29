@@ -28,11 +28,13 @@ from chat.models import Message, Room
 from users.services.push import (
     PushDeliveryResult,
     device_id_for_subscription,
+    is_acceptable_push_endpoint,
     send_admin_push,
     send_direct_message_push,
     send_moderator_report_push,
     send_push_self_test,
 )
+from users.statuses import RULES_VERSION
 
 
 User = get_user_model()
@@ -59,6 +61,41 @@ class ProfileViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'href="/chat/"')
         self.assertContains(response, "Вернуться к комнатам")
+
+    def test_profile_rejects_email_of_another_account(self):
+        User.objects.create_user(username="maria", email="maria@example.com")
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            "/users/profile/",
+            {
+                "username": "alex",
+                "email": "maria@example.com",
+                "message_color": "amber",
+                "presence_status": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, "alex@example.com")
+
+    def test_profile_rejects_bartender_username(self):
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            "/users/profile/",
+            {
+                "username": "SEMEN",
+                "email": "alex@example.com",
+                "message_color": "amber",
+                "presence_status": "",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.username, "alex")
 
     def test_profile_shows_only_visible_messages_as_glasses_poured(self):
         room = Room.objects.create(name="Общий зал", slug="general")
@@ -171,7 +208,8 @@ class ServiceRulesTests(TestCase):
 
         Room.objects.create(name="Общий зал", slug="general")
         chat_response = self.client.get("/chat/general/")
-        self.assertContains(chat_response, 'href="/rules/"', count=2)
+        # Ссылка есть во входе, в галочке согласия и в подписи под регистрацией.
+        self.assertContains(chat_response, 'href="/rules/"', count=3)
 
 
 class PushSubscriptionTests(TestCase):
@@ -206,6 +244,60 @@ class PushSubscriptionTests(TestCase):
         subscription = PushSubscription.objects.get()
         self.assertEqual(subscription.user, self.user)
         self.assertTrue(subscription.direct_messages_enabled)
+
+    @override_settings(WEB_PUSH_ENABLED=True)
+    def test_subscribe_rejects_endpoint_owned_by_another_user(self):
+        other = User.objects.create_user(username="push-other", password="password")
+        PushSubscription.objects.create(
+            user=other,
+            endpoint=self.payload["endpoint"],
+            p256dh="other-key",
+            auth="other-auth",
+        )
+
+        response = self.client.post(
+            "/users/profile/push/subscribe/",
+            data=json.dumps(self.payload),
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(PushSubscription.objects.get().user, other)
+
+    @override_settings(WEB_PUSH_ENABLED=True)
+    def test_subscribe_rejects_internal_endpoint_targets(self):
+        for endpoint in (
+            "https://127.0.0.1/push",
+            "https://10.0.0.5/push",
+            "https://169.254.169.254/latest/meta-data/",
+            "https://localhost/push",
+            "https://redis.internal/push",
+            "http://push.example/push",
+        ):
+            with self.subTest(endpoint=endpoint):
+                response = self.client.post(
+                    "/users/profile/push/subscribe/",
+                    data=json.dumps(
+                        {**self.payload, "endpoint": endpoint},
+                    ),
+                    content_type="application/json",
+                )
+                self.assertEqual(response.status_code, 400)
+        self.assertFalse(PushSubscription.objects.exists())
+
+    def test_acceptable_push_endpoint_allows_public_https_hosts(self):
+        self.assertTrue(
+            is_acceptable_push_endpoint(
+                "https://fcm.googleapis.com/fcm/send/abc",
+            ),
+        )
+        self.assertTrue(
+            is_acceptable_push_endpoint(
+                "https://updates.push.services.mozilla.com/wpush/v2/abc",
+            ),
+        )
+        self.assertFalse(is_acceptable_push_endpoint("https://[::1]/push"))
+        self.assertFalse(is_acceptable_push_endpoint("not-a-url"))
 
     @override_settings(WEB_PUSH_ENABLED=True)
     def test_unsubscribe_only_deletes_current_users_device(self):
@@ -437,6 +529,35 @@ class CurrentUserApiTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.presence_status, "thinking")
 
+    def test_current_user_updates_custom_status(self):
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            "/api/v1/users/me/",
+            {"presence_status": "thinking", "custom_status": " правлю релиз "},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["custom_status"], "правлю релиз")
+        # Свой текст важнее названия статуса из справочника.
+        self.assertEqual(response.json()["presence_status_label"], "правлю релиз")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.custom_status, "правлю релиз")
+
+    def test_current_user_rejects_links_in_custom_status(self):
+        self.client.force_login(self.user)
+
+        response = self.client.patch(
+            "/api/v1/users/me/",
+            {"presence_status": "", "custom_status": "см. https://spam.example"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.custom_status, "")
+
 
 class PushDiagnosticApiTests(TestCase):
     def setUp(self):
@@ -622,6 +743,55 @@ class AuthenticationHtmxTests(TestCase):
         )
         self.htmx_headers = {"HTTP_HX_REQUEST": "true"}
 
+    @override_settings(REGISTRATION_OPEN=True)
+    def test_registration_requires_rules_acceptance(self):
+        response = self.client.post(
+            "/users/register/",
+            {
+                "username": "newcomer",
+                "email": "newcomer@example.com",
+                "password": "test-password-2026",
+            },
+            HTTP_ACCEPT="text/html",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(User.objects.filter(username="newcomer").exists())
+
+    @override_settings(REGISTRATION_OPEN=True)
+    def test_registration_records_accepted_rules_version(self):
+        response = self.client.post(
+            "/users/register/",
+            {
+                "username": "newcomer",
+                "email": "newcomer@example.com",
+                "password": "test-password-2026",
+                "accept_rules": "1",
+            },
+            HTTP_ACCEPT="text/html",
+        )
+
+        self.assertEqual(response.status_code, 302)
+        user = User.objects.get(username="newcomer")
+        self.assertIsNotNone(user.accepted_rules_at)
+        self.assertEqual(user.accepted_rules_version, RULES_VERSION)
+
+    @override_settings(REGISTRATION_OPEN=True)
+    def test_registration_rejects_bartender_username(self):
+        response = self.client.post(
+            "/users/register/",
+            {
+                "username": "semen",
+                "email": "newcomer@example.com",
+                "password": "test-password-2026",
+            },
+            HTTP_ACCEPT="text/html",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, "занято", status_code=400)
+        self.assertFalse(User.objects.filter(email="newcomer@example.com").exists())
+
     def test_native_login_uses_post_and_redirects_without_htmx(self):
         response = self.client.get("/accounts/login/")
         self.assertContains(response, 'method="post"')
@@ -646,7 +816,8 @@ class AuthenticationHtmxTests(TestCase):
     def test_native_registration_redirects_without_htmx(self, verify):
         response = self.client.post("/users/register/", {
             "username": "native-user", "email": "native@example.invalid",
-            "password": "Safe-new-password-2026", "next": "/users/profile/"
+            "password": "Safe-new-password-2026", "next": "/users/profile/",
+            "accept_rules": "1",
         }, HTTP_ACCEPT="text/html")
         self.assertRedirects(response, "/users/profile/")
         verify.assert_called_once()
@@ -656,7 +827,7 @@ class AuthenticationHtmxTests(TestCase):
     def test_native_registration_without_next_redirects_to_room_list(self, _verify):
         response = self.client.post("/users/register/", {
             "username": "room-list-user", "email": "rooms@example.invalid",
-            "password": "Safe-new-password-2026",
+            "password": "Safe-new-password-2026", "accept_rules": "1",
         }, HTTP_ACCEPT="text/html")
 
         self.assertRedirects(response, "/chat/")
@@ -787,7 +958,12 @@ class AuthenticationHtmxTests(TestCase):
     def test_open_registration_accepts_no_invite_in_production(self):
         response = self.client.post(
             "/users/register/",
-            {"username": "open-user", "email": "open@example.com", "password": "safe-password"},
+            {
+                "username": "open-user",
+                "email": "open@example.com",
+                "password": "safe-password",
+                "accept_rules": "1",
+            },
             **self.htmx_headers,
         )
         self.assertEqual(response["HX-Redirect"], "/chat/")
@@ -836,6 +1012,7 @@ class AuthenticationHtmxTests(TestCase):
                 "email": "new@example.com",
                 "password": "safe-password",
                 "invite_code": "bar-secret",
+                "accept_rules": "1",
             },
             **self.htmx_headers,
         )
@@ -871,6 +1048,7 @@ class AuthenticationHtmxTests(TestCase):
                 "email": "new@example.com",
                 "password": "safe-password",
                 "invite_code": "bar-secret",
+                "accept_rules": "1",
             },
             **self.htmx_headers,
         )
@@ -1273,6 +1451,19 @@ class RateLimitTests(TestCase):
         self.assertTrue(is_allowed(**arguments))
         self.assertTrue(is_allowed(**arguments))
         self.assertFalse(is_allowed(**arguments))
+
+    def test_sensitive_bucket_fails_closed_when_cache_is_unavailable(self):
+        arguments = {
+            "identifier": "ip:203.0.113.7",
+            "bucket": "login",
+            "limit": 10,
+            "window_seconds": 60,
+        }
+
+        with patch.object(cache, "add", side_effect=RuntimeError("cache down")):
+            self.assertFalse(is_allowed(**arguments, fail_closed=True))
+            # Обычный чат при недоступном кэше продолжает работать.
+            self.assertTrue(is_allowed(**arguments))
 
 
 class AdminPushTests(TestCase):

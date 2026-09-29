@@ -117,18 +117,27 @@ nano /srv/config/env/samogon.env
 - `GOOGLE_OAUTH_CLIENT_ID` и `GOOGLE_OAUTH_CLIENT_SECRET` из Google OAuth client.
 - `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` и контактный `VAPID_SUBJECT` для Web Push.
 
+`DEBUG` не задавайте вовсе или оставьте `DEBUG=0`: при `DEBUG=0` приложение
+падает на старте без `SECRET_KEY` и без `DATABASE_URL` вместо небезопасных
+значений по умолчанию. Осознанный запуск на SQLite вне DEBUG требует явного
+`ALLOW_SQLITE_FALLBACK=1`.
+
 Для SMTP включайте только один режим шифрования. Обычно это
 `EMAIL_PORT=587`, `EMAIL_USE_TLS=1`, `EMAIL_USE_SSL=0`. Для Яндекс Почты с
 SSL используйте `EMAIL_PORT=465`, `EMAIL_USE_TLS=0`, `EMAIL_USE_SSL=1` и
 пароль приложения вместо основного пароля аккаунта.
 
-Оставьте следующие значения как есть:
+Все значения ниже нужно заменить на свои. Исключение — переменные с готовыми
+значениями по умолчанию, они помечены отдельно.
 
 ```dotenv
 ALLOWED_HOSTS=app.example.invalid
 CSRF_TRUSTED_ORIGINS=https://app.example.invalid
-REDIS_URL=redis://redis:6379/0
+# socket_timeout должен быть больше blocking read channels-redis, иначе
+# WebSocket переподключается на каждом цикле.
+REDIS_URL=redis://redis:6379/0?socket_timeout=10
 OLLAMA_BASE_URL=http://ollama.internal:11434
+# .env.production.example использует собранный профиль samogon-semen-caretaker.
 OLLAMA_MODEL=qwen3:8b
 OLLAMA_KEEP_ALIVE=-1
 OLLAMA_TEMPERATURE=0.5
@@ -136,6 +145,7 @@ OLLAMA_NUM_PREDICT=120
 BARTENDER_RESPONSE_MAX_LENGTH=360
 BARTENDER_CONTEXT_MESSAGE_LIMIT=8
 BARTENDER_CONTEXT_MESSAGE_MAX_CHARS=500
+# Обязательно замените: это значение попадает в репозиторий и не является секретом.
 REGISTRATION_INVITE_CODE=replace-with-a-long-random-invite-code
 # Turnstile включается только когда заданы оба ключа.
 TURNSTILE_SITE_KEY=
@@ -149,7 +159,7 @@ BARTENDER_RATE_LIMIT=5
 REACTION_RATE_LIMIT=30
 TYPING_RATE_LIMIT=60
 SAMOGON_DATA_DIR=/srv/data/samogon
-SAMOGON_IMAGE=registry.example.invalid/project/samogon:latest
+SAMOGON_IMAGE=alserloz/samogon_chat:latest
 ATTACHMENT_MAX_COUNT=3
 ATTACHMENT_IMAGE_MAX_SIZE=5242880
 ATTACHMENT_FILE_MAX_SIZE=2097152
@@ -244,7 +254,7 @@ push-служба приняла отправку; появление уведо
 
 ```dotenv
 SAMOGON_ENV_FILE=/srv/config/env/samogon.env
-SAMOGON_IMAGE=registry.example.invalid/project/samogon:latest
+SAMOGON_IMAGE=alserloz/samogon_chat:latest
 ```
 
 Перед стартом проверьте связь с Ollama:
@@ -475,7 +485,7 @@ Docker DNS не создаёт бесконечный цикл перезапу�
 
 ```bash
 cd /srv/compose/samogon
-SAMOGON_IMAGE=registry.example.invalid/project/samogon:IMAGE_SHA \
+SAMOGON_IMAGE=alserloz/samogon_chat:IMAGE_SHA \
   docker compose up -d --no-build
 docker image prune -f
 ```

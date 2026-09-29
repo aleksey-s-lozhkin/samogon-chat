@@ -2,7 +2,9 @@ name: Verify pull request
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
 
 permissions:
   contents: read
@@ -25,13 +27,27 @@ jobs:
         run: pip install poetry && poetry install --no-interaction --no-root --only main
 
       - name: Check Django configuration
-        run: poetry run python manage.py check
+        env:
+          DEBUG: "0"
+          ALLOWED_HOSTS: testserver
+          SECRET_KEY: ci-only-configuration-check-secret-key-with-sufficient-length
+          ALLOW_SQLITE_FALLBACK: "1"
+        run: poetry run python manage.py check --deploy
+
+      - name: Check that migrations are complete
+        env:
+          DEBUG: "0"
+          ALLOWED_HOSTS: testserver
+          SECRET_KEY: ci-only-migration-check-secret-key-with-sufficient-length
+          ALLOW_SQLITE_FALLBACK: "1"
+        run: poetry run python manage.py makemigrations --check --dry-run
 
       - name: Check production static manifest
         env:
           DEBUG: "0"
           ALLOWED_HOSTS: testserver
           SECRET_KEY: ci-only-static-manifest-secret-key-with-sufficient-length
+          ALLOW_SQLITE_FALLBACK: "1"
         run: |
           poetry run python manage.py collectstatic --noinput --clear
           poetry run python manage.py test config.test_admin.AdminDiagnosticsTests.test_admin_index_renders

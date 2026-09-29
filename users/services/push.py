@@ -1,6 +1,8 @@
+import ipaddress
 import json
 import logging
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from django.conf import settings
 from django.db.models import Q
@@ -12,6 +14,42 @@ from users.models import PushSubscription, User
 
 
 logger = logging.getLogger(__name__)
+
+# Имена, которые заведомо указывают на локальную сеть или служебную зону.
+FORBIDDEN_ENDPOINT_HOSTS = {"localhost"}
+FORBIDDEN_ENDPOINT_SUFFIXES = (
+    ".localhost",
+    ".local",
+    ".internal",
+    ".localdomain",
+    ".home.arpa",
+)
+
+
+def is_acceptable_push_endpoint(endpoint: str) -> bool:
+    """Отсекает endpoint, по которому сервер не должен отправлять запросы.
+
+    Адрес приходит от браузера, поэтому он недоверенный: без проверки сервер
+    превращается в SSRF-прокси к localhost, служебным адресам и внутренней сети.
+    """
+    if not isinstance(endpoint, str) or len(endpoint) > 1000:
+        return False
+    parsed = urlparse(endpoint)
+    if parsed.scheme != "https" or not parsed.hostname:
+        return False
+
+    host = parsed.hostname.strip().rstrip(".").lower()
+    if not host or host in FORBIDDEN_ENDPOINT_HOSTS:
+        return False
+    if host.endswith(FORBIDDEN_ENDPOINT_SUFFIXES):
+        return False
+
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        # Не литерал адреса: требуем доменное имя с точкой и без пробелов.
+        return "." in host and not any(char.isspace() for char in host)
+    return address.is_global
 
 
 def device_id_for_subscription(subscription: PushSubscription) -> str:

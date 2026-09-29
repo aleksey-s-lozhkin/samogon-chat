@@ -22,7 +22,7 @@
 
     <script
         defer
-        src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"
+        src="{% static 'vendor/alpine/alpine-3.15.0.min.js' %}"
     ></script>
 </head>
 
@@ -170,6 +170,11 @@
                 </div>
 
                 <div class="private-room-controls">
+                {% if has_last_room %}
+                    <a class="private-room-back-link" href="{{ last_room_url }}">
+                        ← Вернуться в беседу
+                    </a>
+                {% endif %}
                 {% if owned_private_room %}
                     <a
                         class="private-room-open-link"

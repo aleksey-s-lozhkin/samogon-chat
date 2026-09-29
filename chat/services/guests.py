@@ -11,11 +11,16 @@ def eligible_guests():
 
 
 def guest_data(user, labels=None):
+    catalogue = labels if labels is not None else dict(
+        ChatStatus.objects.values_list("code", "label")
+    )
     return {
         "id": user.pk, "username": user.username,
         "display_name": user.username,
         "avatar_url": user.avatar.url if user.avatar else None,
         "status_code": user.presence_status,
-        "status": (labels if labels is not None else dict(ChatStatus.objects.values_list("code", "label"))).get(user.presence_status, ""),
+        # Свой текст важнее выбранного из справочника.
+        "status": user.custom_status or catalogue.get(user.presence_status, ""),
+        "custom_status": user.custom_status,
         "last_seen_at": user.last_seen_at.isoformat() if user.last_seen_at else None,
     }

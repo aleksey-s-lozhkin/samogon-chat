@@ -57,6 +57,22 @@ class User(AbstractUser):
         max_length=24,
         blank=True,
     )
+    custom_status = models.CharField(
+        "Свой статус",
+        max_length=40,
+        blank=True,
+        help_text="Короткая фраза вместо выбранного статуса. До 40 символов.",
+    )
+    accepted_rules_at = models.DateTimeField(
+        "Правила приняты",
+        blank=True,
+        null=True,
+    )
+    accepted_rules_version = models.CharField(
+        "Версия правил",
+        max_length=16,
+        blank=True,
+    )
     last_seen_at = models.DateTimeField(
         "Последняя активность в чате",
         blank=True,

@@ -239,6 +239,16 @@
                 {{ form.presence_status.errors }}
             </div>
 
+            <div class="form-group presence-status-setting">
+                {{ form.custom_status.label_tag }}
+                {{ form.custom_status }}
+                <span class="form-help">
+                    Своя короткая подпись вместо статуса из списка. Если заполнена,
+                    показывается другим гостям вместо выбранного статуса.
+                </span>
+                {{ form.custom_status.errors }}
+            </div>
+
             <div class="form-group">
 
                 <label for="id_avatar">Аватар</label>

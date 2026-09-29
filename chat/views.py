@@ -30,6 +30,7 @@ from .models import (
     RoomMembership,
 )
 from .services.attachments import (
+    DOCUMENT_DOWNLOAD_CONTENT_TYPE,
     AttachmentInspectionUnavailable,
     AttachmentValidationError,
     create_attachment,
@@ -104,6 +105,10 @@ def rooms_page(request):
                 user=request.user,
                 room=owned_private_room,
             ),
+            "last_room_url": get_last_room_url(request),
+            "has_last_room": bool(
+                request.session.get("last_chat_room_slug")
+            ) and request.user.is_authenticated,
         },
     )
 
@@ -212,6 +217,17 @@ def message_search(request):
     )
 
 
+def attachment_delivery(attachment, *, download_path: bool) -> tuple[bool, str]:
+    """Определяет способ выдачи файла.
+
+    Изображения и аудио открываются в браузере для превью. Документы всегда
+    скачиваются: недоверенный файл не должен исполняться в origin приложения.
+    """
+    if attachment.kind == Attachment.Kind.FILE:
+        return True, DOCUMENT_DOWNLOAD_CONTENT_TYPE
+    return download_path, attachment.content_type
+
+
 @login_required
 def serve_attachment(request, attachment_id):
     """Выдаёт файл только участнику чата; в production тело отдаёт Nginx."""
@@ -228,21 +244,27 @@ def serve_attachment(request, attachment_id):
     ):
         raise Http404("Вложение не найдено")
 
-    as_attachment = request.path.endswith("/download/")
+    as_attachment, content_type = attachment_delivery(
+        attachment,
+        download_path=request.path.endswith("/download/"),
+    )
     if settings.DEBUG:
-        return FileResponse(
+        response = FileResponse(
             attachment.file.open("rb"),
             as_attachment=as_attachment,
             filename=attachment.original_name,
-            content_type=attachment.content_type,
+            content_type=content_type,
         )
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
 
-    response = HttpResponse(content_type=attachment.content_type)
+    response = HttpResponse(content_type=content_type)
     response["Content-Disposition"] = content_disposition_header(
         as_attachment=as_attachment,
         filename=attachment.original_name,
     )
     response["X-Accel-Redirect"] = f"/media/{attachment.file.name}"
+    response["X-Content-Type-Options"] = "nosniff"
     return response
 
 
@@ -254,21 +276,27 @@ def serve_note_attachment(request, attachment_id):
         id=attachment_id,
         note__user=request.user,
     )
-    as_attachment = request.path.endswith("/download/")
+    as_attachment, content_type = attachment_delivery(
+        attachment,
+        download_path=request.path.endswith("/download/"),
+    )
     if settings.DEBUG:
-        return FileResponse(
+        response = FileResponse(
             attachment.file.open("rb"),
             as_attachment=as_attachment,
             filename=attachment.original_name,
-            content_type=attachment.content_type,
+            content_type=content_type,
         )
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
 
-    response = HttpResponse(content_type=attachment.content_type)
+    response = HttpResponse(content_type=content_type)
     response["Content-Disposition"] = content_disposition_header(
         as_attachment=as_attachment,
         filename=attachment.original_name,
     )
     response["X-Accel-Redirect"] = f"/media/{attachment.file.name}"
+    response["X-Content-Type-Options"] = "nosniff"
     return response
 
 
@@ -647,6 +675,10 @@ def create_private_room(request):
                 "private_rooms": [room for room in rooms if room.is_private],
                 "owned_private_room": None,
                 "private_room_form": form,
+                "last_room_url": get_last_room_url(request),
+                "has_last_room": bool(
+                    request.session.get("last_chat_room_slug")
+                ),
             },
             status=400,
         )
@@ -684,6 +716,10 @@ def update_private_room(request, room_id):
                 "private_rooms": [item for item in rooms if item.is_private],
                 "owned_private_room": room,
                 "private_room_form": form,
+                "last_room_url": get_last_room_url(request),
+                "has_last_room": bool(
+                    request.session.get("last_chat_room_slug")
+                ),
             },
             status=400,
         )

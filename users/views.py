@@ -1,5 +1,4 @@
 import json
-from urllib.parse import urlparse
 
 from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
@@ -19,6 +18,7 @@ from chat.services.navigation import get_last_room_url
 
 from .forms import ProfileForm, RegistrationForm
 from .models import PushSubscription
+from .services.push import is_acceptable_push_endpoint
 from .turnstile import verify_turnstile
 
 User = get_user_model()
@@ -47,7 +47,13 @@ def registration_form_error(request, form):
             "message": registration_error_message(form),
             "field_errors": {
                 field: " ".join(form.errors.get(field, ()))
-                for field in ("username", "email", "invite_code", "password")
+                for field in (
+                    "username",
+                    "email",
+                    "invite_code",
+                    "password",
+                    "accept_rules",
+                )
             },
             "error_prefix": "register-error",
         },
@@ -132,6 +138,7 @@ class ComfortablePasswordResetView(PasswordResetView):
             request,
             bucket="password-reset",
             limit=settings.PASSWORD_RESET_RATE_LIMIT,
+            fail_closed=True,
         ):
             form = self.get_form()
             form.add_error(
@@ -181,6 +188,7 @@ def login_view(request):
         request,
         bucket="login",
         limit=settings.LOGIN_RATE_LIMIT,
+        fail_closed=True,
     ):
         return rate_limit_error(
             request,
@@ -247,6 +255,7 @@ def register_view(request):
         request,
         bucket="registration",
         limit=settings.REGISTRATION_RATE_LIMIT,
+        fail_closed=True,
     ):
         return rate_limit_error(
             request,
@@ -361,12 +370,20 @@ def push_subscribe(request):
         return JsonResponse({"error": "Некорректная подписка."}, status=400)
     if (
         not all(isinstance(value, str) and value for value in (endpoint, p256dh, auth))
-        or urlparse(endpoint).scheme != "https"
-        or len(endpoint) > 1000
         or len(p256dh) > 255
         or len(auth) > 255
+        or not is_acceptable_push_endpoint(endpoint)
     ):
         return JsonResponse({"error": "Некорректная подписка."}, status=400)
+
+    # Endpoint уникален глобально: без проверки владельца чужую подписку можно
+    # было бы переназначить на себя и перехватывать уведомления.
+    existing = PushSubscription.objects.filter(endpoint=endpoint).first()
+    if existing is not None and existing.user_id != request.user.id:
+        return JsonResponse(
+            {"error": "Эта подписка уже принадлежит другому устройству."},
+            status=409,
+        )
 
     subscription, _ = PushSubscription.objects.update_or_create(
         endpoint=endpoint,

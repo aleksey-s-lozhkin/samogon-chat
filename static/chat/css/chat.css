@@ -936,6 +936,64 @@ a {
     max-width: none;
 }
 
+.presence-sidebar-status > label {
+    display: block;
+}
+
+.presence-custom-status {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+    align-items: center;
+    margin-top: 10px;
+}
+
+.presence-custom-status label {
+    grid-column: 1 / -1;
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.presence-custom-status input {
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: rgba(10, 10, 10, 0.25);
+    color: var(--text);
+    font: inherit;
+    font-size: 12px;
+}
+
+.presence-custom-status input:focus-visible {
+    outline: 2px solid var(--primary-hover);
+    outline-offset: 1px;
+}
+
+.presence-custom-status button {
+    min-height: 36px;
+    padding: 0 12px;
+    border: 1px solid rgba(198, 117, 58, 0.45);
+    border-radius: 9px;
+    background: rgba(198, 117, 58, 0.12);
+    color: var(--amber-light);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.presence-custom-status button:hover,
+.presence-custom-status button:focus-visible {
+    border-color: var(--primary-hover);
+    background: rgba(198, 117, 58, 0.2);
+}
+
+.presence-custom-status.is-saved button {
+    border-color: var(--primary-hover);
+}
+
 .room-title {
     display: flex;
     align-items: center;
@@ -4285,6 +4343,22 @@ body::after {
     z-index: 1;
 }
 
+.private-room-back-link {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+    color: var(--amber-light);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.private-room-back-link:hover {
+    color: var(--text);
+}
+
 .private-room-create form {
     margin-top: 0;
 }
@@ -4360,8 +4434,7 @@ body::after {
 
 .private-room-open-link strong {
     display: block;
-    margin-top: 4px;
-    color: var(--amber-light);
+    margin-top: 4px;    color: var(--amber-light);
     font-size: 17px;
 }
 
@@ -4574,7 +4647,9 @@ body::after {
     min-width: 0;
     min-height: 0;
     flex-direction: column;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
     border: 1px solid var(--border);
     border-radius: 22px;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0.005));
@@ -4604,7 +4679,7 @@ body::after {
 }
 
 .presence-sidebar .user-presence-panel {
-    flex-shrink: 0;
+    flex: 0 0 auto;
     margin: 8px 14px 0;
     padding: 14px;
     border: 1px solid var(--border);
@@ -4617,9 +4692,35 @@ body::after {
     margin-bottom: 14px;
 }
 
+/* Прокручивается вся панель, а не каждый список: вложенный скролл давал
+   обрезанное содержимое и мигающую полосу прокрутки при фокусе. */
 .presence-sidebar #online-users-list,
 .presence-sidebar #offline-users-list {
-    max-height: min(26vh, 190px);
+    max-height: none;
+    min-height: 0;
+    overflow: visible;
+}
+
+/* Свёрнутый список отошедших: заголовок работает как переключатель. */
+.offline-users > summary.presence-panel-title {
+    cursor: pointer;
+    list-style: none;
+}
+
+.offline-users > summary.presence-panel-title::-webkit-details-marker {
+    display: none;
+}
+
+.offline-users > summary.presence-panel-title:focus-visible {
+    outline: 2px solid var(--primary-hover);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+.offline-hint {
+    margin: 6px 0 0;
+    color: var(--text-muted);
+    font-size: 10px;
 }
 
 .bartender-trigger {
@@ -5162,15 +5263,15 @@ html[data-theme="light"] .recipient-cancel {
     flex-direction: column;
 }
 
-.presence-sidebar .online-users { flex: 0 1 auto; }
-.presence-sidebar .offline-users { flex: 1 1 auto; }
+.presence-sidebar .online-users { flex: 0 0 auto; }
+.presence-sidebar .offline-users { flex: 0 0 auto; }
 .presence-sidebar #online-users-list,
 .presence-sidebar #offline-users-list {
     min-height: 0;
     max-height: none;
-    overflow-y: auto;
+    /* Прокрутка одна — у самой панели, иначе появляется вложенная полоса. */
+    overflow: visible;
 }
-.presence-sidebar #offline-users-list { flex: 1 1 auto; }
 
 .emoji-picker { grid-template-columns: repeat(5, 38px); }
 .emoji-picker button {

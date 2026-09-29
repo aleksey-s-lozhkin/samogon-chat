@@ -4,9 +4,25 @@
 
 ```bash
 poetry run python manage.py check
+poetry run python manage.py makemigrations --check --dry-run
 poetry run python manage.py spectacular --validate
 poetry run python manage.py test
 ```
+
+Проверку production-настроек удобно запускать отдельно: она требует явных
+секретов и по умолчанию запрещает тихий откат на SQLite.
+
+```bash
+DEBUG=0 ALLOWED_HOSTS=testserver ALLOW_SQLITE_FALLBACK=1 \
+  SECRET_KEY=local-check-secret-key-with-sufficient-length \
+  poetry run python manage.py check --deploy
+```
+
+Тесты запускаются через `manage.py test` и сохраняют прежний режим разработки
+(`DEBUG=1`, SQLite, раздача media силами Django), поэтому им не нужны
+production-секреты. CI проверяет то же самое плюс `check --deploy`, полноту
+миграций и сборку образа; workflow срабатывает на PR и push в `develop` и
+`main`, а публикация образа ждёт успешной проверки `verify`.
 
 ## Браузерный smoke-test
 
