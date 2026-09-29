@@ -150,34 +150,15 @@ document.addEventListener("visibilitychange", () => {
 });
 
 const presenceStatusSelect = document.getElementById("presence-status-select");
-const presenceCustomStatusForm = document.querySelector("[data-presence-custom-status]");
-const presenceCustomStatusInput = document.getElementById("presence-custom-status-input");
-
-function sendPresenceStatus(customStatus) {
+presenceStatusSelect?.addEventListener("change", () => {
     if (!chatSocket || chatSocket.readyState !== WebSocket.OPEN) {
         showError("Нет связи с чатом. Попробуйте изменить статус ещё раз.");
-        return false;
+        return;
     }
-    const payload = {
+    chatSocket.send(JSON.stringify({
         type: "presence_status",
-        status: presenceStatusSelect?.value ?? "",
-    };
-    if (typeof customStatus === "string") {
-        payload.custom_status = customStatus;
-    }
-    chatSocket.send(JSON.stringify(payload));
-    return true;
-}
-
-presenceStatusSelect?.addEventListener("change", () => {
-    sendPresenceStatus();
-});
-
-presenceCustomStatusForm?.addEventListener("submit", (event) => {
-    event.preventDefault();
-    if (sendPresenceStatus(presenceCustomStatusInput?.value ?? "")) {
-        presenceCustomStatusForm.classList.add("is-saved");
-    }
+        status: presenceStatusSelect.value,
+    }));
 });
 
 function connectWebSocket() {
@@ -1658,6 +1639,11 @@ function renderMessageAttachments(content, attachments) {
             image.alt = attachment.name;
             image.loading = "lazy";
             link.append(image);
+            // Открывает модальное окно; target оставлен как запасной путь
+            // для случая выключенного JavaScript.
+            link.dataset.lightboxImage = attachment.preview_url;
+            link.dataset.lightboxDownload = attachment.download_url;
+            link.dataset.lightboxName = attachment.name;
         } else {
             const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
             icon.setAttribute("class", "message-attachment-icon");

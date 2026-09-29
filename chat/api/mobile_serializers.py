@@ -16,7 +16,7 @@ class AccountSerializer(serializers.Serializer):
 
 class RoomWriteSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=100)
-    member_ids = serializers.ListField(child=serializers.IntegerField(min_value=1), min_length=1, max_length=2)
+    member_ids = serializers.ListField(child=serializers.IntegerField(min_value=1), min_length=1)
 
     def validate_member_ids(self, value):
         if len(set(value)) != len(value):

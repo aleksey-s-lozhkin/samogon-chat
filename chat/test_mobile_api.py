@@ -72,6 +72,22 @@ class MobileApiTests(TestCase):
             self.assertEqual(self.client.post("/api/v1/chat/rooms/", {"name": name, "member_ids": [self.guest.pk]}, content_type="application/json").status_code, 400)
         self.assertFalse(Room.objects.filter(owner=self.owner).exists())
 
+    def test_room_accepts_more_than_two_invited_members(self):
+        extra = [
+            User.objects.create_user(username=f"extra-{index}")
+            for index in range(4)
+        ]
+        member_ids = [self.guest.pk, self.other.pk, *[user.pk for user in extra]]
+
+        response = self.client.post(
+            "/api/v1/chat/rooms/",
+            {"name": "Большая беседа", "member_ids": member_ids},
+            content_type="application/json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.content)
+        self.assertEqual(len(response.json()["members"]), len(member_ids) + 1)
+
     def test_csrf_required_for_all_mutations(self):
         _, path = self.create_room()
         client = Client(enforce_csrf_checks=True)

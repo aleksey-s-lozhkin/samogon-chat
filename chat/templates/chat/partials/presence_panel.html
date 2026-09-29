@@ -19,29 +19,15 @@
     </div>
 
     {% if user.is_authenticated %}
-        <div class="presence-status-control presence-sidebar-status">
-            <label for="presence-status-select">
-                <span>Мой статус</span>
-                <select id="presence-status-select" aria-label="Мой статус">
-                    <option value="" {% if not user.presence_status %}selected{% endif %}>Без статуса</option>
-                    {% for value, label in presence_status_choices %}
-                        <option value="{{ value }}" {% if user.presence_status == value %}selected{% endif %}>{{ label }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <form class="presence-custom-status" data-presence-custom-status>
-                <label for="presence-custom-status-input">Свой статус</label>
-                <input
-                    id="presence-custom-status-input"
-                    type="text"
-                    maxlength="40"
-                    autocomplete="off"
-                    placeholder="Например: чиню прод"
-                    value="{{ user.custom_status }}"
-                >
-                <button type="submit">Сохранить</button>
-            </form>
-        </div>
+        <label class="presence-status-control presence-sidebar-status" for="presence-status-select">
+            <span>Мой статус</span>
+            <select id="presence-status-select" aria-label="Мой статус">
+                <option value="" {% if not user.presence_status %}selected{% endif %}>Без статуса</option>
+                {% for value, label in presence_status_choices %}
+                    <option value="{{ value }}" {% if user.presence_status == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
     {% endif %}
 
     <section class="online-users user-presence-panel">

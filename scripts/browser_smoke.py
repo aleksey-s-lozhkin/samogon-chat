@@ -87,6 +87,20 @@ def prepare_database(environment):
 
     call_command("migrate", verbosity=0, interactive=False)
 
+    # Вложение-картинка должно реально загружаться и иметь заметный размер:
+    # у битого или однопиксельного <img> ссылка тоже крошечная, и настоящий
+    # клик по ней промахивается.
+    from io import BytesIO
+
+    from django.conf import settings as django_settings
+    from PIL import Image
+
+    image_buffer = BytesIO()
+    Image.new("RGB", (240, 160), color="#c6753a").save(image_buffer, format="PNG")
+    image_path = Path(django_settings.MEDIA_ROOT) / "chat/attachments/smoke-image.png"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    image_path.write_bytes(image_buffer.getvalue())
+
     owner = User.objects.create_user(
         username=USERNAME,
         password=PASSWORD,
@@ -125,6 +139,14 @@ def prepare_database(environment):
         content_type="text/plain",
         size=1024,
         kind=Attachment.Kind.FILE,
+    )
+    Attachment.objects.create(
+        message=Message.objects.filter(room=main_room).order_by("-pk").first(),
+        file="chat/attachments/smoke-image.png",
+        original_name="схема.png",
+        content_type="image/png",
+        size=2048,
+        kind=Attachment.Kind.IMAGE,
     )
     Note.objects.create(user=owner, text="Проверить резервную копию")
     Note.objects.create(
@@ -313,6 +335,35 @@ def assert_compact_file_attachment(page):
         raise AssertionError(f"Вложение не помещается в одну строку: {geometry}")
 
 
+def assert_attachment_lightbox(page):
+    """Изображение открывается в модальном окне, а не новой вкладкой."""
+    image_link = page.locator(".message-attachment-image").first
+    image_link.wait_for()
+    # Картинка грузится лениво и сдвигает вёрстку: пока она не загрузилась,
+    # ссылка имеет нулевой размер и клик попадает в соседний блок.
+    page.wait_for_function(
+        """() => {
+            const image = document.querySelector(".message-attachment-image img");
+            return Boolean(image) && image.complete && image.naturalWidth > 0;
+        }"""
+    )
+    image_link.scroll_into_view_if_needed()
+    image_link.click()
+
+    lightbox = page.locator("#attachment-lightbox")
+    lightbox.wait_for(state="visible")
+    save_link = lightbox.locator("[data-lightbox-save]")
+    if not save_link.get_attribute("href").endswith("/download/"):
+        raise AssertionError("В модальном окне нет ссылки на скачивание")
+    if save_link.get_attribute("download") != "схема.png":
+        raise AssertionError("Ссылка скачивания не сохраняет исходное имя")
+    if not lightbox.locator("[data-lightbox-target]").get_attribute("src"):
+        raise AssertionError("Модальное окно не показывает изображение")
+
+    page.keyboard.press("Escape")
+    lightbox.wait_for(state="hidden")
+
+
 def assert_short_composer_hint(page):
     geometry = page.locator("#chat-message-input").evaluate("""el => {
         const css = getComputedStyle(el);
@@ -436,6 +487,7 @@ def run_chromium_flow(playwright, server):
         if page.locator(".message.is-grouped").count() != 49:
             raise AssertionError("Соседние реплики одного автора не сгруппированы")
         assert_compact_file_attachment(page)
+        assert_attachment_lightbox(page)
         assert_short_composer_hint(page)
         oldest_visible = page.locator(".message-text", has_text="history-070")
         before_top = page.locator("#chat-log").evaluate("""element => {
@@ -598,6 +650,7 @@ def run_mobile_layout(playwright, server, engine, viewport):
         open_chat(page, "u-stoyki")
         assert_composer_inside_viewport(page)
         assert_compact_file_attachment(page)
+        assert_attachment_lightbox(page)
         assert_short_composer_hint(page)
         input_element = page.locator("#chat-message-input")
         if "Смахните вправо" in (input_element.get_attribute("placeholder") or ""):
@@ -834,6 +887,7 @@ def main():
             {
                 "DJANGO_SETTINGS_MODULE": "config.settings_smoke",
                 "SAMOGON_SMOKE_DB": str(Path(temporary) / "smoke.sqlite3"),
+                "SAMOGON_SMOKE_MEDIA": str(Path(temporary) / "media"),
                 "DATABASE_URL": "",
                 "REDIS_URL": "",
                 "DEBUG": "1",
