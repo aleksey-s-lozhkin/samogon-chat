@@ -97,6 +97,44 @@ class ProfileViewTests(TestCase):
         self.user.refresh_from_db()
         self.assertEqual(self.user.username, "alex")
 
+    @patch("users.views.broadcast_presence_snapshot")
+    def test_profile_broadcasts_changed_status(self, broadcast):
+        """Иначе другие гости видят прежний статус до перезагрузки страницы."""
+        self.client.force_login(self.user)
+
+        response = self.client.post(
+            "/users/profile/",
+            {
+                "username": "alex",
+                "email": "alex@example.com",
+                "message_color": "amber",
+                "presence_status": "",
+                "custom_status": "правлю релиз",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.custom_status, "правлю релиз")
+        broadcast.assert_called_once()
+
+    @patch("users.views.broadcast_presence_snapshot")
+    def test_profile_does_not_broadcast_without_status_change(self, broadcast):
+        self.client.force_login(self.user)
+
+        self.client.post(
+            "/users/profile/",
+            {
+                "username": "alex",
+                "email": "alex@example.com",
+                "message_color": "sage",
+                "presence_status": "",
+                "custom_status": "",
+            },
+        )
+
+        broadcast.assert_not_called()
+
     def test_profile_shows_only_visible_messages_as_glasses_poured(self):
         room = Room.objects.create(name="Общий зал", slug="general")
         Message.objects.create(user=self.user, room=room, text="Первый")
@@ -210,6 +248,23 @@ class ServiceRulesTests(TestCase):
         chat_response = self.client.get("/chat/general/")
         # Ссылка есть во входе, в галочке согласия и в подписи под регистрацией.
         self.assertContains(chat_response, 'href="/rules/"', count=3)
+
+
+class HomeEntryTests(TestCase):
+    """Кнопка «Войти в бар» ведёт гостя на вход, а не в список комнат."""
+
+    def test_anonymous_cta_leads_to_login(self):
+        response = self.client.get("/")
+
+        self.assertContains(response, 'href="/accounts/login/?next=/chat/"')
+
+    def test_authenticated_cta_leads_to_rooms(self):
+        user = User.objects.create_user(username="home-user")
+        self.client.force_login(user)
+
+        response = self.client.get("/")
+
+        self.assertContains(response, 'href="/chat/"')
 
 
 class PushSubscriptionTests(TestCase):

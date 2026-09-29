@@ -1728,6 +1728,23 @@ class PresenceServiceTests(TestCase):
 
         self.assertEqual(users, [])
 
+    def test_room_online_lists_are_isolated_per_room(self):
+        """Онлайн считается по комнате, а общий список остаётся справочником."""
+        service = OnlineUsersService()
+        async_to_sync(service.connect)(
+            room_slug="general", channel_name="c1", username="alex",
+        )
+        async_to_sync(service.connect)(
+            room_slug="podval", channel_name="c2", username="maria",
+        )
+
+        self.assertEqual(async_to_sync(service.get_room_users)("general"), ["alex"])
+        self.assertEqual(async_to_sync(service.get_room_users)("podval"), ["maria"])
+        self.assertEqual(
+            async_to_sync(service.get_all_users)(),
+            ["alex", "maria"],
+        )
+
     def test_connection_count_tracks_live_tabs_and_drops_stale_ones(self):
         service = OnlineUsersService()
         with patch("chat.services.presence.time.time", return_value=100):
@@ -1952,6 +1969,17 @@ class ChatApiTests(TestCase):
         )
         self.assertEqual(removed.json()["count"], 0)
         self.assertFalse(removed.json()["active"])
+
+    def test_api_accepts_reaction_from_expanded_set(self):
+        message = Message.objects.create(user=self.other, room=self.room, text="hello")
+        self.client.force_login(self.user)
+        url = f"/api/v1/chat/rooms/general/messages/{message.id}/reactions/"
+
+        response = self.client.post(url, {"emoji": "😍"}, content_type="application/json")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["emoji"], "😍")
+        self.assertEqual(response.json()["count"], 1)
 
     def test_api_reaction_does_not_disclose_foreign_direct_message(self):
         message = Message.objects.create(

@@ -1,3 +1,4 @@
+from chat.models import MessageReaction
 from rest_framework import serializers
 
 
@@ -59,9 +60,8 @@ class MessageCreateSerializer(serializers.Serializer):
 
 
 class ReactionToggleSerializer(serializers.Serializer):
-    emoji = serializers.ChoiceField(
-        choices=("👍", "👎", "❤️", "😂", "🔥", "😮", "😢", "🤔", "🤝", "🎉")
-    )
+    # Единый источник — модель, иначе палитра и API расходятся.
+    emoji = serializers.ChoiceField(choices=MessageReaction.Emoji.choices)
 
 
 class ReactionSerializer(serializers.Serializer):
