@@ -10,7 +10,11 @@ import logging
 
 from celery import shared_task
 
-from users.services.push import send_admin_push, send_direct_message_push
+from users.services.push import (
+    send_admin_push,
+    send_direct_message_push,
+    send_moderator_report_push,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -30,6 +34,12 @@ def deliver_direct_message_push(
         room_slug=room_slug,
         sender_id=sender_id,
     )
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=30)
+def deliver_moderator_report_push(self):
+    """Сообщает модераторам о новой жалобе."""
+    return send_moderator_report_push().delivered
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=60)
