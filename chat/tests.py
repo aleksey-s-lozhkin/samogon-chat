@@ -47,6 +47,7 @@ from .services.attachments import (
 from .services.welcome import WELCOME_TEXT, ensure_welcome_message
 from .services.messages import MessageService
 from .services.presence import OnlineUsersService
+from .services.reports import create_message_report
 from .services.bartender import (
     BARTENDER_LANGUAGE_FALLBACK,
     BARTENDER_SYSTEM_PROMPT,
@@ -950,15 +951,33 @@ class MessageReportViewTests(TestCase):
         self.message.refresh_from_db()
         self.assertIsNone(self.message.hidden_at)
 
-    @patch("chat.services.reports.send_moderator_report_push")
-    def test_push_is_sent_only_for_new_report(self, send_push):
+    @patch("chat.services.reports.enqueue_moderator_report_push")
+    def test_push_waits_for_the_transaction_to_commit(self, enqueue_push):
+        """Внутри транзакции сеть не трогаем: иначе она держит блокировку."""
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
+            create_message_report(
+                message=self.message,
+                reporter=self.reporter,
+                reason=MessageReport.Reason.SPAM,
+            )
+
+        enqueue_push.assert_not_called()
+
+        for callback in callbacks:
+            callback()
+
+        enqueue_push.assert_called_once_with()
+
+    @patch("chat.services.reports.enqueue_moderator_report_push")
+    def test_push_is_sent_only_for_new_report(self, enqueue_push):
         self.client.force_login(self.reporter)
         payload = json.dumps({"reason": "spam"})
 
-        self.client.post(self.url, data=payload, content_type="application/json")
-        self.client.post(self.url, data=payload, content_type="application/json")
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(self.url, data=payload, content_type="application/json")
+            self.client.post(self.url, data=payload, content_type="application/json")
 
-        send_push.assert_called_once_with()
+        enqueue_push.assert_called_once_with()
 
     def test_user_cannot_report_own_message(self):
         self.client.force_login(self.author)
@@ -2239,22 +2258,23 @@ class ChatApiTests(TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertFalse(MessageReaction.objects.exists())
 
-    @patch("chat.services.reports.send_moderator_report_push")
-    def test_api_creates_report_once_and_notifies_moderators_once(self, send_push):
+    @patch("chat.services.reports.enqueue_moderator_report_push")
+    def test_api_creates_report_once_and_notifies_moderators_once(self, enqueue_push):
         message = Message.objects.create(user=self.other, room=self.room, text="spam")
         self.client.force_login(self.user)
         url = f"/api/v1/chat/rooms/general/messages/{message.id}/reports/"
         payload = {"reason": "spam", "details": "Repeated links"}
 
-        created = self.client.post(url, payload, content_type="application/json")
-        duplicate = self.client.post(url, payload, content_type="application/json")
+        with self.captureOnCommitCallbacks(execute=True):
+            created = self.client.post(url, payload, content_type="application/json")
+            duplicate = self.client.post(url, payload, content_type="application/json")
 
         self.assertEqual(created.status_code, 201)
         self.assertEqual(created.json(), {"reported": True, "created": True})
         self.assertEqual(duplicate.status_code, 200)
         self.assertEqual(duplicate.json(), {"reported": True, "created": False})
         self.assertEqual(MessageReport.objects.get().details, "Repeated links")
-        send_push.assert_called_once_with()
+        enqueue_push.assert_called_once_with()
 
     def test_api_rejects_own_report_and_invalid_action_payloads(self):
         own_message = Message.objects.create(user=self.user, room=self.room, text="mine")

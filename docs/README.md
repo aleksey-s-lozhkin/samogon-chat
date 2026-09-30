@@ -7,6 +7,8 @@
 - [Техническое задание и roadmap](product-specification.md) — согласованный объём и статус работ.
 - [Развёртывание](deployment.md) — подготовка окружения, запуск и эксплуатация.
 - [Проверка проекта](testing.md) — серверные и браузерные smoke-тесты.
+- [Резервные копии](backup.md) — что копируется, расписание, шифрование и
+  проверка восстановления.
 - [Проверка release candidate](release-checklist.md) — backup/restore,
   нагрузка, production smoke и VoiceOver.
 - [Текущий статус релиза](release-status.md) — что уже подтверждено, блокеры и

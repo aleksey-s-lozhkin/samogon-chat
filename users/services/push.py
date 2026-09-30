@@ -219,6 +219,26 @@ def enqueue_direct_message_push(
     return True
 
 
+def enqueue_moderator_report_push() -> bool:
+    """Ставит уведомление модераторам в очередь.
+
+    Вызывается после фиксации транзакции: сеть не должна держать ни её, ни
+    блокировку строки сообщения.
+    """
+    if not settings.WEB_PUSH_ENABLED:
+        return False
+
+    from users.tasks import deliver_moderator_report_push
+
+    try:
+        deliver_moderator_report_push.delay()
+    except Exception:
+        logger.warning("moderator_report_push_dispatch_failed")
+        send_moderator_report_push()
+        return False
+    return True
+
+
 def enqueue_admin_push(
     *,
     subscription_ids: list[int],

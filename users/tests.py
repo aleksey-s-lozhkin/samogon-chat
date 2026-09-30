@@ -30,6 +30,7 @@ from users.services.push import (
     device_id_for_subscription,
     enqueue_admin_push,
     enqueue_direct_message_push,
+    enqueue_moderator_report_push,
     is_acceptable_push_endpoint,
     send_admin_push,
     send_direct_message_push,
@@ -345,6 +346,22 @@ class PushQueueTests(TestCase):
             list(mocked_send.call_args.kwargs["subscriptions"]),
             [self.subscription],
         )
+
+    @override_settings(WEB_PUSH_ENABLED=False)
+    @patch("users.tasks.deliver_moderator_report_push.delay")
+    def test_moderator_push_is_not_queued_when_disabled(self, mocked_delay):
+        queued = enqueue_moderator_report_push()
+
+        self.assertFalse(queued)
+        mocked_delay.assert_not_called()
+
+    @override_settings(WEB_PUSH_ENABLED=True)
+    @patch("users.tasks.deliver_moderator_report_push.delay")
+    def test_moderator_push_is_queued(self, mocked_delay):
+        queued = enqueue_moderator_report_push()
+
+        self.assertTrue(queued)
+        mocked_delay.assert_called_once_with()
 
     def test_server_and_security_errors_are_logged(self):
         loggers = settings.LOGGING["loggers"]

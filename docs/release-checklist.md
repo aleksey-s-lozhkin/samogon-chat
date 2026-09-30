@@ -60,6 +60,11 @@ media-архив и SHA-256 нужно перенести на отдельны�
 docker exec samogon-web python manage.py backfill_attachment_thumbnails --dry-run
 docker exec samogon-web python manage.py backfill_attachment_thumbnails
 
+# Копия снимается и ПРОВЕРЯЕТСЯ разворотом, а не просто создаётся.
+# Подробности: docs/backup.md
+sudo ./deployment/backup/samogon-backup.sh
+sudo ./deployment/backup/samogon-restore.sh --verify
+
 docker exec samogon-web python manage.py release_audit_accounts prepare \
   --credentials /tmp/release-audit-sessions.json \
   --count 60 \
