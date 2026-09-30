@@ -184,3 +184,59 @@ def send_moderator_report_push() -> PushDeliveryResult:
             "tag": "moderation-report",
         },
     )
+
+
+def enqueue_direct_message_push(
+    *,
+    recipient_id: int,
+    room_slug: str,
+    sender_id: int | None = None,
+) -> bool:
+    """Ставит уведомление в очередь, не задерживая ответ WebSocket.
+
+    Если брокер недоступен, отправляем сразу в этом же процессе: лучше
+    задержать один запрос, чем потерять уведомление молча.
+    """
+    if not settings.WEB_PUSH_ENABLED:
+        return False
+
+    from users.tasks import deliver_direct_message_push
+
+    try:
+        deliver_direct_message_push.delay(
+            recipient_id=recipient_id,
+            room_slug=room_slug,
+            sender_id=sender_id,
+        )
+    except Exception:
+        logger.warning("direct_message_push_dispatch_failed")
+        send_direct_message_push(
+            recipient_id=recipient_id,
+            room_slug=room_slug,
+            sender_id=sender_id,
+        )
+        return False
+    return True
+
+
+def enqueue_admin_push(
+    *,
+    subscription_ids: list[int],
+    title: str,
+    body: str,
+    url: str,
+) -> bool:
+    """Ставит общую рассылку в очередь: админка не ждёт push-службу."""
+    from users.tasks import deliver_admin_push
+
+    try:
+        deliver_admin_push.delay(
+            subscription_ids=list(subscription_ids),
+            title=title,
+            body=body,
+            url=url,
+        )
+    except Exception:
+        logger.warning("admin_push_dispatch_failed")
+        return False
+    return True

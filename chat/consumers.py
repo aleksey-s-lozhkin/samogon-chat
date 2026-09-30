@@ -24,7 +24,7 @@ from .services.presence import online_users
 from .services.welcome import ensure_welcome_message
 from users.models import ChatStatus
 from users.statuses import normalize_custom_status
-from users.services.push import send_direct_message_push
+from users.services.push import enqueue_direct_message_push
 from .validators import validate_message
 
 
@@ -42,9 +42,13 @@ def finish_push_task(task) -> None:
 
 
 def schedule_direct_message_push(*, recipient_id: int, room_slug: str, sender_id: int | None = None) -> None:
-    """Запускает best-effort push, не задерживая WebSocket-ответ."""
+    """Ставит push в очередь, не задерживая WebSocket-ответ.
+
+    Сама отправка живёт в Celery: уведомление переживёт перезапуск веб-процесса
+    и может быть повторено.
+    """
     task = asyncio.create_task(
-        sync_to_async(send_direct_message_push, thread_sensitive=False)(
+        sync_to_async(enqueue_direct_message_push, thread_sensitive=False)(
             recipient_id=recipient_id,
             room_slug=room_slug,
             sender_id=sender_id,

@@ -415,6 +415,19 @@ LOGGING = {
             "level": os.getenv("BARTENDER_LOG_LEVEL", "INFO"),
             "propagate": False,
         },
+        # Ошибки сервера видно в логах, а не только в жалобах гостей.
+        # Уровень ERROR оставляет 5xx и убирает шум от 404 и 403.
+        "django.request": {
+            "handlers": ["console"],
+            "level": os.getenv("DJANGO_LOG_LEVEL", "ERROR"),
+            "propagate": False,
+        },
+        # События безопасности несут смысл уже на WARNING.
+        "django.security": {
+            "handlers": ["console"],
+            "level": os.getenv("DJANGO_SECURITY_LOG_LEVEL", "WARNING"),
+            "propagate": False,
+        },
     },
 }
 
