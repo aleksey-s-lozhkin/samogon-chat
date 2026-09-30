@@ -74,6 +74,18 @@ def ffprobe_result(*, duration="12.5", streams=None, packets=None):
     )
 
 
+class HotQueryIndexTests(TestCase):
+    """Индексы под запросы, которые выполняются постоянно."""
+
+    def test_history_personal_messages_and_reports_are_indexed(self):
+        message_indexes = {index.name for index in Message._meta.indexes}
+        report_indexes = {index.name for index in MessageReport._meta.indexes}
+
+        self.assertIn("msg_room_created_idx", message_indexes)
+        self.assertIn("msg_recipient_created_idx", message_indexes)
+        self.assertIn("report_resolved_idx", report_indexes)
+
+
 class AttachmentServiceTests(TestCase):
     def setUp(self):
         self.media_directory = tempfile.TemporaryDirectory()

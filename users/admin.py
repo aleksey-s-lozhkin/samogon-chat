@@ -14,7 +14,7 @@ from django.utils import timezone
 
 from users.forms import AdminPushForm
 from users.models import ChatStatus, PushSubscription, User
-from users.services.push import send_admin_push
+from users.services.push import enqueue_admin_push
 
 
 @admin.register(PushSubscription)
@@ -60,18 +60,25 @@ class PushSubscriptionAdmin(admin.ModelAdmin):
             subscriptions = PushSubscription.objects.filter(enabled=True)
             if form.cleaned_data["audience"] == AdminPushForm.AUDIENCE_SELF:
                 subscriptions = subscriptions.filter(user=request.user)
-            result = send_admin_push(
-                subscriptions=subscriptions,
+            subscription_ids = list(subscriptions.values_list("id", flat=True))
+            queued = enqueue_admin_push(
+                subscription_ids=subscription_ids,
                 title=form.cleaned_data["title"],
                 body=form.cleaned_data["body"],
                 url=form.cleaned_data["url"],
             )
-            messages.success(
-                request,
-                "Push отправлен: принято push-службой — "
-                f"{result.delivered}, ошибок — {result.failed}, "
-                f"удалено недействительных — {result.removed}.",
-            )
+            if queued:
+                messages.success(
+                    request,
+                    "Рассылка поставлена в очередь: подписок — "
+                    f"{len(subscription_ids)}. Итог доставки будет в логах.",
+                )
+            else:
+                messages.error(
+                    request,
+                    "Не удалось поставить рассылку в очередь. "
+                    "Проверьте брокер очереди и попробуйте снова.",
+                )
             return redirect(reverse("admin:users_pushsubscription_changelist"))
 
         context = {
