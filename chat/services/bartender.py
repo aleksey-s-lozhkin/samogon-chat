@@ -163,7 +163,7 @@ class BartenderService:
             "keep_alive": settings.OLLAMA_KEEP_ALIVE,
             "options": {
                 "temperature": settings.OLLAMA_TEMPERATURE,
-                "num_ctx": 4096,
+                "num_ctx": settings.OLLAMA_NUM_CTX,
                 "num_predict": settings.OLLAMA_NUM_PREDICT,
             },
             "messages": messages,

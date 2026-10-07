@@ -100,6 +100,42 @@ def evaluate(record, scenario):
     return failures
 
 
+def repeated_answers(records, scenarios):
+    """Найти сценарии, где ответы дословно повторились.
+
+    Повтор — не всегда дефект, и это главное, что здесь нужно понимать.
+    Защитный слой обязан отвечать одинаково на одинаковые выпады, а
+    короткий фактический ответ («Конечно, Илья.») и должен совпадать.
+    Дефект — это когда повторяется то, что просили разнообразить: шутка,
+    приветствие, атмосферная строка.
+
+    Поэтому проверка **включается у сценария флагом** ``requires_variety``,
+    а не работает для всех подряд. Замер на текущем наборе: 39 повторов,
+    из них 27 от защитного слоя и 12 от модели, и большинство модельных
+    корректны. Сплошная проверка давала бы почти одни ложные срабатывания
+    и приучила бы не смотреть на отчёт.
+    """
+    by_scenario = defaultdict(list)
+    for record in records:
+        by_scenario[record.get("scenario")].append(record)
+
+    repeats = []
+    for scenario_id, runs in by_scenario.items():
+        scenario = scenarios.get(scenario_id, {})
+        if not scenario.get("requires_variety", False):
+            continue
+        answers = [r.get("response", "").strip() for r in runs]
+        seen = Counter(answers)
+        for text, count in seen.items():
+            if count > 1 and text:
+                repeats.append({
+                    "scenario": scenario_id,
+                    "count": count,
+                    "response": text,
+                })
+    return repeats
+
+
 def main():
     args = parse_args()
     scenarios = {item["id"]: item for item in load_json(args.scenarios)}
@@ -124,9 +160,22 @@ def main():
         if isinstance(record.get("elapsed_ms"), int):
             elapsed.append(record["elapsed_ms"])
 
+    repeats = repeated_answers(records, scenarios)
+    for item in repeats:
+        failures_by_scenario[item["scenario"]].append(
+            {
+                "mode": "context",
+                "run": None,
+                "failures": ["repeated_answer"],
+                "response": item["response"],
+            }
+        )
+        failures_by_kind.update(["repeated_answer"])
+
     report = {
         "records": len(records),
         "passed": passed,
+        "repeated_answers": repeats,
         "failed": len(records) - passed,
         "pass_rate": round(passed / len(records) * 100, 1) if records else 0,
         "average_ms": round(sum(elapsed) / len(elapsed)) if elapsed else None,
