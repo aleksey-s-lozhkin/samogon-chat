@@ -49,3 +49,46 @@ class BenchmarkEvaluateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RepeatedAnswersTests(unittest.TestCase):
+    """Повтор ответа — дефект только там, где просили разнообразие.
+
+    Проверка включается флагом сценария намеренно. Сплошная давала бы
+    почти одни ложные срабатывания: защитный слой обязан отвечать
+    одинаково, и короткий фактический ответ тоже.
+    """
+
+    def _records(self, *answers):
+        return [
+            {"scenario": "s", "response": text, "run": number + 1}
+            for number, text in enumerate(answers)
+        ]
+
+    def test_ignores_repeats_when_variety_is_not_required(self):
+        scenarios = {"s": {"id": "s"}}
+        repeats = evaluation.repeated_answers(
+            self._records("Проверь журнал.", "Проверь журнал."), scenarios
+        )
+        self.assertEqual(repeats, [])
+
+    def test_detects_repeats_when_variety_is_required(self):
+        scenarios = {"s": {"id": "s", "requires_variety": True}}
+        repeats = evaluation.repeated_answers(
+            self._records("Привет!", "Привет!"), scenarios
+        )
+        self.assertEqual(len(repeats), 1)
+        self.assertEqual(repeats[0]["count"], 2)
+
+    def test_distinct_answers_pass(self):
+        scenarios = {"s": {"id": "s", "requires_variety": True}}
+        repeats = evaluation.repeated_answers(
+            self._records("Привет!", "Здравствуй!"), scenarios
+        )
+        self.assertEqual(repeats, [])
+
+    def test_empty_answers_are_not_counted(self):
+        """Пустой ответ ловится другой проверкой, а не этой."""
+        scenarios = {"s": {"id": "s", "requires_variety": True}}
+        repeats = evaluation.repeated_answers(self._records("", ""), scenarios)
+        self.assertEqual(repeats, [])

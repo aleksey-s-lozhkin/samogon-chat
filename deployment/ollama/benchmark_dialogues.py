@@ -55,7 +55,7 @@ def parse_args():
         help="last повторяет текущее поведение; context передаёт историю.",
     )
     parser.add_argument("--temperature", type=float, default=0.5)
-    parser.add_argument("--num-ctx", type=int, default=4096)
+    parser.add_argument("--num-ctx", type=int, default=8192)
     parser.add_argument("--num-predict", type=int, default=120)
     parser.add_argument("--timeout", type=float, default=60)
     parser.add_argument(
