@@ -41,6 +41,25 @@ def finish_push_task(task) -> None:
         task.exception()
 
 
+def schedule_room_message_push(*, sender_id: int, room_slug: str, room_name: str) -> None:
+    """Ставит уведомление о сообщении в комнате, не задерживая сокет.
+
+    Рассылка обходит всех получателей по очереди, а ответ в WebSocket
+    ждать её не должен.
+    """
+    from users.services.push import enqueue_room_message_push
+
+    task = asyncio.create_task(
+        sync_to_async(enqueue_room_message_push, thread_sensitive=False)(
+            room_slug=room_slug,
+            room_name=room_name,
+            sender_id=sender_id,
+        )
+    )
+    PUSH_TASKS.add(task)
+    task.add_done_callback(finish_push_task)
+
+
 def schedule_direct_message_push(*, recipient_id: int, room_slug: str, sender_id: int | None = None) -> None:
     """Ставит push в очередь, не задерживая WebSocket-ответ.
 
@@ -330,6 +349,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.send_to_private_room(event)
         else:
             await self.channel_layer.group_send(self.room_group_name, event)
+            # Общая комната: те, кто выбрал «все новые сообщения» и кого нет
+            # в приложении, получат уведомление. Отправителю не шлём.
+            if self.user.username != settings.BARTENDER_USERNAME:
+                schedule_room_message_push(
+                    sender_id=self.user.pk,
+                    room_slug=self.room.slug,
+                    room_name=self.room.name,
+                )
         await self.broadcast_room_activity()
 
         if bartender_question:

@@ -21,20 +21,18 @@ from users.services.push import enqueue_admin_push
 class PushSubscriptionAdmin(admin.ModelAdmin):
     """Показывает подписки без endpoint и криптографических ключей."""
 
-    list_display = ("id", "user", "enabled", "direct_messages_enabled", "updated_at")
-    list_filter = ("enabled", "direct_messages_enabled")
+    list_display = ("id", "user", "mode", "updated_at")
+    list_filter = ("mode",)
     search_fields = ("user__username", "user__email")
     fields = (
         "user",
-        "enabled",
-        "direct_messages_enabled",
+        "mode",
         "created_at",
         "updated_at",
     )
     readonly_fields = (
         "user",
-        "enabled",
-        "direct_messages_enabled",
+        "mode",
         "created_at",
         "updated_at",
     )
@@ -57,7 +55,7 @@ class PushSubscriptionAdmin(admin.ModelAdmin):
 
         form = AdminPushForm(request.POST or None)
         if request.method == "POST" and form.is_valid():
-            subscriptions = PushSubscription.objects.filter(enabled=True)
+            subscriptions = PushSubscription.objects.exclude(mode=PushSubscription.Mode.OFF)
             if form.cleaned_data["audience"] == AdminPushForm.AUDIENCE_SELF:
                 subscriptions = subscriptions.filter(user=request.user)
             subscription_ids = list(subscriptions.values_list("id", flat=True))

@@ -19,6 +19,7 @@ from chat.services.navigation import get_last_room_url
 
 from .forms import ProfileForm, RegistrationForm
 from .models import PushSubscription
+from .services.notifications import in_quiet_hours, local_now, settings_for
 from .services.push import is_acceptable_push_endpoint
 from .turnstile import verify_turnstile
 
@@ -361,10 +362,64 @@ def profile(request):
             ),
             "web_push_enabled": settings.WEB_PUSH_ENABLED,
             "vapid_public_key": settings.VAPID_PUBLIC_KEY,
+            "notification_settings": settings_for(request.user),
             "glasses_poured": request.user.chat_messages.filter(
                 hidden_at__isnull=True,
             ).count(),
         },
+    )
+
+
+@login_required
+@require_POST
+def push_quiet_hours(request):
+    """Сохраняет тихие часы и часовой пояс человека.
+
+    Общие для всех устройств: спит человек, а не телефон. Иначе ноутбук
+    будил бы среди ночи, пока телефон молчит, а на новом устройстве
+    тишину пришлось бы настраивать заново.
+    """
+    try:
+        data = json.loads(request.body)
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return JsonResponse({"error": "Некорректный запрос."}, status=400)
+
+    def hour(name, default):
+        """Час из запроса: целое от 0 до 23."""
+        value = data.get(name, default)
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            return None
+        return number if 0 <= number <= 23 else None
+
+    quiet_from = hour("quietFrom", 0)
+    quiet_to = hour("quietTo", 0)
+    if quiet_from is None or quiet_to is None:
+        return JsonResponse(
+            {"error": "Час должен быть целым числом от 0 до 23."},
+            status=400,
+        )
+
+    timezone_name = str(data.get("timezone") or "").strip()[:64]
+
+    settings_row = settings_for(request.user)
+    settings_row.quiet_from = quiet_from
+    settings_row.quiet_to = quiet_to
+    settings_row.timezone = timezone_name
+    settings_row.save(update_fields=["quiet_from", "quiet_to", "timezone"])
+
+    return JsonResponse(
+        {
+            "ok": True,
+            "quietFrom": settings_row.quiet_from,
+            "quietTo": settings_row.quiet_to,
+            "quiet": in_quiet_hours(
+                local_now(request.user).hour,
+                quiet_from=settings_row.quiet_from,
+                quiet_to=settings_row.quiet_to,
+            ),
+        }
     )
 
 
@@ -399,14 +454,21 @@ def push_subscribe(request):
             status=409,
         )
 
+    # Режим приходит строкой. Неизвестное значение — это ошибка клиента,
+    # и подставлять вместо него «по умолчанию» нельзя: человек выбрал
+    # «выключено», опечатка в запросе включила бы уведомления обратно.
+    requested_mode = data.get("mode", PushSubscription.Mode.DIRECT)
+    valid_modes = {choice for choice, _label in PushSubscription.Mode.choices}
+    if requested_mode not in valid_modes:
+        return JsonResponse({"error": "Неизвестный режим уведомлений."}, status=400)
+
     subscription, _ = PushSubscription.objects.update_or_create(
         endpoint=endpoint,
         defaults={
             "user": request.user,
             "p256dh": p256dh,
             "auth": auth,
-            "enabled": bool(data.get("enabled", True)),
-            "direct_messages_enabled": bool(data.get("directMessages", True)),
+            "mode": requested_mode,
         },
     )
     endpoints = set(request.session.get("push_endpoints", []))
@@ -443,10 +505,7 @@ def push_status(request):
     return JsonResponse(
         {
             "known": subscription is not None,
-            "enabled": subscription.enabled if subscription else False,
-            "directMessages": (
-                subscription.direct_messages_enabled if subscription else True
-            ),
+            "mode": subscription.mode if subscription else PushSubscription.Mode.OFF,
         }
     )
 

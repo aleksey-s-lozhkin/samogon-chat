@@ -280,14 +280,14 @@ class PushQueueTests(TestCase):
             endpoint="https://push.example/queue/one",
             p256dh="public-device-key",
             auth="auth-secret",
-            enabled=True,
+            mode=PushSubscription.Mode.DIRECT,
         )
         self.disabled = PushSubscription.objects.create(
             user=self.user,
             endpoint="https://push.example/queue/two",
             p256dh="public-device-key",
             auth="auth-secret",
-            enabled=False,
+            mode=PushSubscription.Mode.OFF,
         )
 
     @override_settings(WEB_PUSH_ENABLED=False)
@@ -386,7 +386,7 @@ class PushSubscriptionTests(TestCase):
         self.assertEqual(response.status_code, 200)
         subscription = PushSubscription.objects.get()
         self.assertEqual(subscription.user, self.user)
-        self.assertTrue(subscription.direct_messages_enabled)
+        self.assertEqual(subscription.mode, PushSubscription.Mode.DIRECT)
 
     @override_settings(WEB_PUSH_ENABLED=True)
     def test_subscribe_rejects_endpoint_owned_by_another_user(self):
@@ -1722,7 +1722,9 @@ class AdminPushTests(TestCase):
     @patch("users.services.push.webpush")
     def test_broadcast_sends_visible_admin_content(self, mocked_webpush):
         result = send_admin_push(
-            subscriptions=PushSubscription.objects.filter(enabled=True),
+            subscriptions=PushSubscription.objects.exclude(
+                mode=PushSubscription.Mode.OFF
+            ),
             title="Важно",
             body="Бар закроется в 23:00",
             url="/chat/",

@@ -37,6 +37,18 @@ def deliver_direct_message_push(
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=30)
+def deliver_room_message_push(self, *, room_slug: str, room_name: str, sender_id: int):
+    """Сообщает о новом сообщении в открытой комнате."""
+    from users.services.push import send_room_message_push
+
+    return send_room_message_push(
+        room_slug=room_slug,
+        room_name=room_name,
+        sender_id=sender_id,
+    )
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=30)
 def deliver_moderator_report_push(self):
     """Сообщает модераторам о новой жалобе."""
     return send_moderator_report_push().delivered
@@ -54,9 +66,8 @@ def deliver_admin_push(
     """Рассылает объявление по уже выбранным подпискам."""
     from users.models import PushSubscription
 
-    subscriptions = PushSubscription.objects.filter(
-        id__in=subscription_ids,
-        enabled=True,
+    subscriptions = PushSubscription.objects.filter(id__in=subscription_ids).exclude(
+        mode=PushSubscription.Mode.OFF
     )
     result = send_admin_push(
         subscriptions=subscriptions,

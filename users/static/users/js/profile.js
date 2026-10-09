@@ -18,8 +18,9 @@ document.querySelectorAll("[data-oauth-disconnect]").forEach((form) => {
 const pushSettings = document.querySelector("[data-push-settings]");
 
 if (pushSettings) {
-    const master = pushSettings.querySelector("[data-push-master]");
-    const direct = pushSettings.querySelector("[data-push-direct]");
+    // Выбор из трёх, а не два флажка: с двумя получалось состояние
+    // «разрешить, но ни о чём не сообщать».
+    const modes = Array.from(pushSettings.querySelectorAll("[data-push-mode]"));
     const status = pushSettings.querySelector("[data-push-status]");
     const reportButton = pushSettings.querySelector("[data-push-report-copy]");
     const reportStatus = pushSettings.querySelector("[data-push-report-status]");
@@ -57,9 +58,17 @@ if (pushSettings) {
         status.textContent = message;
         status.classList.toggle("error", isError);
     };
+    const modeValue = () =>
+        (modes.find((item) => item.checked)?.value ?? "off");
+    const setMode = (value) => {
+        for (const item of modes) {
+            item.checked = item.value === value;
+        }
+    };
     const disableControls = () => {
-        master.disabled = true;
-        direct.disabled = true;
+        for (const item of modes) {
+            item.disabled = true;
+        }
     };
     const csrfToken = () => document.cookie.split("; ")
         .find((item) => item.startsWith("csrftoken="))?.split("=")[1] || "";
@@ -159,19 +168,16 @@ if (pushSettings) {
             subscription = await registration.pushManager.getSubscription();
             runtimeValues.browserSubscription = subscription ? "present" : "absent";
             diagnostic("subscription", subscription ? "Подписка найдена" : "Не подписано");
-            master.checked = false;
-            direct.disabled = true;
+            setMode("off");
             if (subscription) {
                 try {
                     const query = new URLSearchParams({endpoint: subscription.endpoint});
                     const response = await fetch(`${pushSettings.dataset.statusUrl}?${query}`);
                     if (response.ok) {
                         const saved = await response.json();
-                        master.checked = saved.known && saved.enabled;
-                        direct.checked = saved.directMessages;
-                        direct.disabled = !master.checked;
+                        setMode(saved.known ? saved.mode : "off");
                         runtimeValues.serverSubscription = saved.known
-                            ? (saved.enabled ? "known-enabled" : "known-disabled")
+                            ? (saved.mode === "off" ? "known-disabled" : "known-enabled")
                             : "unknown";
                         diagnostic("subscription", saved.known ? "Привязано к аккаунту" : "Не привязано");
                     }
@@ -189,34 +195,36 @@ if (pushSettings) {
         if (Notification.permission === "denied") {
             disableControls();
             setStatus("Уведомления запрещены в настройках устройства.", true);
-        } else if (master.checked) {
+        } else if (modeValue() !== "off") {
             setStatus("Уведомления включены для этого устройства.");
         } else if (subscription) {
             setStatus("Уведомления этого браузера не привязаны к текущему аккаунту.");
         }
 
-        master.addEventListener("change", async () => {
-            master.disabled = true;
+        const applyMode = async (mode) => {
+            disableControls();
             try {
-                if (master.checked) {
+                if (mode !== "off") {
                     subscription = await registration.pushManager.subscribe({
                         userVisibleOnly: true,
                         applicationServerKey: applicationServerKey(pushSettings.dataset.vapidKey),
                     });
                     diagnostic("permission", "Разрешено");
                     await post(pushSettings.dataset.subscribeUrl, {
-                        ...subscription.toJSON(), enabled: true, directMessages: direct.checked,
+                        ...subscription.toJSON(), mode,
                     });
-                    direct.disabled = false;
                     runtimeValues.browserSubscription = "present";
                     runtimeValues.serverSubscription = "known-enabled";
                     diagnostic("subscription", "Привязано к аккаунту");
-                    setStatus("Уведомления включены для этого устройства.");
+                    setStatus(
+                        mode === "all"
+                            ? "Присылаем всё новое на это устройство."
+                            : "Присылаем только личные сообщения."
+                    );
                 } else if (subscription) {
                     await post(pushSettings.dataset.unsubscribeUrl, {endpoint: subscription.endpoint});
                     await subscription.unsubscribe();
                     subscription = null;
-                    direct.disabled = true;
                     runtimeValues.browserSubscription = "absent";
                     runtimeValues.serverSubscription = "unknown";
                     diagnostic("subscription", "Не подписано");
@@ -224,29 +232,71 @@ if (pushSettings) {
                 }
             } catch (_error) {
                 diagnostic("permission", Notification.permission === "denied" ? "Запрещено" : "Не разрешено", Notification.permission === "denied");
-                master.checked = Boolean(subscription) && !direct.disabled;
                 setStatus("Не удалось изменить настройку уведомлений.", true);
             } finally {
-                master.disabled = Notification.permission === "denied";
+                if (Notification.permission === "denied") {
+                    disableControls();
+                } else {
+                    for (const item of modes) {
+                        item.disabled = false;
+                    }
+                }
             }
-        });
+        };
 
-        direct.addEventListener("change", async () => {
-            if (!subscription) return;
-            direct.disabled = true;
+        for (const item of modes) {
+            item.addEventListener("change", () => applyMode(item.value));
+        }
+    };
+
+    // Тихие часы — отдельно от режима: они общие для всех устройств.
+    const quietFrom = pushSettings.querySelector("[data-push-quiet-from]");
+    const quietTo = pushSettings.querySelector("[data-push-quiet-to]");
+    const quietSave = pushSettings.querySelector("[data-push-quiet-save]");
+    const quietStatus = pushSettings.querySelector("[data-push-quiet-status]");
+
+    const setQuietStatus = (message, isError = false) => {
+        quietStatus.textContent = message;
+        quietStatus.classList.toggle("error", isError);
+    };
+
+    if (quietSave) {
+        quietSave.addEventListener("click", async () => {
+            quietSave.disabled = true;
             try {
-                await post(pushSettings.dataset.subscribeUrl, {
-                    ...subscription.toJSON(), enabled: true, directMessages: direct.checked,
+                const response = await fetch(pushSettings.dataset.quietUrl, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "X-CSRFToken": csrfToken(),
+                    },
+                    body: JSON.stringify({
+                        quietFrom: quietFrom.value,
+                        quietTo: quietTo.value,
+                        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+                    }),
                 });
-                setStatus(direct.checked ? "Личные уведомления включены." : "Личные уведомления отключены.");
+                const data = await response.json();
+                if (!response.ok) {
+                    setQuietStatus(data.error || "Не удалось сохранить.", true);
+                    return;
+                }
+                // Сервер отвечает нормализованными значениями: «07» и «7» —
+                // одно и то же, и показывать надо то, что сохранилось.
+                quietFrom.value = data.quietFrom;
+                quietTo.value = data.quietTo;
+                setQuietStatus(
+                    data.quiet
+                        ? "Сохранено. Сейчас тихие часы — уведомления не придут."
+                        : "Сохранено."
+                );
             } catch (_error) {
-                direct.checked = !direct.checked;
-                setStatus("Не удалось сохранить настройку.", true);
+                setQuietStatus("Не удалось сохранить тихие часы.", true);
             } finally {
-                direct.disabled = false;
+                quietSave.disabled = false;
             }
         });
-    };
+    }
 
     initializePush();
 }
