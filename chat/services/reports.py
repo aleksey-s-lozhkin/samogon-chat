@@ -1,6 +1,6 @@
 from django.db import transaction
 from chat.models import Message, MessageReport
-from users.services.push import send_moderator_report_push
+from users.services.push import enqueue_moderator_report_push
 
 
 @transaction.atomic
@@ -13,5 +13,7 @@ def create_message_report(*, message, reporter, reason: str, details: str = ""):
         defaults={"reason": reason, "details": details},
     )
     if created:
-        send_moderator_report_push()
+        # Уведомление уходит после фиксации транзакции и через очередь: сеть
+        # не должна держать ни транзакцию, ни блокировку строки сообщения.
+        transaction.on_commit(enqueue_moderator_report_push)
     return report, created
