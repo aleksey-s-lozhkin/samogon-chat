@@ -196,3 +196,16 @@ python deployment/ollama/benchmark_evaluate.py benchmark-results.jsonl
   поэтому он не может попасть в лапоть, а лапоть — в Семёна.
 
 Условия закреплены тестами: `chat/tests_model_contract.py`.
+
+## Соседние проекты
+
+Самогон — не единственный проект на этой машине. Рядом живут **лапот**
+(тренажёр памяти) и **DocSearch** (поиск по документам), и все три делят
+одну видеокарту и одну инфраструктуру.
+
+Картина целиком — репозитории, домены, общие решения:
+
+<https://github.com/aleksey-s-lozhkin/lapot/blob/main/docs/PROJECTS.md>
+
+Условия совместной работы с лаптем на одной модели — в
+[lapot/docs/decisions/0010](https://github.com/aleksey-s-lozhkin/lapot/blob/main/docs/decisions/0010-one-model-for-two-apps.md).
