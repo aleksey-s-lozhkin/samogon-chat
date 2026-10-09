@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
-from users.models import ChatStatus
+from users.models import ChatStatus, PushSubscription
 from users.statuses import CUSTOM_STATUS_MAX_LENGTH, normalize_custom_status
 
 
@@ -22,8 +22,7 @@ class StatusSerializer(serializers.Serializer):
 
 class PushSubscriptionSerializer(serializers.Serializer):
     device_id = serializers.CharField()
-    enabled = serializers.BooleanField()
-    direct_messages_enabled = serializers.BooleanField()
+    mode = serializers.ChoiceField(choices=PushSubscription.Mode.choices)
     current_session = serializers.BooleanField()
     created_at = serializers.DateTimeField()
     updated_at = serializers.DateTimeField()

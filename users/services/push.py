@@ -114,19 +114,33 @@ def send_direct_message_push(*, recipient_id: int, room_slug: str, sender_id: in
     if not settings.WEB_PUSH_ENABLED:
         return 0
 
+    # Тихие часы и присутствие проверяются здесь, а не у вызывающего:
+    # уведомление шлётся из нескольких мест — WebSocket, REST и отложенная
+    # задача, — и правило, разбросанное по ним, рано или поздно разойдётся.
+    from users.models import User
+    from users.services.notifications import KIND_DIRECT, should_notify, subscriptions_for
+
+    recipient = User.objects.filter(pk=recipient_id).first()
+    if recipient is None:
+        return 0
+
+    allowed, reason = should_notify(recipient, kind=KIND_DIRECT)
+    if not allowed:
+        logger.info(
+            "Личное уведомление не отправлено получателю %s: %s",
+            recipient_id,
+            reason,
+        )
+        return 0
+
     payload = {
         "title": "Новое личное сообщение",
         "body": "В Самогоне ждёт личная реплика.",
         "url": reverse("chat:chat", args=[room_slug]),
         "tag": f"direct-message-{room_slug}",
     }
-    subscriptions = PushSubscription.objects.filter(
-        user_id=recipient_id,
-        enabled=True,
-        direct_messages_enabled=True,
-    )
     return send_push_payload(
-        subscriptions=subscriptions,
+        subscriptions=subscriptions_for(user=recipient, kind=KIND_DIRECT),
         payload=payload,
     ).delivered
 
@@ -173,9 +187,12 @@ def send_moderator_report_push() -> PushDeliveryResult:
         )
     ).distinct()
     return send_push_payload(
-        subscriptions=PushSubscription.objects.filter(
-            user__in=moderators,
-            enabled=True,
+        # Служебное уведомление, но «выключено» значит выключено: если
+        # человек попросил не беспокоить, модераторская жалоба — не повод
+        # сделать исключение. Тихие часы здесь ни при чём: жалоба требует
+        # действия, и утром её будет видно в интерфейсе.
+        subscriptions=PushSubscription.objects.filter(user__in=moderators).exclude(
+            mode=PushSubscription.Mode.OFF
         ),
         payload={
             "title": "Новая жалоба",
@@ -213,6 +230,88 @@ def enqueue_direct_message_push(
         send_direct_message_push(
             recipient_id=recipient_id,
             room_slug=room_slug,
+            sender_id=sender_id,
+        )
+        return False
+    return True
+
+
+def send_room_message_push(*, room_slug: str, room_name: str, sender_id: int) -> int:
+    """Сообщает о новом сообщении в открытой комнате.
+
+    Кому: **всем, кроме отправителя**, кто выбрал «все новые сообщения».
+    Списка участников у открытой комнаты нет — в неё заходят все, — поэтому
+    и получатели это все, кто ею пользуется.
+
+    Почему это не превращается в поток уведомлений:
+
+    * **присутствие** — кто сидит в приложении, тому не шлём: он и так
+      видит сообщение. Это и есть ответ на «дёргают, пока я читаю»;
+    * **тихие часы** — ночью не шлём никому;
+    * **склейка** — у уведомлений один ``tag`` на комнату, и десять
+      сообщений подряд заменяют друг друга, а не висят десятью строками.
+
+    Имя отправителя в уведомление не попадает: его увидят на экране
+    блокировки, а текст сообщения — тем более.
+    """
+    from users.models import PushSubscription, User
+    from users.services.notifications import KIND_ROOM, should_notify, subscriptions_for
+
+    if not settings.WEB_PUSH_ENABLED:
+        return 0
+
+    recipients = (
+        User.objects.filter(is_active=True, push_subscriptions__mode=PushSubscription.Mode.ALL)
+        .exclude(pk=sender_id)
+        .exclude(username=settings.BARTENDER_USERNAME)
+        .distinct()
+    )
+
+    delivered = 0
+    for recipient in recipients:
+        allowed, reason = should_notify(recipient, kind=KIND_ROOM)
+        if not allowed:
+            logger.info(
+                "Сообщение из комнаты %s не отправлено получателю %s: %s",
+                room_slug,
+                recipient.pk,
+                reason,
+            )
+            continue
+        delivered += send_push_payload(
+            subscriptions=subscriptions_for(user=recipient, kind=KIND_ROOM),
+            payload={
+                "title": f"Новое в «{room_name}»",
+                "body": "В Самогоне новое сообщение в общей комнате.",
+                "url": reverse("chat:chat", args=[room_slug]),
+                "tag": f"room-{room_slug}",
+            },
+        ).delivered
+    return delivered
+
+
+def enqueue_room_message_push(*, room_slug: str, room_name: str, sender_id: int) -> bool:
+    """Ставит уведомление о сообщении в комнате в очередь.
+
+    Из WebSocket — обязательно через очередь: рассылка обходит всех
+    получателей по очереди, и держать ею ответ сокета нельзя.
+    """
+    if not settings.WEB_PUSH_ENABLED:
+        return False
+
+    from users.tasks import deliver_room_message_push
+
+    try:
+        deliver_room_message_push.delay(
+            room_slug=room_slug,
+            room_name=room_name,
+            sender_id=sender_id,
+        )
+    except Exception:
+        logger.warning("room_message_push_dispatch_failed")
+        send_room_message_push(
+            room_slug=room_slug,
+            room_name=room_name,
             sender_id=sender_id,
         )
         return False

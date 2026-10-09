@@ -8,6 +8,7 @@ from .views import (
     logout_view,
     profile,
     push_subscribe,
+    push_quiet_hours,
     push_status,
     push_unsubscribe,
     register_view,
@@ -48,6 +49,7 @@ urlpatterns = [
     path("profile/", profile, name="profile"),
     path("profile/push/subscribe/", push_subscribe, name="push_subscribe"),
     path("profile/push/status/", push_status, name="push_status"),
+    path("profile/push/quiet/", push_quiet_hours, name="push_quiet_hours"),
     path("profile/push/unsubscribe/", push_unsubscribe, name="push_unsubscribe"),
     path(
         "profile/connections/<str:provider>/disconnect/",

@@ -110,8 +110,7 @@ def api_push_subscriptions(request):
                 "subscriptions": [
                     {
                         "device_id": device_id_for_subscription(subscription),
-                        "enabled": subscription.enabled,
-                        "direct_messages_enabled": subscription.direct_messages_enabled,
+                        "mode": subscription.mode,
                         "current_session": subscription.endpoint in session_endpoints,
                         "created_at": subscription.created_at.isoformat(),
                         "updated_at": subscription.updated_at.isoformat(),
@@ -161,7 +160,7 @@ def api_push_self_test(request):
     subscription = next(
         (
             item
-            for item in PushSubscription.objects.filter(user=request.user, enabled=True)
+            for item in PushSubscription.objects.filter(user=request.user)
             if device_id_for_subscription(item) == device_id
         ),
         None,
