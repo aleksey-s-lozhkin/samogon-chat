@@ -753,8 +753,19 @@ def run_mobile_layout(playwright, server, engine, viewport):
                 "На iPhone и iPad откройте Самогон с экрана «Домой»",
                 exact=False,
             ).wait_for()
-            if page.locator("[data-push-master]").is_enabled():
-                raise AssertionError("Push нельзя включать в обычной вкладке iPhone")
+            # Режимов три, и на iPhone в обычной вкладке должен быть
+            # выключен **каждый**: проверить только первый значило бы
+            # пропустить случай, когда один из них остался доступным.
+            modes = page.locator("[data-push-mode]")
+            if modes.count() != 3:
+                raise AssertionError(
+                    f"Ожидались три режима уведомлений, найдено {modes.count()}"
+                )
+            for index in range(modes.count()):
+                if modes.nth(index).is_enabled():
+                    raise AssertionError(
+                        "Push нельзя включать в обычной вкладке iPhone"
+                    )
             page.locator("[data-push-report-copy]").click()
             report = page.locator("[data-push-report-output]").input_value()
             if '"standalone": false' not in report or '"appleMobile": true' not in report:

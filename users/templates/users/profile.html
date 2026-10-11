@@ -164,20 +164,61 @@
         data-subscribe-url="{% url 'push_subscribe' %}"
         data-status-url="{% url 'push_status' %}"
         data-unsubscribe-url="{% url 'push_unsubscribe' %}"
+        data-quiet-url="{% url 'push_quiet_hours' %}"
     >
         <h2>Уведомления на этом устройстве</h2>
         <p class="connection-help">
             Включаются только по вашему нажатию. Личный текст и имя отправителя
             не показываются в уведомлении на экране блокировки.
         </p>
-        <label class="push-option">
-            <input type="checkbox" data-push-master>
-            <span>Разрешить уведомления</span>
-        </label>
-        <label class="push-option">
-            <input type="checkbox" data-push-direct checked>
-            <span>О личных сообщениях</span>
-        </label>
+        {# Выбор из трёх, а не два флажка. С двумя получалось состояние
+           «разрешено, но ни о чём не сообщать»: человек его выставлял,
+           ничего не приходило, и понять почему было нельзя. #}
+        <fieldset class="push-modes">
+            <legend class="visually-hidden">Что присылать на это устройство</legend>
+            <label class="push-option">
+                <input type="radio" name="push-mode" value="off" data-push-mode>
+                <span>Выключены</span>
+            </label>
+            <label class="push-option">
+                <input type="radio" name="push-mode" value="direct" data-push-mode>
+                <span>Только личные сообщения</span>
+            </label>
+            <label class="push-option">
+                <input type="radio" name="push-mode" value="all" data-push-mode>
+                <span>Все новые сообщения</span>
+            </label>
+        </fieldset>
+        <div class="push-quiet" data-push-quiet>
+            <h3>Тихие часы</h3>
+            <p class="connection-help">
+                Общие для всех устройств: спит человек, а не телефон.
+                В это время уведомления не приходят совсем.
+            </p>
+            <div class="push-quiet-fields">
+                <label>
+                    <span>Не беспокоить с</span>
+                    <input type="number" min="0" max="23"
+                           value="{{ notification_settings.quiet_from }}"
+                           data-push-quiet-from>
+                </label>
+                <label>
+                    <span>до</span>
+                    <input type="number" min="0" max="23"
+                           value="{{ notification_settings.quiet_to }}"
+                           data-push-quiet-to>
+                </label>
+            </div>
+            <p class="connection-help">
+                Одинаковые часы означают, что тихих часов нет. Промежуток
+                может переходить через полночь: «с 22 до 9» — обычный случай.
+            </p>
+            <button class="push-report-button" type="button" data-push-quiet-save>
+                Сохранить тихие часы
+            </button>
+            <p class="push-report-status" data-push-quiet-status aria-live="polite"></p>
+        </div>
+
         <p class="push-status" data-push-status aria-live="polite"></p>
         <details class="push-diagnostic-details">
             <summary>Диагностика уведомлений</summary>

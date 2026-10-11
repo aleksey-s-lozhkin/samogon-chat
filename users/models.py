@@ -98,8 +98,56 @@ class User(AbstractUser):
         return self.banned_until is None or self.banned_until > timezone.now()
 
 
+class NotificationSettings(models.Model):
+    """Когда человека можно беспокоить. Одно на всех его устройствах.
+
+    Часовой пояс и тихие часы живут здесь, а не в подписке: **спит человек,
+    а не телефон**. Держать их в каждом устройстве значило бы разрешить
+    ноутбуку будить среди ночи, пока телефон молчит, — и заставлять
+    человека настраивать тишину заново на каждом новом устройстве.
+    """
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="notification_settings",
+        verbose_name="Пользователь",
+    )
+    timezone = models.CharField(
+        "Часовой пояс",
+        max_length=64,
+        blank=True,
+        help_text="Имя часового пояса, например Europe/Moscow. Пусто — пояс проекта.",
+    )
+    #: Час, с которого начинается тишина, и час, когда она кончается.
+    #: Равные значения означают «тихих часов нет» — так же, как в лапте.
+    #: Хранятся целыми часами: человек думает «после десяти», а не «после
+    #: двадцати двух ноль-ноль».
+    quiet_from = models.PositiveSmallIntegerField("Тишина с", default=0)
+    quiet_to = models.PositiveSmallIntegerField("Тишина до", default=0)
+
+    class Meta:
+        verbose_name = "Настройки уведомлений"
+        verbose_name_plural = "Настройки уведомлений"
+
+    def __str__(self):
+        return f"Уведомления: {self.user.username}"
+
+
 class PushSubscription(models.Model):
     """Добровольная Web Push-подписка одного браузера пользователя."""
+
+    class Mode(models.TextChoices):
+        """Что присылать на это устройство.
+
+        Выбор из трёх, а не два флажка. С двумя получалось состояние
+        «уведомления разрешены, но ни о чём не сообщать» — человек его
+        выставлял, ничего не происходило, и понять почему было нельзя.
+        """
+
+        OFF = "off", "Выключены"
+        DIRECT = "direct", "Только личные сообщения"
+        ALL = "all", "Все новые сообщения"
 
     user = models.ForeignKey(
         User,
@@ -110,8 +158,12 @@ class PushSubscription(models.Model):
     endpoint = models.URLField(max_length=1000, unique=True, verbose_name="Адрес push-службы")
     p256dh = models.CharField(max_length=255, verbose_name="Открытый ключ подписки")
     auth = models.CharField(max_length=255, verbose_name="Секрет подписки")
-    enabled = models.BooleanField(default=True, verbose_name="Включена")
-    direct_messages_enabled = models.BooleanField(default=True, verbose_name="Уведомления о личных сообщениях")
+    mode = models.CharField(
+        "Что присылать",
+        max_length=8,
+        choices=Mode.choices,
+        default=Mode.DIRECT,
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Создано")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
 

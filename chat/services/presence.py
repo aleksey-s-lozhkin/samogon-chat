@@ -1,8 +1,12 @@
 import asyncio
+import logging
 import time
 from collections import defaultdict
 
 from django.conf import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 class OnlineUsersService:
@@ -188,6 +192,44 @@ class OnlineUsersService:
     @staticmethod
     def _redis_all_key():
         return "samogon:chat:presence:v2:all"
+
+
+def is_user_online_sync(username: str) -> bool:
+    """Занят ли гость прямо сейчас — синхронно, для Celery и прочего.
+
+    Отдельная функция, а не ``await online_users.connection_count``: push
+    уходит из фоновой задачи, где нет цикла событий, а заводить его ради
+    одного вопроса «он в сети?» — лишний риск. Устроено намеренно просто:
+    нас интересует **факт**, а не число соединений.
+
+    Если Redis не настроен, честно возвращаем False. Воркер — отдельный
+    процесс, и словарь соединений веб-процесса ему не виден; гадать по
+    нему значило бы отвечать «офлайн» на основании пустоты.
+    """
+    if not settings.REDIS_URL:
+        return False
+
+    try:
+        import redis
+
+        client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        try:
+            key = OnlineUsersService._redis_all_key()
+            # Просроченные соединения чистятся перед подсчётом: без этого
+            # закрытый браузер считался бы живым ещё TTL секунд.
+            client.zremrangebyscore(key, "-inf", time.time())
+            for member in client.zrange(key, 0, -1):
+                if OnlineUsersService._username(member) == username:
+                    return True
+            return False
+        finally:
+            client.close()
+    except Exception:
+        # Присутствие — подсказка, а не источник правды. Не смогли
+        # спросить — считаем, что офлайн: лучше лишнее уведомление, чем
+        # потерянное из-за недоступного Redis.
+        logger.warning("Не удалось спросить присутствие у Redis", exc_info=True)
+        return False
 
 
 online_users = OnlineUsersService()

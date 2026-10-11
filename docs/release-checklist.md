@@ -60,6 +60,13 @@ media-архив и SHA-256 нужно перенести на отдельны�
 docker exec samogon-web python manage.py backfill_attachment_thumbnails --dry-run
 docker exec samogon-web python manage.py backfill_attachment_thumbnails
 
+# Копия снимается И ПРОВЕРЯЕТСЯ разворотом, а не просто создаётся.
+# Непроверенная копия ничем не отличается от отсутствующей. Проверять
+# стоит не только свежую: смысл в том, чтобы старая, лежащая неделю,
+# тоже разворачивалась.
+/srv/scripts/backup-projects.sh
+/srv/scripts/backup-projects.sh --verify samogon
+
 docker exec samogon-web python manage.py release_audit_accounts prepare \
   --credentials /tmp/release-audit-sessions.json \
   --count 60 \
