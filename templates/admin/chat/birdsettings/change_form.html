@@ -1,0 +1,25 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+
+{% block after_related_objects %}
+{{ block.super }}
+{% if original %}
+<section class="samogon-bird-actions">
+    <h2>Обкатка</h2>
+    <p>Реплика собирается на общей модели. Черновик ничего не пишет в беседу.</p>
+    <div class="samogon-bird-actions__buttons">
+        <form method="post" action="{% url 'admin:chat_birdsettings_draft' original.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="button">Показать черновик</button>
+        </form>
+        <form method="post" action="{% url 'admin:chat_birdsettings_say' original.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="button samogon-primary-action">Сказать сейчас</button>
+        </form>
+    </div>
+    <p class="samogon-bird-actions__hint">
+        «Сказать сейчас» обходит паузы и тихие часы, но не выключенный переключатель.
+    </p>
+</section>
+{% endif %}
+{% endblock %}

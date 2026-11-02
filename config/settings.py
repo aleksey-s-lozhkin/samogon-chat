@@ -106,7 +106,8 @@ JAZZMIN_SETTINGS = {
     "login_logo": "pwa/lantern.svg",
     "welcome_sign": "Управление Самогоном",
     "copyright": "Самогон",
-    "search_model": ["users.User", "chat.Message"],
+    # Одно поле поиска вместо двух: в админку приходят искать сообщения.
+    "search_model": ["chat.Message"],
     "topmenu_links": [
         {"name": "Модерация", "url": "moderation", "permissions": ["chat.view_messagereport"]},
         {"name": "Статистика", "url": "admin_diagnostics", "permissions": ["chat.view_message"]},
@@ -115,13 +116,19 @@ JAZZMIN_SETTINGS = {
     "show_sidebar": True,
     "navigation_expanded": True,
     "order_with_respect_to": [
-        "users",
         "chat",
-        "chat.MessageReport",
         "chat.Message",
+        "chat.MessageReport",
+        "chat.MessageReport",
+        "chat.BirdSettings",
+        "chat.BirdPost",
         "chat.BartenderJob",
         "chat.Room",
+        "users",
     ],
+    # Что не нужно руками: технические состояния, которые ведёт приложение.
+    "hide_models": ["chat.RoomReadState"],
+    "hide_apps": ["socialaccount", "account"],
     "icons": {
         "users.User": "fas fa-users",
         "users.ChatStatus": "fas fa-comment",
@@ -134,6 +141,9 @@ JAZZMIN_SETTINGS = {
         "chat.Attachment": "fas fa-paperclip",
         "chat.MessageReaction": "fas fa-heart",
         "chat.AtmosphereLine": "fas fa-quote-left",
+        "chat.BirdSettings": "fas fa-dove",
+        "chat.BirdPost": "fas fa-feather",
+        "chat.RoomReadState": "fas fa-eye",
     },
     "custom_css": "admin/samogon.css",
     "custom_js": "admin/samogon.js",

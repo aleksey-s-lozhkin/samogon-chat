@@ -343,3 +343,182 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
  appearance:none; min-height:44px; padding:10px 16px; border-radius:5px;
  background:#39434f; border:1px solid #39434f; color:#fff;
 }
+
+/* --- Сводка на главной --------------------------------------------------- */
+
+.samogon-dashboard {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.samogon-dashboard__metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.75rem;
+}
+
+.samogon-dashboard .samogon-metric-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--samogon-border);
+    border-radius: 0.5rem;
+    background: var(--samogon-panel);
+    color: var(--samogon-ink);
+    text-decoration: none;
+    transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.samogon-dashboard .samogon-metric-card:hover {
+    border-color: var(--samogon-amber-bright);
+    transform: translateY(-1px);
+    text-decoration: none;
+}
+
+.samogon-dashboard .samogon-metric-card span {
+    color: var(--samogon-muted);
+    font-size: 0.82rem;
+}
+
+.samogon-dashboard .samogon-metric-card strong {
+    font-size: 1.65rem;
+    line-height: 1.1;
+}
+
+.samogon-bird-status {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--samogon-border);
+    border-left: 4px solid var(--samogon-border);
+    border-radius: 0.5rem;
+    background: var(--samogon-panel);
+    color: var(--samogon-ink);
+    text-decoration: none;
+}
+
+.samogon-bird-status:hover { text-decoration: none; }
+.samogon-bird-status.is-on { border-left-color: #2f855a; }
+
+.samogon-bird-status__dot {
+    width: 0.65rem;
+    height: 0.65rem;
+    margin-top: 0.45rem;
+    border-radius: 50%;
+    background: var(--samogon-border);
+    flex: none;
+}
+
+.samogon-bird-status.is-on .samogon-bird-status__dot { background: #2f855a; }
+
+.samogon-bird-status__muted {
+    display: block;
+    color: var(--samogon-muted);
+    font-size: 0.8rem;
+}
+
+/* --- Карточки приложений ------------------------------------------------ */
+
+.samogon-app-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    align-items: start;
+}
+
+.samogon-app-card {
+    border: 1px solid var(--samogon-border);
+    border-radius: 0.5rem;
+    background: var(--samogon-panel);
+    overflow: hidden;
+}
+
+.samogon-app-card h2 {
+    margin: 0;
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid var(--samogon-border);
+    background: var(--samogon-panel-soft);
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--samogon-muted);
+}
+
+.samogon-app-card ul { margin: 0; padding: 0.4rem 0; list-style: none; }
+
+.samogon-app-card li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.45rem 1rem;
+}
+
+.samogon-app-card li + li { border-top: 1px solid #eceff2; }
+.samogon-app-card li a { text-decoration: none; }
+.samogon-app-card li a:hover { text-decoration: underline; }
+
+.samogon-app-card__add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 0.35rem;
+    background: var(--samogon-panel-soft);
+    color: var(--samogon-muted);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.samogon-app-card__add:hover { background: var(--samogon-amber); color: #fff; text-decoration: none; }
+
+/* --- Кнопки обкатки птицы ----------------------------------------------- */
+
+.samogon-bird-actions {
+    margin-top: 1.5rem;
+    padding: 1rem 1.2rem;
+    border: 1px solid var(--samogon-border);
+    border-radius: 0.5rem;
+    background: var(--samogon-panel);
+}
+
+.samogon-bird-actions h2 { margin: 0 0 0.3rem; font-size: 1rem; }
+.samogon-bird-actions p { margin: 0 0 0.8rem; color: var(--samogon-muted); font-size: 0.88rem; }
+.samogon-bird-actions__buttons { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.samogon-bird-actions__hint { margin: 0.8rem 0 0; font-size: 0.8rem; }
+
+/* --- Плотность таблиц --------------------------------------------------- */
+
+#result_list td,
+#result_list th {
+    padding: 0.45rem 0.6rem !important;
+    vertical-align: middle;
+}
+
+#result_list .field-created_at,
+#result_list .field-hidden_at { white-space: nowrap; }
+
+#result_list .field-short_text { max-width: 34rem; }
+
+.nav-sidebar .nav-link {
+    padding: 0.45rem 0.7rem;
+    font-size: 0.9rem;
+}
+
+.nav-sidebar .nav-link p {
+    font-size: 0.9rem;
+}
+
+@media (max-width: 900px) {
+    .samogon-dashboard { grid-template-columns: minmax(0, 1fr); }
+    .samogon-page-heading { flex-direction: column; gap: 0.8rem; }
+}
+
+/* Сброс сортировки — служебная иконка, не колонка */
+#result_list thead .fa-times { opacity: 0.3; font-size: 0.7em; }
+#result_list thead .fa-times:hover { opacity: 0.8; }

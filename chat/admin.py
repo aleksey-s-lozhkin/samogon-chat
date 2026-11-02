@@ -61,12 +61,24 @@ class RoomAdmin(admin.ModelAdmin):
 
 @admin.register(Message)
 class MessageAdmin(admin.ModelAdmin):
-    list_display = ("user", "room", "text", "hidden_at", "created_at")
+    list_display = ("created_at", "short_text", "user", "room", "hidden_at")
     list_filter = ("room",)
     search_fields = ("text", "user__username", "recipient__username")
     list_select_related = ("user", "room", "recipient")
+    list_per_page = 50
+    date_hierarchy = "created_at"
     change_list_template = "admin/chat/message/change_list.html"
     actions = ("hide_messages", "restore_messages")
+
+    @admin.display(description="Текст")
+    def short_text(self, obj):
+        """Одна строка вместо простыни: список должен читаться глазами."""
+        text = " ".join(obj.text.split())
+        return text if len(text) <= 90 else f"{text[:90]}…"
+
+    def has_add_permission(self, request):
+        # Сообщения рождаются в чате, а не в админке.
+        return False
 
     @admin.action(description="Скрыть выбранные сообщения")
     def hide_messages(self, request, queryset):
@@ -219,6 +231,68 @@ class BirdSettingsAdmin(admin.ModelAdmin):
     )
     readonly_fields = ("updated_at",)
     actions = ("draft_now", "say_now")
+    change_form_template = "admin/chat/birdsettings/change_form.html"
+
+    def changelist_view(self, request, extra_context=None):
+        """Строка настроек одна, поэтому список — лишний клик.
+
+        Создаём её при первом заходе и сразу открываем форму: там переключатель
+        и кнопки обкатки.
+        """
+        from django.shortcuts import redirect
+
+        row, _ = BirdSettings.objects.get_or_create(pk=1)
+        return redirect("admin:chat_birdsettings_change", row.pk)
+
+    def get_urls(self):
+        from django.urls import path
+
+        urls = super().get_urls()
+        custom = [
+            path(
+                "<int:pk>/draft/",
+                self.admin_site.admin_view(self.draft_view),
+                name="chat_birdsettings_draft",
+            ),
+            path(
+                "<int:pk>/say/",
+                self.admin_site.admin_view(self.say_view),
+                name="chat_birdsettings_say",
+            ),
+        ]
+        return custom + urls
+
+    def draft_view(self, request, pk):
+        from django.shortcuts import redirect
+
+        from chat.services.bird import speak
+
+        text = speak(force=True, dry_run=True)
+        if text:
+            self.message_user(request, f"Сказала бы: {text}")
+        else:
+            self.message_user(
+                request,
+                "Сейчас сказать не может: смотрите причину в журнале.",
+                level=messages.WARNING,
+            )
+        return redirect("admin:chat_birdsettings_change", pk)
+
+    def say_view(self, request, pk):
+        from django.shortcuts import redirect
+
+        from chat.services.bird import speak
+
+        text = speak(force=True)
+        if text:
+            self.message_user(request, f"Сказала: {text}")
+        else:
+            self.message_user(
+                request,
+                "Сказать не удалось: смотрите причину в журнале.",
+                level=messages.WARNING,
+            )
+        return redirect("admin:chat_birdsettings_change", pk)
     fieldsets = (
         (
             "Переключатель",
@@ -317,6 +391,8 @@ class BirdPostAdmin(admin.ModelAdmin):
     search_fields = ("topic_id", "message__text")
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
+    list_per_page = 50
+    list_select_related = ("message", "room")
 
     def has_add_permission(self, request):
         return False

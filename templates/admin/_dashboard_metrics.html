@@ -1,0 +1,36 @@
+{% load i18n %}
+<section class="samogon-dashboard" aria-label="Сводка">
+    <div class="samogon-dashboard__metrics">
+        {% for metric in metrics %}
+            <a class="samogon-metric-card" href="{{ metric.url }}">
+                <span>{{ metric.label }}</span>
+                <strong>{{ metric.value }}</strong>
+            </a>
+        {% endfor %}
+    </div>
+    <a class="samogon-bird-status{% if bird.enabled %} is-on{% endif %}" href="{{ bird.url }}">
+        <span class="samogon-bird-status__dot" aria-hidden="true"></span>
+        <span>
+            <strong>Птица-Говорун</strong>
+            {% if bird.enabled %}
+                включена · беседа {{ bird.room|default:"не выбрана" }}
+                {% if bird.last %}<span class="samogon-bird-status__muted">последняя реплика {{ bird.last|date:"d.m H:i" }}</span>{% endif %}
+            {% else %}
+                выключена
+            {% endif %}
+        </span>
+    </a>
+</section>
+
+<div class="samogon-app-grid">
+    {% for section in sections %}
+        <section class="samogon-app-card">
+            <h2>{{ section.title }}</h2>
+            <ul>
+                {% for model in section.models %}
+                    <li><a href="{{ model.url }}">{{ model.name }}</a></li>
+                {% endfor %}
+            </ul>
+        </section>
+    {% endfor %}
+</div>

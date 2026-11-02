@@ -168,8 +168,8 @@ class PushSubscription(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Обновлено")
 
     class Meta:
-        verbose_name = "Подписка на уведомления"
-        verbose_name_plural = "Подписки на уведомления"
+        verbose_name = "Push-подписка"
+        verbose_name_plural = "Push-подписки"
         ordering = ("-updated_at",)
 
     def __str__(self):
@@ -209,5 +209,6 @@ class UserReport(models.Model):
     class Meta:
         ordering = ("-created_at",)
         verbose_name = "жалоба на пользователя"
-        verbose_name_plural = "Жалобы на пользователей"
+        verbose_name = "Жалоба на человека"
+        verbose_name_plural = "Жалобы на людей"
         constraints = [models.UniqueConstraint(fields=("reporter", "target"), condition=models.Q(resolved_at__isnull=True), name="one_open_user_report")]
