@@ -13,6 +13,12 @@ class Command(BaseCommand):
         ("chat", "moderate_message"),
         ("chat", "view_moderationevent"),
         ("chat", "view_messagereport"),
+        # Птица-Говорун: смотреть журнал реплик и управлять переключателем.
+        # Без этих прав сотрудник с доступом в админку получает 403 на её
+        # странице — ровно это и случилось при первом включении.
+        ("chat", "view_birdsettings"),
+        ("chat", "change_birdsettings"),
+        ("chat", "view_birdpost"),
         ("users", "view_userreport"),
         ("users", "change_userreport"),
         ("users", "view_user"),
