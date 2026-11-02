@@ -18,7 +18,9 @@ from chat.services.messages import MessageService
 from chat.services.reports import create_message_report
 from chat.validators import MESSAGE_MAX_LENGTH
 from config.rate_limit import is_allowed
-from users.services.push import send_direct_message_push
+from users.services.bots import is_bot
+from users.services.recipients import resolve_recipient
+from users.services.push import enqueue_direct_message_push
 
 from .mobile_serializers import RoomWriteSerializer, RoomDetailSerializer
 
@@ -206,10 +208,12 @@ def api_room_messages(request, room_slug):
     recipient = None
     recipient_name = serializer.validated_data.get("recipient")
     if recipient_name:
-        recipient = User.objects.filter(username=recipient_name, is_active=True, is_superuser=False).first()
-        if recipient is None or recipient.id == request.user.id or recipient.is_banned:
-            return JsonResponse({"error": "recipient_not_found"}, status=404)
-        if room.is_private and not room.memberships.filter(user=recipient).exists():
+        recipient = resolve_recipient(
+            username=recipient_name,
+            viewer=request.user,
+            room=room,
+        )
+        if recipient is None:
             return JsonResponse({"error": "recipient_not_found"}, status=404)
     reply_to = None
     reply_to_id = serializer.validated_data.get("reply_to")
@@ -230,8 +234,13 @@ def api_room_messages(request, room_slug):
     groups = [f"chat_user_{request.user.id}", f"chat_user_{recipient.id}"] if recipient else ([f"chat_user_{user_id}" for user_id in room.memberships.values_list("user_id", flat=True)] if room.is_private else [f"chat_{room.slug}"])
     for group in set(groups):
         async_to_sync(channel_layer.group_send)(group, event)
-    if recipient and recipient.username != settings.BARTENDER_USERNAME:
-        send_direct_message_push(recipient_id=recipient.id, room_slug=room.slug, sender_id=request.user.pk)
+    # Персонажу уведомление не нужно, а ответ API не должен ждать push-службу.
+    if recipient and not is_bot(recipient):
+        enqueue_direct_message_push(
+            recipient_id=recipient.id,
+            room_slug=room.slug,
+            sender_id=request.user.pk,
+        )
     return JsonResponse(payload, status=201)
 
 

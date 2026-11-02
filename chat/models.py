@@ -363,6 +363,42 @@ class Attachment(models.Model):
         return self.original_name
 
 
+class BirdPost(models.Model):
+    """Одна реплика Птицы-Говоруна: что сказала и по какому поводу.
+
+    Нужна для двух вещей: не повторять поводы подряд и считать дневной
+    потолок. Заодно остаётся след — видно, о чём птица говорила и когда.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.CASCADE,
+        related_name="bird_posts",
+        verbose_name="Беседа",
+    )
+    message = models.OneToOneField(
+        Message,
+        on_delete=models.CASCADE,
+        related_name="bird_post",
+        verbose_name="Реплика",
+    )
+    topic_id = models.CharField(max_length=64, verbose_name="Повод")
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+        db_index=True,
+        verbose_name="Создано",
+    )
+
+    class Meta:
+        verbose_name = "Реплика птицы"
+        verbose_name_plural = "Реплики птицы"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Птица: {self.topic_id}"
+
+
 class ModerationEvent(models.Model):
     """Хранит решения модераторов, не смешивая их с содержимым чата."""
 

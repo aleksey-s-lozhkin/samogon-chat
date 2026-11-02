@@ -232,4 +232,38 @@ def is_user_online_sync(username: str) -> bool:
         return False
 
 
+def room_users_sync(room_slug: str) -> list[str] | None:
+    """Кто сейчас в комнате — синхронно, для фоновых задач.
+
+    Отдельная функция, а не ``await online_users.get_room_users``: птица
+    просыпается в management-команде (и позже в задаче Celery), где нет цикла
+    событий, а кэшированный клиент сервиса привязан к первому циклу.
+
+    Возвращает **None**, если ответить нельзя: нет Redis или он не отвечает.
+    Пустой список означает ровно «в комнате никого» и ничего больше. Разница
+    важна: от неё зависит, заговорит ли птица поверх гостей.
+    """
+    if not settings.REDIS_URL:
+        return None
+
+    try:
+        import redis
+
+        client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        try:
+            key = OnlineUsersService._redis_key(room_slug)
+            # Просроченные соединения чистятся до подсчёта: иначе закрытый
+            # браузер держал бы птицу в тишине лишние TTL секунд.
+            client.zremrangebyscore(key, "-inf", time.time())
+            return [
+                OnlineUsersService._username(member)
+                for member in client.zrange(key, 0, -1)
+            ]
+        finally:
+            client.close()
+    except Exception:
+        logger.warning("Не удалось спросить присутствие у Redis", exc_info=True)
+        return None
+
+
 online_users = OnlineUsersService()

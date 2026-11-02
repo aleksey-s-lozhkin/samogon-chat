@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+from http.client import HTTPException
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -57,26 +58,37 @@ def chat_payload(
 
 def send_chat(payload: dict) -> str:
     """Отправляет готовое тело и возвращает ответ без следов размышлений."""
-    request = Request(
-        f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/chat",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-
     try:
+        # Сборка запроса внутри try: битый OLLAMA_BASE_URL даёт ValueError
+        # прямо здесь, ещё до сети.
+        request = Request(
+            f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         with urlopen(request, timeout=settings.OLLAMA_TIMEOUT_SECONDS) as response:
             data = json.load(response)
     except (
+        # HTTPError и URLError — обычные сетевые отказы, HTTPException — рваный
+        # ответ (BadStatusLine, IncompleteRead), ValueError — битый адрес или
+        # JSON. Всё это означает одно: ответа нет, надо молчать, а не падать.
         HTTPError,
         URLError,
+        HTTPException,
         TimeoutError,
         OSError,
         json.JSONDecodeError,
+        ValueError,
     ) as error:
         raise OllamaUnavailable from error
 
-    content = data.get("message", {}).get("content")
+    if not isinstance(data, dict):
+        raise OllamaUnavailable
+    message = data.get("message")
+    if not isinstance(message, dict):
+        raise OllamaUnavailable
+    content = message.get("content")
     if not isinstance(content, str) or not content.strip():
         raise OllamaUnavailable
     return THINKING_TRACE.sub("", content).strip()
