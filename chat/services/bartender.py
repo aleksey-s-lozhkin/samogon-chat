@@ -11,11 +11,31 @@ from urllib.request import Request, urlopen
 from django.conf import settings
 from django.contrib.auth import get_user_model
 
-from chat.services.bartender_context import BartenderContextEntry
+from chat.services.bartender_context import BIRD_LABEL, BartenderContextEntry
 from chat.services.bartender_guardrails import guardrail_reply
 from chat.services.language import needs_language_retry
 from chat.services.ollama import THINKING_TRACE, chat_payload
 
+
+#: Подсказка для персонажа: с птицей разговор идёт иначе, чем с гостем.
+#: Проверено на живой модели: без неё Семён начинает ответ с дословного
+#: повторения её реплики и почти всегда предлагает кружку.
+CHARACTER_NOTES = {
+    BIRD_LABEL: (
+        "<character_note>\n"
+        "Сейчас с тобой говорит не гость: это Птица-Говорун, она живёт в баре "
+        "и любит техно-истории.\n"
+        "Не повторяй её фразу и не пересказывай её: она только что это сказала.\n"
+        "Не наливай, не предлагай напитки и закуски, не спрашивай про кружку "
+        "и не превращай ответ в тост.\n"
+        "Подхвати её мысль и добавь одну короткую свою — или пошути. "
+        "Одна-две фразы.\n"
+        "</character_note>"
+    ),
+}
+
+#: Сколько слов в начале ответа считается повтором реплики собеседника.
+ECHO_MIN_WORDS = 3
 
 BARTENDER_MENTION = re.compile(r"^@(?:сем[её]н|semen)\b[,:!]?\s*", re.IGNORECASE)
 BARTENDER_SYSTEM_PROMPT = (
@@ -107,9 +127,11 @@ class BartenderService:
             retried_for_language,
         )
 
-        return BartenderReply(
-            text=self._truncate_reply(self._strip_markdown_decoration(content))
-        )
+        cleaned = self._strip_markdown_decoration(content)
+        if current_author in CHARACTER_NOTES:
+            # Персонажу не нужно цитировать собеседника: это выглядит как эхо.
+            cleaned = self._strip_leading_echo(cleaned, prompt)
+        return BartenderReply(text=self._truncate_reply(cleaned))
 
     @staticmethod
     def _build_messages(*, prompt, context, current_author):
@@ -124,10 +146,50 @@ class BartenderService:
             f'<current_message author="{escape(current_author)}">'
             f"{escape(prompt)}</current_message>"
         )
+        note = CHARACTER_NOTES.get(current_author)
+        if note:
+            parts.append(note)
         return [
             {"role": "system", "content": BARTENDER_SYSTEM_PROMPT},
             {"role": "user", "content": "\n".join(parts)},
         ]
+
+    @staticmethod
+    def _strip_leading_echo(content: str, prompt: str) -> str:
+        """Убирает начало ответа, дословно повторяющее реплику собеседника.
+
+        Просьба в промпте не помогает: на живой модели ответ регулярно
+        начинался с копии фразы птицы. Гость мог бы цитировать намеренно, а
+        персонажу это ни к чему, поэтому чистим только для персонажа.
+        """
+        prompt_words = [_echo_word(word) for word in prompt.split()]
+        prompt_words = [word for word in prompt_words if word]
+        if len(prompt_words) < ECHO_MIN_WORDS:
+            return content
+
+        # Тире и прочая пунктуация — отдельные «слова» после split. Их надо
+        # пропускать при сравнении, иначе «Bluetooth — это» не совпадёт с
+        # «Bluetooth это» и эхо останется.
+        tokens = content.split()
+        meaningful = [
+            (_echo_word(token), index)
+            for index, token in enumerate(tokens)
+            if _echo_word(token)
+        ]
+
+        matched = 0
+        for prompt_word, (content_word, _index) in zip(prompt_words, meaningful):
+            if prompt_word != content_word:
+                break
+            matched += 1
+
+        needed = max(ECHO_MIN_WORDS, len(prompt_words) // 2)
+        if matched < needed:
+            return content
+
+        cut_from = meaningful[matched][1] if matched < len(meaningful) else len(tokens)
+        rest = " ".join(tokens[cut_from:]).lstrip(" \t\n—–-,.:;!?)»\"")
+        return rest or content
 
     @staticmethod
     def _truncate_reply(content: str) -> str:
@@ -199,6 +261,11 @@ class BartenderService:
             user.set_unusable_password()
             user.save(update_fields=["password"])
         return user
+
+
+def _echo_word(word: str) -> str:
+    """Слово без регистра и пунктуации — для сравнения «то же самое или нет»."""
+    return re.sub(r"[^\wа-яё'-]+", "", word.lower())
 
 
 bartender = BartenderService()

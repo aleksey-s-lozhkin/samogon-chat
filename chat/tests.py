@@ -3288,6 +3288,102 @@ class BartenderServiceTests(TestCase):
         mock_urlopen.assert_not_called()
 
 
+class BartenderBirdDialogueTests(TestCase):
+    """Семён знает, что говорит с птицей, и не повторяет её слова.
+
+    Проверено на живой модели: без подсказки ответ регулярно начинался с
+    дословной копии реплики птицы, и почти в каждом ответе появлялась кружка.
+    """
+
+    def test_character_note_is_added_for_the_bird(self):
+        from chat.services.bartender_context import BIRD_LABEL
+
+        messages = bartender._build_messages(
+            prompt="GNU — это рекурсия.",
+            context=(),
+            current_author=BIRD_LABEL,
+        )
+        content = messages[-1]["content"]
+
+        self.assertIn("<character_note>", content)
+        self.assertIn("Птица-Говорун", content)
+        self.assertIn("Не повторяй её фразу", content)
+
+    def test_generic_guest_gets_no_character_note(self):
+        messages = bartender._build_messages(
+            prompt="Как настроить сеть?",
+            context=(),
+            current_author="guest_1",
+        )
+
+        self.assertNotIn("<character_note>", messages[-1]["content"])
+
+    def test_full_echo_is_removed(self):
+        prompt = "GNU — это GNU's Not Unix. Рекурсия на уровне мемов."
+        content = (
+            "GNU — это GNU's Not Unix. Рекурсия на уровне мемов.  "
+            "А если серьёзно, это и есть рекурсивный мем."
+        )
+
+        cleaned = bartender._strip_leading_echo(content, prompt)
+
+        self.assertEqual(cleaned, "А если серьёзно, это и есть рекурсивный мем.")
+
+    def test_echo_with_dashes_and_commas_is_removed(self):
+        prompt = "Bluetooth — это король, а логотип — его руны. Семён, ты не заметил?"
+        content = "Bluetooth — это король, а логотип — его руны. Семён, ты не заметил? Кажется, он не знает о короне."
+
+        cleaned = bartender._strip_leading_echo(content, prompt)
+
+        self.assertEqual(cleaned, "Кажется, он не знает о короне.")
+
+    def test_reply_that_starts_differently_is_untouched(self):
+        prompt = "Говорят, первый жёсткий диск весил почти тонну."
+        content = "Представляю. А сейчас байт весит меньше пылинки."
+
+        self.assertEqual(bartender._strip_leading_echo(content, prompt), content)
+
+    def test_short_prompt_is_not_trimmed(self):
+        """Короткий вопрос можно переспросить — обрезать нечего."""
+        prompt = "Почему?"
+
+        self.assertEqual(
+            bartender._strip_leading_echo("Почему? Потому что.", prompt),
+            "Почему? Потому что.",
+        )
+
+    @patch("chat.services.bartender.urlopen")
+    def test_bird_reply_gets_echo_stripped_in_the_pipeline(self, mock_urlopen):
+        from chat.services.bartender_context import BIRD_LABEL
+
+        mock_urlopen.return_value.__enter__.return_value.read.return_value = (
+            '{"message": {"content": "GNU — это рекурсия. А если серьёзно, это мем."}}'.encode()
+        )
+
+        reply = bartender.reply(
+            text="GNU — это рекурсия.",
+            context=(),
+            current_author=BIRD_LABEL,
+        )
+
+        self.assertEqual(reply.text, "А если серьёзно, это мем.")
+
+    @patch("chat.services.bartender.urlopen")
+    def test_guest_reply_keeps_its_quotes(self, mock_urlopen):
+        """Гость может цитировать намеренно — ему не обрезаем."""
+        mock_urlopen.return_value.__enter__.return_value.read.return_value = (
+            '{"message": {"content": "GNU — это рекурсия. Тут ты прав."}}'.encode()
+        )
+
+        reply = bartender.reply(
+            text="GNU — это рекурсия.",
+            context=(),
+            current_author="guest_1",
+        )
+
+        self.assertEqual(reply.text, "GNU — это рекурсия. Тут ты прав.")
+
+
 class BartenderContextTests(TestCase):
     def setUp(self):
         self.alex = User.objects.create_user(username="alex")

@@ -6,6 +6,10 @@ from django.db.models import Q
 from chat.models import Message, Room
 
 
+#: Метка, под которой Птица-Говорун видна в истории для Семёна.
+BIRD_LABEL = "govorun"
+
+
 @dataclass(frozen=True)
 class BartenderContextEntry:
     author: str
@@ -49,7 +53,7 @@ def build_bartender_conversation(
     # понимать, что ему ответила птица, а не безымянный гость.
     bot_labels = {
         settings.BARTENDER_USERNAME: "semen",
-        settings.BIRD_USERNAME: "govorun",
+        settings.BIRD_USERNAME: BIRD_LABEL,
     }
 
     def author_for(message_user_id, username):
