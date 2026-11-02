@@ -14,6 +14,7 @@ from django.contrib.auth import get_user_model
 from chat.services.bartender_context import BartenderContextEntry
 from chat.services.bartender_guardrails import guardrail_reply
 from chat.services.language import needs_language_retry
+from chat.services.ollama import THINKING_TRACE, chat_payload
 
 
 BARTENDER_MENTION = re.compile(r"^@(?:сем[её]н|semen)\b[,:!]?\s*", re.IGNORECASE)
@@ -156,18 +157,11 @@ class BartenderService:
         return needs_language_retry(content)
 
     def _request_reply(self, messages: list[dict[str, str]]) -> str:
-        payload = {
-            "model": settings.OLLAMA_MODEL,
-            "stream": False,
-            "think": False,
-            "keep_alive": settings.OLLAMA_KEEP_ALIVE,
-            "options": {
-                "temperature": settings.OLLAMA_TEMPERATURE,
-                "num_ctx": settings.OLLAMA_NUM_CTX,
-                "num_predict": settings.OLLAMA_NUM_PREDICT,
-            },
-            "messages": messages,
-        }
+        payload = chat_payload(
+            messages,
+            temperature=settings.OLLAMA_TEMPERATURE,
+            num_predict=settings.OLLAMA_NUM_PREDICT,
+        )
         request = Request(
             f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/chat",
             data=json.dumps(payload).encode("utf-8"),
@@ -192,7 +186,7 @@ class BartenderService:
             raise BartenderUnavailable
 
         # Не отдаём цепочку мыслей ошибочно подключённой reasoning-модели.
-        return re.sub(r"<think>.*?</think>\s*", "", content, flags=re.DOTALL).strip()
+        return THINKING_TRACE.sub("", content).strip()
 
     def get_bartender_user(self):
         user_model = get_user_model()
