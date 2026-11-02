@@ -62,7 +62,11 @@ docker exec samogon-web python manage.py bird_chatter --force
 docker exec samogon-web python manage.py bird_chatter
 ```
 
-Слаг комнаты: `docker exec samogon-web python manage.py shell -c "from chat.models import Room; [print(r.slug, '|', r.name) for r in Room.objects.filter(visibility='private')]"`.
+Слаг комнаты (подходят и общие, и закрытые):
+
+```bash
+docker exec samogon-web python manage.py shell -c "from chat.models import Room; [print(r.slug, '|', r.name) for r in Room.objects.all()]"
+```
 
 `--force` обходит паузы (интервал, потолок, тихие часы и гостей) — только для
 обкатки. Выключатель и незаданную комнату он **не** обходит: иначе однажды

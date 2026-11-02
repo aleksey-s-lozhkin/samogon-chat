@@ -7,6 +7,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.core.exceptions import PermissionDenied
+from users.services.recipients import resolve_recipient
 from users.services.safety import blocked_ids
 from django.db.models import Q
 from django.http import FileResponse, Http404, HttpResponse, JsonResponse
@@ -358,11 +359,13 @@ def create_attachment_message(request, room_slug):
     recipient = None
     recipient_username = request.POST.get("recipient", "").strip()
     if recipient_username:
-        recipient = User.objects.filter(username__iexact=recipient_username).first()
-        if recipient is None or recipient.pk == request.user.pk:
+        recipient = resolve_recipient(
+            username=recipient_username,
+            viewer=request.user,
+            room=room,
+        )
+        if recipient is None:
             return JsonResponse({"error": "Получатель недоступен."}, status=400)
-        if room.is_private and not room.memberships.filter(user=recipient).exists():
-            return JsonResponse({"error": "Получатель не участвует в беседе."}, status=400)
 
     reply_to = None
     reply_to_value = request.POST.get("reply_to", "").strip()

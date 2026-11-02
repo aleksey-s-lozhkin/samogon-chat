@@ -443,6 +443,12 @@ LOGGING = {
             "level": os.getenv("BARTENDER_LOG_LEVEL", "INFO"),
             "propagate": False,
         },
+        # Птица объясняет каждое «молчу» причиной; без логгера её не видно.
+        "chat.services.bird": {
+            "handlers": ["console"],
+            "level": os.getenv("BIRD_LOG_LEVEL", "INFO"),
+            "propagate": False,
+        },
         # Ошибки сервера видно в логах, а не только в жалобах гостей.
         # Уровень ERROR оставляет 5xx и убирает шум от 404 и 403.
         "django.request": {

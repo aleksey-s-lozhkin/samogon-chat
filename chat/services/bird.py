@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import random
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -48,6 +49,13 @@ PERSONA_PATH = Path(__file__).with_name("prompts") / "bird.txt"
 BIRD_TEMPERATURE = 0.85
 BIRD_NUM_PREDICT = 90
 
+#: Темы, на которые птица не высказывается. Промпт просит их не трогать, но
+#: просьбу к модели нельзя считать гарантией, поэтому есть проверка на выходе.
+UNWANTED = re.compile(
+    r"водк|вин[оа]\b|виски|пив[оа]|выпив|алкогол|напит|политик|религи|церкв",
+    re.IGNORECASE,
+)
+
 #: Повторная попытка, если модель смешала языки.
 LANGUAGE_RETRY = (
     "Перепиши ответ ниже только грамотным русским языком, без иероглифов и "
@@ -70,8 +78,22 @@ def load_topics() -> list[dict]:
     except (OSError, ValueError):
         logger.warning("bird_topics_unavailable path=%s", TOPICS_PATH)
         return []
-    topics = payload.get("topics")
-    return topics if isinstance(topics, list) else []
+
+    if isinstance(payload, list):
+        topics = payload
+    elif isinstance(payload, dict):
+        topics = payload.get("topics")
+    else:
+        topics = None
+    if not isinstance(topics, list):
+        logger.warning("bird_topics_invalid path=%s", TOPICS_PATH)
+        return []
+    def usable(topic) -> bool:
+        # fact=None превратилось бы в строку «None» и прошло проверку.
+        fact = topic.get("fact") if isinstance(topic, dict) else None
+        return isinstance(fact, str) and bool(fact.strip())
+
+    return [topic for topic in topics if usable(topic)]
 
 
 def load_persona() -> str:
@@ -83,16 +105,26 @@ def load_persona() -> str:
 
 
 def quiet_window() -> tuple[int, int]:
-    """Разбирает «1-8» в пару часов. Некорректное значение — без тишины."""
+    """Разбирает «1-8» в пару часов. Некорректное значение — без тишины.
+
+    Диапазон проверяется: «8-25» иначе превратилось бы в тишину с 8 до
+    полуночи, а «1» без дефиса молча отключило бы тишину целиком. Опечатка в
+    настройке не должна менять режим незаметно.
+    """
     raw = settings.BIRD_QUIET_HOURS.strip()
-    if "-" not in raw:
+    start_text, separator, end_text = raw.partition("-")
+    if not separator:
+        logger.warning("bird_quiet_hours_invalid value=%s", raw)
         return (0, 0)
-    start, _, end = raw.partition("-")
     try:
-        return (int(start), int(end))
+        start, end = int(start_text), int(end_text)
     except ValueError:
         logger.warning("bird_quiet_hours_invalid value=%s", raw)
         return (0, 0)
+    if not (0 <= start <= 23 and 0 <= end <= 23):
+        logger.warning("bird_quiet_hours_invalid value=%s", raw)
+        return (0, 0)
+    return (start, end)
 
 
 def local_now(now: datetime | None = None) -> datetime:
@@ -113,26 +145,43 @@ def local_now(now: datetime | None = None) -> datetime:
     return moment.astimezone(zone)
 
 
-def guests_in_room(room_slug: str, *, room_users=None) -> list[str]:
+#: Значение по умолчанию: «спросить присутствие самому».
+FETCH_PRESENCE = object()
+
+
+def guests_in_room(room_slug: str, *, room_users=FETCH_PRESENCE) -> list[str] | None:
     """Гости комнаты: персонажи и суперпользователи гостями не считаются.
 
     Суперпользователь — это хозяин заведения: его присутствие не должно
     выключать птицу, иначе он никогда не увидит разговор живьём. Правило
     совпадает с `eligible_guests()`, где суперпользователи тоже не гости.
-    """
-    if room_users is None:
-        room_users = room_users_sync(room_slug)
 
-    names = [name for name in room_users if name not in bot_usernames()]
+    **None означает «не знаю»** — присутствие недоступно. Пустой список
+    означает «в комнате действительно никого». Путать их нельзя: во втором
+    случае птица говорит, в первом обязана молчать.
+    """
+    if room_users is FETCH_PRESENCE:
+        room_users = room_users_sync(room_slug)
+    if room_users is None:
+        return None
+
+    # Присутствие хранит соединение, а не человека: одна вкладка на гостя.
+    names = list(dict.fromkeys(room_users))
+    names = [name for name in names if name not in bot_usernames()]
     if not names:
         return []
 
-    owner_names = get_user_model().objects.filter(
-        username__in=names,
-        is_superuser=True,
-    ).values_list("username", flat=True)
-    owners = set(owner_names)
+    owners = set(
+        get_user_model().objects.filter(
+            username__in=names,
+            is_superuser=True,
+        ).values_list("username", flat=True)
+    )
     return [name for name in names if name not in owners]
+
+
+class BirdIdentityError(RuntimeError):
+    """Имя персонажа занято живым аккаунтом — говорить от его лица нельзя."""
 
 
 def get_bird_user():
@@ -140,7 +189,15 @@ def get_bird_user():
 
     Неактивный и без пароля: под ним нельзя войти, но его реплики — обычные
     сообщения, видимые в комнате.
+
+    ``defaults`` в get_or_create срабатывает только при создании, поэтому
+    существующий аккаунт проверяется отдельно. Иначе после смены
+    ``BIRD_USERNAME`` на имя живого гостя птица заговорила бы от его лица, а
+    при совпадении с Семёном — от лица бармена.
     """
+    if settings.BIRD_USERNAME == settings.BARTENDER_USERNAME:
+        raise BirdIdentityError("имя птицы совпадает с именем бармена")
+
     user_model = get_user_model()
     user, created = user_model.objects.get_or_create(
         username=settings.BIRD_USERNAME,
@@ -149,6 +206,8 @@ def get_bird_user():
     if created:
         user.set_unusable_password()
         user.save(update_fields=["password"])
+    elif user.is_active or user.has_usable_password():
+        raise BirdIdentityError("имя птицы занято активным аккаунтом")
     return user
 
 
@@ -186,6 +245,9 @@ def decide(*, now=None, room_users=None) -> Decision:
         return Decision(False, f"комната {slug!r} не найдена")
 
     guests = guests_in_room(slug, room_users=room_users)
+    if guests is None:
+        # «Не знаю» — не «никого нет»: молчим, чтобы не говорить поверх гостей.
+        return Decision(False, "присутствие недоступно: неизвестно, есть ли гости")
     if guests:
         return Decision(False, f"в комнате гости: {len(guests)}")
 
@@ -261,6 +323,21 @@ def compose_line(topic: dict, *, ask=None) -> str:
     return request.strip().strip('"').strip()
 
 
+def rewrite_in_russian(answer: str, *, ask=None) -> str:
+    """Просит модель переписать уже полученный ответ по-русски."""
+    request = (ask or send_chat)(
+        chat_payload(
+            [
+                {"role": "system", "content": load_persona()},
+                {"role": "user", "content": f"{LANGUAGE_RETRY}{answer}"},
+            ],
+            temperature=BIRD_TEMPERATURE,
+            num_predict=BIRD_NUM_PREDICT,
+        )
+    )
+    return request.strip().strip('"').strip()
+
+
 def _acceptable(text: str) -> bool:
     return bool(text) and len(text) <= settings.BIRD_MAX_LENGTH
 
@@ -297,8 +374,10 @@ def speak(*, force=False, dry_run=False, now=None, room_users=None, ask=None, rn
         return _refuse("модель недоступна")
 
     if needs_language_retry(text):
+        # Просим переписать именно прошлый ответ: повтор того же промпта даёт
+        # тот же результат и не исправляет смешение языков.
         try:
-            text = compose_line(topic, ask=ask)
+            text = rewrite_in_russian(text, ask=ask)
         except OllamaUnavailable:
             return _refuse("модель недоступна")
         if needs_language_retry(text):
@@ -306,6 +385,9 @@ def speak(*, force=False, dry_run=False, now=None, room_users=None, ask=None, rn
 
     if not _acceptable(text):
         return _refuse("реплика пустая или слишком длинная")
+
+    if UNWANTED.search(text):
+        return _refuse("реплика задела нежелательную тему")
 
     logger.info(
         "bird_speaks topic=%s length=%d room=%s force=%s",
@@ -317,7 +399,17 @@ def speak(*, force=False, dry_run=False, now=None, room_users=None, ask=None, rn
     if dry_run:
         return text
 
-    return _publish(room=room, topic=topic, text=text, force=force)
+    try:
+        return _publish(
+            room=room,
+            topic=topic,
+            text=text,
+            force=force,
+            now=now,
+            room_users=room_users,
+        )
+    except BirdIdentityError as error:
+        return _refuse(f"имя персонажа недоступно: {error}")
 
 
 def _refuse(reason: str):
@@ -325,22 +417,44 @@ def _refuse(reason: str):
     return None
 
 
-def _publish(*, room: Room, topic: dict, text: str, force: bool = False):
+def _publish(
+    *,
+    room: Room,
+    topic: dict,
+    text: str,
+    force: bool = False,
+    now=None,
+    room_users=None,
+):
     """Публикует реплику и ставит Семёну задание ответить.
 
     Строка беседы блокируется на время записи: два пересекающихся запуска не
     должны сказать по реплике каждый. Модель к этому моменту уже отработала,
     поэтому блокировка держится миллисекунды, а не секунды генерации.
+
+    Под блокировкой всё проверяется ещё раз. Генерация занимает секунды, и за
+    это время в комнату мог зайти гость или начаться тихий час — тогда реплика
+    отменяется, а не публикуется «потому что уже решили».
     """
     bird = get_bird_user()
     with transaction.atomic():
         Room.objects.select_for_update().get(pk=room.pk)
 
         if not force:
-            pause = _pause_reason(room)
+            pause = _pause_reason(room, now=now)
             if pause:
-                # Пока писала, кто-то успел: молчим, чтобы не было двух реплик.
                 return _refuse(f"передумала: {pause}")
+
+            guests = guests_in_room(room.slug, room_users=room_users)
+            if guests is None:
+                return _refuse("передумала: присутствие стало недоступно")
+            if guests:
+                return _refuse(f"передумала: в комнате гости ({len(guests)})")
+
+            moment = local_now(now)
+            quiet_from, quiet_to = quiet_window()
+            if in_quiet_hours(moment.hour, quiet_from=quiet_from, quiet_to=quiet_to):
+                return _refuse("передумала: начался тихий час")
 
         message = MessageService.create_message(
             user_id=bird.id,
@@ -352,12 +466,20 @@ def _publish(*, room: Room, topic: dict, text: str, force: bool = False):
             message=message,
             topic_id=str(topic.get("id", ""))[:64],
         )
+        # Задание Семёну создаётся в той же транзакции: если оно не создастся,
+        # не будет и реплики, а не наоборот. Отправка задания в брокер
+        # откладывается до коммита внутри enqueue_bartender_job.
+        enqueue_bartender_job(
+            user=bird,
+            room=room,
+            question=message,
+            private=False,
+        )
 
-    broadcast_message(message)
-    enqueue_bartender_job(
-        user=bird,
-        room=room,
-        question=message,
-        private=False,
-    )
+    try:
+        broadcast_message(message)
+    except Exception:
+        # Реплика и задание уже сохранены: сбой рассылки не должен отменять
+        # разговор, о нём достаточно предупредить.
+        logger.warning("bird_broadcast_failed message_id=%s", message.pk, exc_info=True)
     return text

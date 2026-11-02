@@ -19,6 +19,7 @@ from chat.services.reports import create_message_report
 from chat.validators import MESSAGE_MAX_LENGTH
 from config.rate_limit import is_allowed
 from users.services.bots import is_bot
+from users.services.recipients import resolve_recipient
 from users.services.push import enqueue_direct_message_push
 
 from .mobile_serializers import RoomWriteSerializer, RoomDetailSerializer
@@ -207,10 +208,12 @@ def api_room_messages(request, room_slug):
     recipient = None
     recipient_name = serializer.validated_data.get("recipient")
     if recipient_name:
-        recipient = User.objects.filter(username=recipient_name, is_active=True, is_superuser=False).first()
-        if recipient is None or recipient.id == request.user.id or recipient.is_banned:
-            return JsonResponse({"error": "recipient_not_found"}, status=404)
-        if room.is_private and not room.memberships.filter(user=recipient).exists():
+        recipient = resolve_recipient(
+            username=recipient_name,
+            viewer=request.user,
+            room=room,
+        )
+        if recipient is None:
             return JsonResponse({"error": "recipient_not_found"}, status=404)
     reply_to = None
     reply_to_id = serializer.validated_data.get("reply_to")
