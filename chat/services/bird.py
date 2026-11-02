@@ -84,9 +84,18 @@ def load_config() -> BirdConfig:
     перезапуска контейнеров. Пока строки нет, берутся значения из окружения —
     так уже настроенный сервис продолжает работать как раньше.
     """
+    from django.db import DatabaseError
+
     from chat.models import BirdSettings
 
-    row = BirdSettings.objects.select_related("room").first()
+    try:
+        row = BirdSettings.objects.select_related("room").first()
+    except DatabaseError:
+        # Таблицы может не быть: воркер стартует раньше, чем веб-контейнер
+        # применит миграции. Это не повод падать — работаем по окружению.
+        logger.warning("bird_settings_unavailable, беру значения из окружения")
+        row = None
+
     if row is None:
         quiet_from, quiet_to = quiet_window()
         return BirdConfig(

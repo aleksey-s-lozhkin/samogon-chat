@@ -56,7 +56,11 @@ def bird_tick(self):
         # Птица не должна ронять воркер и останавливать саму себя.
         logger.warning("bird_tick_failed", exc_info=True)
     finally:
-        schedule_bird_tick()
+        try:
+            schedule_bird_tick()
+        except Exception:
+            # Оборванная цепочка — тихая поломка: пишем так, чтобы было видно.
+            logger.warning("bird_reschedule_failed", exc_info=True)
 
 
 def schedule_bird_tick() -> bool:
@@ -81,8 +85,12 @@ def restore_queued_bartender_jobs(**kwargs):
     ).values_list("id", flat=True).iterator():
         process_bartender_job.delay(str(job_id))
     # Птица планирует себя сама; после перезапуска воркера цепочка
-    # восстанавливается здесь, иначе она бы тихо оборвалась.
-    schedule_bird_tick()
+    # восстанавливается здесь, иначе она бы тихо оборвалась. Ошибку глушим:
+    # обработчик сигнала не должен мешать воркеру подняться.
+    try:
+        schedule_bird_tick()
+    except Exception:
+        logger.warning("bird_schedule_failed", exc_info=True)
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=10)

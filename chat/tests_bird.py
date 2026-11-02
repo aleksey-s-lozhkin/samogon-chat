@@ -1084,3 +1084,67 @@ class BirdAdminTests(TestCase):
         self.assertEqual(second.pk, 1)
         self.assertEqual(BirdSettings.objects.count(), 1)
         self.assertTrue(BirdSettings.objects.get().enabled)
+
+
+class BirdStartupResilienceTests(TestCase):
+    """Деплой идёт раньше миграций: отсутствие таблицы не должно ломать старт."""
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_missing_table_falls_back_to_environment(self):
+        from unittest.mock import patch
+
+        from django.db import ProgrammingError
+        from django.db.models.manager import Manager
+
+        from chat.services.bird import load_config
+
+        # Так выглядит деплой: воркер стартовал раньше, чем применились
+        # миграции, и таблицы настроек ещё нет.
+        with patch.object(
+            Manager,
+            "select_related",
+            side_effect=ProgrammingError("relation does not exist"),
+        ):
+            config = load_config()
+
+        self.assertEqual(config.enabled, settings.BIRD_ENABLED)
+        self.assertEqual(config.room_slug, settings.BIRD_ROOM_SLUG)
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.tasks.schedule_bird_tick", side_effect=RuntimeError("no broker"))
+    def test_worker_start_survives_a_broken_scheduler(self, schedule):
+        """Обработчик сигнала не должен мешать воркеру подняться."""
+        from chat.tasks import restore_queued_bartender_jobs
+
+        # Не должно поднять исключение наружу.
+        restore_queued_bartender_jobs()
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.tasks.schedule_bird_tick", side_effect=RuntimeError("no broker"))
+    @patch("chat.services.bird.speak", return_value=None)
+    def test_tick_survives_a_broken_reschedule(self, speak, schedule):
+        from chat.tasks import bird_tick
+
+        bird_tick.run()
+
+        speak.assert_called_once()
+
+
+class ModeratorPermissionTests(TestCase):
+    """Сотрудник с доступом в админку должен открывать страницу птицы."""
+
+    def test_setup_moderators_grants_bird_permissions(self):
+        from django.core.management import call_command
+        from django.contrib.auth.models import Group
+        from io import StringIO
+
+        call_command("setup_moderators", stdout=StringIO())
+
+        group = Group.objects.get(name="Moderators")
+        granted = {
+            f"{permission.content_type.app_label}.{permission.codename}"
+            for permission in group.permissions.all()
+        }
+        self.assertIn("chat.view_birdsettings", granted)
+        self.assertIn("chat.change_birdsettings", granted)
+        self.assertIn("chat.view_birdpost", granted)
