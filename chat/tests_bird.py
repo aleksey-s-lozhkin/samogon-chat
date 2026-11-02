@@ -2,7 +2,8 @@
 
 Проверки делятся на три части: решение («стоит ли говорить»), публикация
 («что именно происходит в чате») и границы с персонажами (птицу нельзя
-пригласить, ей нельзя написать лично, её не считают гостем).
+пригласить, ей нельзя написать лично, её не считают гостем). Личка при этом
+разделена: бармену писать можно, и это проверяется отдельно.
 """
 
 from __future__ import annotations
@@ -356,8 +357,14 @@ class BirdCommandTests(TestCase):
         self.assertEqual(BirdPost.objects.count(), 1)
 
 
-class BirdConcurrencyTests(TestCase):
-    """Пересечение двух запусков не должно дать две реплики."""
+class BirdRhythmTests(TestCase):
+    """Ритм проверяется дважды: до генерации и под блокировкой.
+
+    Настоящее пересечение двух процессов на SQLite не воспроизвести
+    (`select_for_update` там пустой), поэтому проверяется то, что можно
+    проверить честно: вторая проверка под блокировкой видит реплику, даже если
+    решение принималось по устаревшим данным.
+    """
 
     def setUp(self):
         self.room, _ = Room.objects.get_or_create(
@@ -369,12 +376,15 @@ class BirdConcurrencyTests(TestCase):
 
     @override_settings(**BIRD_SETTINGS)
     def test_second_run_right_after_the_first_stays_silent(self):
-        """Первый запуск сказал — второй в тот же момент молчит."""
         first = bird.speak(
             now=self.daytime,
             room_users=[],
             ask=lambda payload: "Первая реплика.",
         )
+        # Время реплики ставим ровно в «сейчас» теста: иначе результат зависел
+        # бы от реальных часов машины.
+        BirdPost.objects.update(created_at=self.daytime)
+
         second = bird.speak(
             now=self.daytime,
             room_users=[],
@@ -384,3 +394,245 @@ class BirdConcurrencyTests(TestCase):
         self.assertEqual(first, "Первая реплика.")
         self.assertIsNone(second)
         self.assertEqual(Message.objects.filter(room=self.room).count(), 1)
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_speaks_again_when_the_interval_has_passed(self):
+        first = bird.speak(
+            now=self.daytime,
+            room_users=[],
+            ask=lambda payload: "Первая реплика.",
+        )
+        BirdPost.objects.update(created_at=self.daytime - timedelta(minutes=40))
+
+        second = bird.speak(
+            now=self.daytime,
+            room_users=[],
+            ask=lambda payload: "Вторая реплика.",
+        )
+
+        self.assertEqual(first, "Первая реплика.")
+        self.assertEqual(second, "Вторая реплика.")
+        self.assertEqual(Message.objects.filter(room=self.room).count(), 2)
+
+
+class BirdSafetyTests(TestCase):
+    """Дефекты, найденные на ревью: чужой аккаунт, слепое присутствие, личка."""
+
+    def setUp(self):
+        self.room, _ = Room.objects.get_or_create(
+            slug="u-stoyki",
+            defaults={"name": "У стойки"},
+        )
+        self.owner = User.objects.create_user(username="owner", is_superuser=True)
+        self.guest = User.objects.create_user(username="guest")
+        self.daytime = datetime(2026, 11, 2, 9, 0, tzinfo=dt_timezone.utc)
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_unknown_presence_keeps_the_bird_silent(self):
+        """«Не знаю, есть ли гости» — это не «гостей нет»."""
+        decision = bird.decide(now=self.daytime, room_users=None)
+
+        self.assertFalse(decision.speak)
+        self.assertIn("присутствие", decision.reason)
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_unknown_presence_stops_publication(self):
+        text = bird.speak(
+            now=self.daytime,
+            room_users=None,
+            ask=lambda payload: "Нельзя говорить.",
+        )
+
+        self.assertIsNone(text)
+        self.assertFalse(Message.objects.exists())
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_refuses_a_username_owned_by_a_live_account(self):
+        """Иначе после смены имени птица заговорила бы от чужого лица."""
+        User.objects.create_user(username="govorun", password="known-pass")
+
+        with self.assertRaises(bird.BirdIdentityError):
+            bird.get_bird_user()
+
+        text = bird.speak(
+            now=self.daytime,
+            room_users=[],
+            ask=lambda payload: "От чужого лица.",
+        )
+
+        self.assertIsNone(text)
+        self.assertFalse(Message.objects.exists())
+
+    @override_settings(**{**BIRD_SETTINGS, "BIRD_USERNAME": "semen"})
+    def test_refuses_to_share_the_bartender_username(self):
+        with self.assertRaises(bird.BirdIdentityError):
+            bird.get_bird_user()
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_bird_account_is_inactive_and_passwordless(self):
+        bird_user = bird.get_bird_user()
+
+        self.assertFalse(bird_user.is_active)
+        self.assertFalse(bird_user.has_usable_password())
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_guest_cannot_write_to_the_bird_directly(self):
+        from users.services.recipients import resolve_recipient
+
+        bird.get_bird_user()
+        other = User.objects.create_user(username="other-guest")
+
+        self.assertIsNone(
+            resolve_recipient(username="govorun", viewer=self.guest, room=self.room)
+        )
+        # Бармен — исключение: личный вопрос ему это функция, а не дыра.
+        bartender = User.objects.create_user(username="semen")
+        self.assertEqual(
+            resolve_recipient(username="semen", viewer=self.guest, room=self.room),
+            bartender,
+        )
+        # Обычный гость по-прежнему доступен: проверка не запрещает всё подряд.
+        self.assertEqual(
+            resolve_recipient(username="other-guest", viewer=self.guest, room=self.room),
+            other,
+        )
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_attachment_form_rejects_a_bot_recipient(self):
+        """Через форму с вложением нельзя написать даже активному персонажу."""
+        from django.urls import reverse
+
+        bird_user = bird.get_bird_user()
+        # Имитируем сценарий из ревью: аккаунт персонажа активен.
+        User.objects.filter(pk=bird_user.pk).update(is_active=True)
+        self.client.force_login(self.guest)
+
+        response = self.client.post(
+            reverse("chat:create_attachment_message", args=[self.room.slug]),
+            {"recipient": "govorun", "text": "Привет, птица"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Message.objects.filter(recipient_id=bird_user.pk).exists())
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_recipient_list_hides_an_active_character(self):
+        from chat.selectors import get_message_recipients
+
+        bird_user = bird.get_bird_user()
+        User.objects.filter(pk=bird_user.pk).update(is_active=True)
+
+        names = set(
+            get_message_recipients(
+                room=self.room,
+                viewer=self.owner,
+            ).values_list("username", flat=True)
+        )
+
+        self.assertNotIn("govorun", names)
+        self.assertIn("guest", names)
+
+
+class BirdSettingsTests(TestCase):
+    """Опечатка в настройке не должна незаметно менять режим."""
+
+    @override_settings(BIRD_QUIET_HOURS="8-25")
+    def test_out_of_range_window_is_ignored(self):
+        self.assertEqual(bird.quiet_window(), (0, 0))
+
+    @override_settings(BIRD_QUIET_HOURS="1")
+    def test_window_without_dash_is_ignored(self):
+        self.assertEqual(bird.quiet_window(), (0, 0))
+
+    @override_settings(BIRD_QUIET_HOURS="22-9")
+    def test_window_across_midnight_is_kept(self):
+        self.assertEqual(bird.quiet_window(), (22, 9))
+
+    def test_topics_survive_a_json_array_instead_of_an_object(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "topics.json"
+            path.write_text(
+                json.dumps([{"id": "a", "fact": "факт"}, {"id": "b", "fact": None}]),
+                encoding="utf-8",
+            )
+            with patch.object(bird, "TOPICS_PATH", path):
+                topics = bird.load_topics()
+
+        self.assertEqual([topic["id"] for topic in topics], ["a"])
+
+
+class BirdLanguageRetryTests(TestCase):
+    """Повторная попытка должна переписывать ответ, а не повторять промпт."""
+
+    def setUp(self):
+        self.room, _ = Room.objects.get_or_create(
+            slug="u-stoyki",
+            defaults={"name": "У стойки"},
+        )
+        self.daytime = datetime(2026, 11, 2, 9, 0, tzinfo=dt_timezone.utc)
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_retry_passes_the_previous_answer_to_the_model(self):
+        seen = []
+
+        def ask(payload):
+            seen.append(payload)
+            if len(seen) == 1:
+                return "Проверь порт сервера。"
+            return "Проверь порт сервера."
+
+        text = bird.speak(now=self.daytime, room_users=[], ask=ask)
+
+        self.assertEqual(text, "Проверь порт сервера.")
+        self.assertEqual(len(seen), 2)
+        retry_prompt = seen[1]["messages"][-1]["content"]
+        self.assertIn("Проверь порт сервера", retry_prompt)
+        self.assertNotEqual(seen[0]["messages"], seen[1]["messages"])
+
+
+class BirdContentTests(TestCase):
+    """Ограничения тем держатся не только на просьбе в промпте."""
+
+    def setUp(self):
+        self.room, _ = Room.objects.get_or_create(
+            slug="u-stoyki",
+            defaults={"name": "У стойки"},
+        )
+        self.daytime = datetime(2026, 11, 2, 9, 0, tzinfo=dt_timezone.utc)
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_drink_talk_is_refused(self):
+        text = bird.speak(
+            now=self.daytime,
+            room_users=[],
+            ask=lambda payload: "Пойдём выпьем водки, Семён!",
+        )
+
+        self.assertIsNone(text)
+        self.assertFalse(Message.objects.exists())
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_politics_is_refused(self):
+        text = bird.speak(
+            now=self.daytime,
+            room_users=[],
+            ask=lambda payload: "А вот про политику я скажу так.",
+        )
+
+        self.assertIsNone(text)
+        self.assertFalse(Message.objects.exists())
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_ordinary_line_passes_the_filter(self):
+        text = bird.speak(
+            now=self.daytime,
+            room_users=[],
+            ask=lambda payload: "Говорят, первый диск весил тонну.",
+        )
+
+        self.assertEqual(text, "Говорят, первый диск весил тонну.")

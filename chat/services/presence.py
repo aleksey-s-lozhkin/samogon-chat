@@ -232,19 +232,19 @@ def is_user_online_sync(username: str) -> bool:
         return False
 
 
-def room_users_sync(room_slug: str) -> list[str]:
+def room_users_sync(room_slug: str) -> list[str] | None:
     """Кто сейчас в комнате — синхронно, для фоновых задач.
 
     Отдельная функция, а не ``await online_users.get_room_users``: птица
     просыпается в management-команде (и позже в задаче Celery), где нет цикла
     событий, а кэшированный клиент сервиса привязан к первому циклу.
 
-    Без Redis честно возвращаем пусто: воркер — другой процесс, и словарь
-    соединений веб-процесса ему не виден. Врать «гостей нет» на основании
-    пустоты нельзя — от этого зависит, заговорит ли птица.
+    Возвращает **None**, если ответить нельзя: нет Redis или он не отвечает.
+    Пустой список означает ровно «в комнате никого» и ничего больше. Разница
+    важна: от неё зависит, заговорит ли птица поверх гостей.
     """
     if not settings.REDIS_URL:
-        return []
+        return None
 
     try:
         import redis
@@ -263,7 +263,7 @@ def room_users_sync(room_slug: str) -> list[str]:
             client.close()
     except Exception:
         logger.warning("Не удалось спросить присутствие у Redis", exc_info=True)
-        return []
+        return None
 
 
 online_users = OnlineUsersService()

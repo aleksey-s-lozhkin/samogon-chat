@@ -11,6 +11,7 @@ from django.utils.crypto import salted_hmac
 from pywebpush import WebPushException, webpush
 
 from users.models import PushSubscription, User
+from users.services.bots import bot_usernames
 
 
 logger = logging.getLogger(__name__)
@@ -255,6 +256,7 @@ def send_room_message_push(*, room_slug: str, room_name: str, sender_id: int) ->
     блокировки, а текст сообщения — тем более.
     """
     from users.models import PushSubscription, User
+    from users.services.bots import bot_usernames
     from users.services.notifications import KIND_ROOM, should_notify, subscriptions_for
 
     if not settings.WEB_PUSH_ENABLED:
@@ -263,7 +265,7 @@ def send_room_message_push(*, room_slug: str, room_name: str, sender_id: int) ->
     recipients = (
         User.objects.filter(is_active=True, push_subscriptions__mode=PushSubscription.Mode.ALL)
         .exclude(pk=sender_id)
-        .exclude(username=settings.BARTENDER_USERNAME)
+        .exclude(username__in=bot_usernames())
         .distinct()
     )
 

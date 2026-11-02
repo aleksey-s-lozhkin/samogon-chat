@@ -25,6 +25,7 @@ from .services.welcome import ensure_welcome_message
 from users.models import ChatStatus
 from users.statuses import normalize_custom_status
 from users.services.bots import bot_usernames, is_bot
+from users.services.recipients import resolve_recipient
 from users.services.push import enqueue_direct_message_push
 from .validators import validate_message
 
@@ -732,18 +733,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def get_user(self, username):
-        try:
-            return (
-                User.objects.filter(username=username, is_active=True)
-                .filter(
-                    Q(banned_at__isnull=True)
-                    | Q(banned_until__lte=timezone.now())
-                )
-                .exclude(is_superuser=True)
-                .get()
-            )
-        except User.DoesNotExist:
-            return None
+        # Общее правило с формой и API: персонажу написать нельзя ни одним
+        # путём, иначе один вход остаётся дырой.
+        return resolve_recipient(username=username, viewer=self.user, room=self.room)
 
     @database_sync_to_async
     def get_all_users(self):
