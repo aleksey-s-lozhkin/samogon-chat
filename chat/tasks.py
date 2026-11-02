@@ -1,3 +1,5 @@
+import logging
+
 from celery import shared_task
 from celery.signals import worker_ready
 from django.conf import settings
@@ -11,6 +13,9 @@ from chat.services.bartender_context import build_bartender_conversation
 from chat.services.events import broadcast_message
 from chat.services.messages import MessageService
 from users.services.push import send_direct_message_push
+
+
+logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=15)
@@ -31,6 +36,37 @@ def generate_atmosphere_line_candidate(self):
     return line.pk
 
 
+@shared_task(bind=True)
+def bird_tick(self):
+    """Один тик птицы: решает, пора ли говорить, и планирует следующий.
+
+    Расписание живёт внутри задачи, а не в Celery beat: beat — это ещё один
+    контейнер и ещё одно место, где настраивается время. Тик сам назначает
+    следующий и переподнимается при старте воркера, поэтому перезапуск ничего
+    не ломает.
+
+    Дубли безопасны: решение принимается под блокировкой строки беседы, а
+    интервал проверяется дважды — второй раз уже под ней.
+    """
+    from chat.services.bird import speak
+
+    try:
+        speak()
+    except Exception:
+        # Птица не должна ронять воркер и останавливать саму себя.
+        logger.warning("bird_tick_failed", exc_info=True)
+    finally:
+        schedule_bird_tick()
+
+
+def schedule_bird_tick() -> bool:
+    """Назначает следующий тик, если птица включена."""
+    if not settings.BIRD_ENABLED:
+        return False
+    bird_tick.apply_async(countdown=settings.BIRD_CHECK_SECONDS)
+    return True
+
+
 @worker_ready.connect
 def restore_queued_bartender_jobs(**kwargs):
     """Возвращает в Redis задания, сохранённые во время недоступности брокера."""
@@ -38,6 +74,9 @@ def restore_queued_bartender_jobs(**kwargs):
         status=BartenderJob.Status.QUEUED,
     ).values_list("id", flat=True).iterator():
         process_bartender_job.delay(str(job_id))
+    # Птица планирует себя сама; после перезапуска воркера цепочка
+    # восстанавливается здесь, иначе она бы тихо оборвалась.
+    schedule_bird_tick()
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=10)

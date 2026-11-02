@@ -13,6 +13,7 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 from io import StringIO
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase, override_settings
@@ -898,3 +899,48 @@ class BartenderAccessTests(TestCase):
         self.assertIsNone(
             resolve_recipient(username="govorun", viewer=self.guest, room=self.room)
         )
+
+
+class BirdSchedulingTests(TestCase):
+    """Расписание живёт внутри воркера: без cron и без Celery beat."""
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.tasks.bird_tick.apply_async")
+    def test_schedule_arms_the_next_tick(self, apply_async):
+        from chat.tasks import schedule_bird_tick
+
+        self.assertTrue(schedule_bird_tick())
+        apply_async.assert_called_once_with(
+            countdown=settings.BIRD_CHECK_SECONDS,
+        )
+
+    @override_settings(**{**BIRD_SETTINGS, "BIRD_ENABLED": False})
+    @patch("chat.tasks.bird_tick.apply_async")
+    def test_disabled_bird_does_not_arm_anything(self, apply_async):
+        from chat.tasks import schedule_bird_tick
+
+        self.assertFalse(schedule_bird_tick())
+        apply_async.assert_not_called()
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.tasks.schedule_bird_tick")
+    @patch("chat.services.bird.speak", side_effect=RuntimeError("boom"))
+    def test_tick_survives_a_failure_and_rearms(self, speak, schedule):
+        from chat.tasks import bird_tick
+
+        # Исключение не должно выходить наружу, иначе цепочка оборвётся.
+        bird_tick.run()
+
+        speak.assert_called_once_with()
+        schedule.assert_called_once_with()
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.tasks.schedule_bird_tick")
+    @patch("chat.services.bird.speak")
+    def test_tick_speaks_and_rearms(self, speak, schedule):
+        from chat.tasks import bird_tick
+
+        bird_tick.run()
+
+        speak.assert_called_once_with()
+        schedule.assert_called_once_with()
