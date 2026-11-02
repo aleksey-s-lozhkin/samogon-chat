@@ -231,7 +231,7 @@ def pick_topic(*, room: Room, rng=None) -> dict | None:
     return (rng or random).choice(pool)
 
 
-def decide(*, now=None, room_users=None) -> Decision:
+def decide(*, now=None, room_users=FETCH_PRESENCE) -> Decision:
     """Стоит ли говорить прямо сейчас и почему именно так."""
     if not settings.BIRD_ENABLED:
         return Decision(False, "выключено настройкой BIRD_ENABLED")
@@ -342,12 +342,25 @@ def _acceptable(text: str) -> bool:
     return bool(text) and len(text) <= settings.BIRD_MAX_LENGTH
 
 
-def speak(*, force=False, dry_run=False, now=None, room_users=None, ask=None, rng=None):
+def speak(
+    *,
+    force=False,
+    dry_run=False,
+    now=None,
+    room_users=FETCH_PRESENCE,
+    ask=None,
+    rng=None,
+):
     """Говорит, если пора. Возвращает текст реплики или None.
 
     ``force`` обходит паузы (интервал, потолок, тишину, гостей) — для обкатки
     руками. Выключенная настройка и незаданная комната не обходятся никогда:
     иначе однажды птица заговорит там, где её не ждали.
+
+    ``room_users`` по умолчанию означает «спросить присутствие самому».
+    Явный список — «вот кто в комнате», явный ``None`` — «неизвестно, и тогда
+    молчим». Раньше по умолчанию стоял ``None``, и штатный путь без ``--force``
+    молчал всегда: путались «не знаю» и «спроси».
     """
     if force:
         if not settings.BIRD_ENABLED:
@@ -424,7 +437,7 @@ def _publish(
     text: str,
     force: bool = False,
     now=None,
-    room_users=None,
+    room_users=FETCH_PRESENCE,
 ):
     """Публикует реплику и ставит Семёну задание ответить.
 
