@@ -3,6 +3,7 @@ from pathlib import Path
 
 from config import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
@@ -397,6 +398,75 @@ class BirdPost(models.Model):
 
     def __str__(self):
         return f"Птица: {self.topic_id}"
+
+
+class BirdSettings(models.Model):
+    """Настройки Птицы-Говоруна, которыми управляют из админки.
+
+    Одна строка на весь сервис: включить птицу, выбрать беседу и подкрутить
+    ритм можно без перезапуска контейнеров. Пока строки нет, значения берутся
+    из окружения — так существующая настройка продолжает работать и не надо
+    ничего переносить руками.
+
+    Часовой пояс тишины один на всех: беседа общая, и «ночь для каждого гостя»
+    определить нельзя.
+    """
+
+    enabled = models.BooleanField("Птица включена", default=False)
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bird_settings",
+        verbose_name="Беседа",
+        help_text="Где птица имеет право говорить. Пусто — не говорит нигде.",
+    )
+    interval_minutes = models.PositiveIntegerField(
+        "Пауза между репликами, мин",
+        default=30,
+    )
+    daily_limit = models.PositiveSmallIntegerField(
+        "Потолок реплик в сутки",
+        default=12,
+    )
+    quiet_from = models.PositiveSmallIntegerField(
+        "Тишина с (час)",
+        default=1,
+        validators=[MinValueValidator(0), MaxValueValidator(23)],
+    )
+    quiet_to = models.PositiveSmallIntegerField(
+        "Тишина до (час)",
+        default=8,
+        validators=[MinValueValidator(0), MaxValueValidator(23)],
+    )
+    timezone_name = models.CharField(
+        "Часовой пояс тишины",
+        max_length=64,
+        default="Europe/Moscow",
+    )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="Изменено")
+
+    class Meta:
+        verbose_name = "Птица-Говорун"
+        verbose_name_plural = "Птица-Говорун"
+
+    def __str__(self):
+        state = "включена" if self.enabled else "выключена"
+        where = self.room.slug if self.room_id else "беседа не выбрана"
+        return f"Птица {state}, {where}"
+
+    def save(self, *args, **kwargs):
+        # Настройки одни на сервис: вторая строка сделала бы поведение
+        # зависящим от порядка, в котором их читают. Поэтому вторая попытка
+        # создать запись не падает, а обновляет единственную.
+        self.pk = 1
+        if self._state.adding and type(self).objects.filter(pk=1).exists():
+            # objects.create() просит force_insert: с ним вышла бы попытка
+            # вставить вторую строку с тем же ключом.
+            self._state.adding = False
+            kwargs.pop("force_insert", None)
+        super().save(*args, **kwargs)
 
 
 class ModerationEvent(models.Model):
