@@ -413,6 +413,21 @@ BARTENDER_CONTEXT_MESSAGE_MAX_CHARS = int(
 )
 BARTENDER_USERNAME = os.getenv("BARTENDER_USERNAME", "semen")
 
+# Птица-Говорун: второй персонаж, говорит редко и только в пустой комнате.
+# По умолчанию выключена: без явного включения и указанной комнаты не работает.
+BIRD_ENABLED = os.getenv("BIRD_ENABLED", "0") == "1"
+BIRD_USERNAME = os.getenv("BIRD_USERNAME", "govorun")
+BIRD_ROOM_SLUG = os.getenv("BIRD_ROOM_SLUG", "")
+BIRD_INTERVAL_MINUTES = int(os.getenv("BIRD_INTERVAL_MINUTES", "30"))
+BIRD_DAILY_LIMIT = int(os.getenv("BIRD_DAILY_LIMIT", "12"))
+# Окно тишины в формате «от-до», часы считаются в BIRD_QUIET_TIMEZONE.
+# Комната общая, поэтому пояс один на всех: «ночь для каждого» не определить.
+BIRD_QUIET_HOURS = os.getenv("BIRD_QUIET_HOURS", "1-8")
+BIRD_QUIET_TIMEZONE = os.getenv("BIRD_QUIET_TIMEZONE", "Europe/Moscow")
+BIRD_MAX_LENGTH = int(os.getenv("BIRD_MAX_LENGTH", "220"))
+# Сколько последних поводов не повторять: список из 70 тем иначе зациклится.
+BIRD_TOPIC_HISTORY = int(os.getenv("BIRD_TOPIC_HISTORY", "20"))
+
 # Метрики Семёна не содержат текст сообщений и нужны для диагностики Ollama.
 LOGGING = {
     "version": 1,

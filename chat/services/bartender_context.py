@@ -45,10 +45,16 @@ def build_bartender_conversation(
     messages.reverse()
 
     aliases = {}
+    # Персонажи подписываются своим именем, гости — псевдонимом: Семён должен
+    # понимать, что ему ответила птица, а не безымянный гость.
+    bot_labels = {
+        settings.BARTENDER_USERNAME: "semen",
+        settings.BIRD_USERNAME: "govorun",
+    }
 
     def author_for(message_user_id, username):
-        if username == settings.BARTENDER_USERNAME:
-            return "semen"
+        if username in bot_labels:
+            return bot_labels[username]
         if message_user_id not in aliases:
             aliases[message_user_id] = f"guest_{len(aliases) + 1}"
         return aliases[message_user_id]
@@ -60,7 +66,9 @@ def build_bartender_conversation(
         )
         for message in messages
     )
-    current_author = aliases.get(user_id)
+    current_author = bot_labels.get(question.user.username)
+    if current_author is None:
+        current_author = aliases.get(user_id)
     if current_author is None:
         current_author = f"guest_{len(aliases) + 1}"
     return BartenderConversation(history=history, current_author=current_author)

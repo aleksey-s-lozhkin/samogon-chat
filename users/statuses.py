@@ -10,7 +10,7 @@ RULES_VERSION = "2026-09-29"
 
 # Имя технического аккаунта бармена нельзя занимать: иначе обычный гость
 # подхватывается как Семён и говорит от его лица.
-RESERVED_USERNAMES = {"semen", "семён", "семен"}
+RESERVED_USERNAMES = {"semen", "семён", "семен", "govorun", "говорун"}
 
 
 def normalize_custom_status(value: str) -> str:
