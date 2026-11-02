@@ -45,6 +45,7 @@ PRESET_PREFIX = "samogon-"
 
 PERSONA_PATH = Path(__file__).with_name("services") / "prompts" / "semen.txt"
 BARTENDER_PATH = Path(__file__).with_name("services") / "bartender.py"
+PAYLOAD_PATH = Path(__file__).with_name("services") / "ollama.py"
 
 
 class TestSharedModelContract(SimpleTestCase):
@@ -80,9 +81,25 @@ class TestSharedModelContract(SimpleTestCase):
         Зашитое число делало бы расхождение с лаптем невидимым: код
         работал бы, а перезагрузки никто бы не связал с настройкой.
         """
-        source = BARTENDER_PATH.read_text(encoding="utf-8")
+        source = PAYLOAD_PATH.read_text(encoding="utf-8")
         self.assertIn("settings.OLLAMA_NUM_CTX", source)
         self.assertNotIn('"num_ctx": 4096', source)
+
+    def test_payload_is_built_in_one_place(self) -> None:
+        """Тело запроса собирается только в общем модуле.
+
+        Второй сборщик неизбежно разошёлся бы с первым по имени модели или
+        контексту, и поломка была бы тихой: медленнее, но работает.
+        """
+        payload = PAYLOAD_PATH.read_text(encoding="utf-8")
+        for value in ("settings.OLLAMA_MODEL", "settings.OLLAMA_NUM_CTX"):
+            self.assertIn(value, payload)
+
+        # У Семёна остаётся только отправка: тела запроса там быть не должно.
+        bartender = BARTENDER_PATH.read_text(encoding="utf-8")
+        self.assertNotIn('"num_ctx"', bartender)
+        self.assertNotIn('"keep_alive"', bartender)
+        self.assertIn("chat_payload(", bartender)
 
     def test_timeout_leaves_room_for_a_cold_load(self) -> None:
         """Таймаут больше времени загрузки модели.
