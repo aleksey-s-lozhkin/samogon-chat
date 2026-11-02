@@ -58,14 +58,15 @@ def chat_payload(
 
 def send_chat(payload: dict) -> str:
     """Отправляет готовое тело и возвращает ответ без следов размышлений."""
-    request = Request(
-        f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/chat",
-        data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-
     try:
+        # Сборка запроса внутри try: битый OLLAMA_BASE_URL даёт ValueError
+        # прямо здесь, ещё до сети.
+        request = Request(
+            f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         with urlopen(request, timeout=settings.OLLAMA_TIMEOUT_SECONDS) as response:
             data = json.load(response)
     except (

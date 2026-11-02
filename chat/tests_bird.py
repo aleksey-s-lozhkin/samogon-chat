@@ -709,3 +709,192 @@ class BirdScheduledPathTests(TestCase):
         self.assertIn("Молчит", output.getvalue())
         self.assertIn("гости", output.getvalue())
         send_chat.assert_not_called()
+
+
+class BirdLateCheckTests(TestCase):
+    """Гость, зашедший во время генерации, отменяет реплику."""
+
+    def setUp(self):
+        self.room, _ = Room.objects.get_or_create(
+            slug="u-stoyki",
+            defaults={"name": "У стойки"},
+        )
+        self.daytime = datetime(2026, 11, 2, 9, 0, tzinfo=dt_timezone.utc)
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.services.bird.room_users_sync", side_effect=[[], ["guest"]])
+    def test_guest_arriving_during_generation_cancels_the_line(self, presence):
+        """Первая проверка видит пустую комнату, вторая — гостя."""
+        text = bird.speak(
+            now=self.daytime,
+            ask=lambda payload: "Реплика, которой не суждено выйти.",
+        )
+
+        self.assertIsNone(text)
+        self.assertFalse(Message.objects.exists())
+        self.assertGreaterEqual(presence.call_count, 2)
+
+    @override_settings(**{**BIRD_SETTINGS, "BIRD_QUIET_HOURS": "1-23"})
+    @patch("chat.services.bird.room_users_sync", side_effect=[[], []])
+    def test_quiet_hours_starting_during_generation_cancel_the_line(self, presence):
+        """Тихий час ловится на второй проверке, даже если решали днём."""
+        text = bird.speak(
+            now=self.daytime,
+            ask=lambda payload: "Тоже не выйдет.",
+        )
+
+        self.assertIsNone(text)
+        self.assertFalse(Message.objects.exists())
+
+
+class OllamaTransportTests(TestCase):
+    """Настоящие отказы транспорта, а не заранее собранное исключение."""
+
+    @staticmethod
+    def payload():
+        from chat.services.ollama import chat_payload
+
+        return chat_payload([{"role": "user", "content": "x"}], temperature=0.5, num_predict=10)
+
+    def test_broken_status_line_becomes_unavailable(self):
+        from http.client import BadStatusLine
+
+        from chat.services.ollama import OllamaUnavailable, send_chat
+
+        with patch("chat.services.ollama.urlopen", side_effect=BadStatusLine("x")):
+            with self.assertRaises(OllamaUnavailable):
+                send_chat(self.payload())
+
+    def test_broken_json_becomes_unavailable(self):
+        from chat.services.ollama import OllamaUnavailable, send_chat
+
+        with patch("chat.services.ollama.urlopen") as mocked:
+            mocked.return_value.__enter__.return_value.read.return_value = b"not json"
+            with self.assertRaises(OllamaUnavailable):
+                send_chat(self.payload())
+
+    def test_unexpected_payload_shape_becomes_unavailable(self):
+        from chat.services.ollama import OllamaUnavailable, send_chat
+
+        with patch("chat.services.ollama.urlopen") as mocked:
+            mocked.return_value.__enter__.return_value.read.return_value = b'{"message": "text"}'
+            with self.assertRaises(OllamaUnavailable):
+                send_chat(self.payload())
+
+    def test_bad_base_url_becomes_unavailable(self):
+        from chat.services.ollama import OllamaUnavailable, send_chat
+
+        with override_settings(OLLAMA_BASE_URL="not a url"):
+            with self.assertRaises(OllamaUnavailable):
+                send_chat(self.payload())
+
+
+class BirdPublishFailureTests(TestCase):
+    """Сбой рассылки не должен отменять уже принятую реплику."""
+
+    def setUp(self):
+        self.room, _ = Room.objects.get_or_create(
+            slug="u-stoyki",
+            defaults={"name": "У стойки"},
+        )
+        self.daytime = datetime(2026, 11, 2, 9, 0, tzinfo=dt_timezone.utc)
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.services.bird.broadcast_message", side_effect=RuntimeError("redis down"))
+    def test_message_and_job_survive_a_broadcast_failure(self, broadcast):
+        from chat.models import BartenderJob
+
+        text = bird.speak(
+            now=self.daytime,
+            room_users=[],
+            ask=lambda payload: "Сказано, но не разослано.",
+        )
+
+        self.assertEqual(text, "Сказано, но не разослано.")
+        message = Message.objects.get(room=self.room)
+        self.assertEqual(BartenderJob.objects.filter(question=message).count(), 1)
+        self.assertEqual(BirdPost.objects.count(), 1)
+
+
+class PresenceDeduplicationTests(TestCase):
+    """Две вкладки одного гостя — это один гость."""
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_same_guest_twice_is_counted_once(self):
+        guests = bird.guests_in_room("u-stoyki", room_users=["guest", "guest"])
+
+        self.assertEqual(guests, ["guest"])
+
+
+class BartenderAccessTests(TestCase):
+    """Граница бармена закреплена так, как она есть в реальной конфигурации.
+
+    Раньше это проверялось только тестом с вручную активированным `semen`,
+    из-за чего можно было решить, что бармен есть в списке получателей.
+    """
+
+    def setUp(self):
+        self.room, _ = Room.objects.get_or_create(
+            slug="u-stoyki",
+            defaults={"name": "У стойки"},
+        )
+        self.guest = User.objects.create_user(username="guest")
+
+    def test_real_bartender_is_not_a_generic_recipient(self):
+        from chat.selectors import get_message_recipients
+        from chat.services.bartender import bartender
+        from users.services.recipients import resolve_recipient
+
+        semen = bartender.get_bartender_user()
+
+        # Аккаунт технический и неактивный: под ним нельзя войти.
+        self.assertFalse(semen.is_active)
+        self.assertFalse(semen.has_usable_password())
+
+        names = set(
+            get_message_recipients(room=self.room, viewer=self.guest).values_list(
+                "username", flat=True
+            )
+        )
+        self.assertNotIn("semen", names)
+        self.assertIsNone(
+            resolve_recipient(username="semen", viewer=self.guest, room=self.room)
+        )
+
+    def test_active_bartender_would_stay_reachable(self):
+        """Если бармена когда-нибудь сделают активным, он не станет ботом-заглушкой.
+
+        Именно ради этого случая персонажи разделены на два набора: «можно
+        написать» и «нельзя». Сегодня его отсекает неактивность, но правило
+        должно оставаться верным и без неё.
+        """
+        from chat.selectors import get_message_recipients
+        from users.services.recipients import resolve_recipient
+
+        semen = User.objects.create_user(username="semen", is_active=True)
+
+        self.assertEqual(
+            resolve_recipient(username="semen", viewer=self.guest, room=self.room),
+            semen,
+        )
+        names = set(
+            get_message_recipients(room=self.room, viewer=self.guest).values_list(
+                "username", flat=True
+            )
+        )
+        self.assertIn("semen", names)
+
+    def test_bird_stays_unreachable_even_when_active(self):
+        """Обратная сторона правила: активация не делает птицу собеседником."""
+        from users.services.recipients import resolve_recipient
+
+        self.assertEqual(
+            User.objects.filter(username="govorun").update(is_active=True),
+            0,
+        )
+        bird_user = bird.get_bird_user()
+        User.objects.filter(pk=bird_user.pk).update(is_active=True)
+
+        self.assertIsNone(
+            resolve_recipient(username="govorun", viewer=self.guest, room=self.room)
+        )

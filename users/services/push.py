@@ -256,7 +256,6 @@ def send_room_message_push(*, room_slug: str, room_name: str, sender_id: int) ->
     блокировки, а текст сообщения — тем более.
     """
     from users.models import PushSubscription, User
-    from users.services.bots import bot_usernames
     from users.services.notifications import KIND_ROOM, should_notify, subscriptions_for
 
     if not settings.WEB_PUSH_ENABLED:
