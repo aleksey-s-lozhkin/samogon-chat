@@ -2,8 +2,8 @@
 
 Проверки делятся на три части: решение («стоит ли говорить»), публикация
 («что именно происходит в чате») и границы с персонажами (птицу нельзя
-пригласить, ей нельзя написать лично, её не считают гостем). Личка при этом
-разделена: бармену писать можно, и это проверяется отдельно.
+пригласить, ей нельзя написать лично, её не считают гостем). Бармен — отдельный
+случай: личный вопрос ему идёт своим путём, и это проверяется отдельно.
 """
 
 from __future__ import annotations
@@ -636,3 +636,76 @@ class BirdContentTests(TestCase):
         )
 
         self.assertEqual(text, "Говорят, первый диск весил тонну.")
+
+
+class BirdScheduledPathTests(TestCase):
+    """Штатный путь без --force: именно его запускает cron.
+
+    Раньше эти тесты отсутствовали, и ошибка «по умолчанию передаётся None,
+    то есть неизвестно» оставалась незамеченной: все тесты передавали
+    присутствие явно, а команда проверялась только с --force.
+    """
+
+    def setUp(self):
+        self.room, _ = Room.objects.get_or_create(
+            slug="u-stoyki",
+            defaults={"name": "У стойки"},
+        )
+        self.daytime = datetime(2026, 11, 2, 9, 0, tzinfo=dt_timezone.utc)
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.services.bird.room_users_sync", return_value=[])
+    def test_decision_asks_for_presence_when_not_given(self, presence):
+        decision = bird.decide(now=self.daytime)
+
+        self.assertTrue(decision.speak, decision.reason)
+        presence.assert_called()
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.services.bird.room_users_sync", return_value=["guest"])
+    def test_decision_sees_guests_through_the_same_path(self, presence):
+        User.objects.create_user(username="guest")
+
+        decision = bird.decide(now=self.daytime)
+
+        self.assertFalse(decision.speak)
+        self.assertIn("гости", decision.reason)
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.services.bird.send_chat", return_value="Говорят, диск весил тонну.")
+    @patch("chat.services.bird.room_users_sync", return_value=[])
+    def test_command_speaks_without_force(self, presence, send_chat):
+        """Команда по расписанию обязана говорить, а не молчать всегда."""
+        output = StringIO()
+
+        call_command("bird_chatter", stdout=output)
+
+        self.assertIn("Сказала:", output.getvalue())
+        self.assertEqual(Message.objects.filter(room=self.room).count(), 1)
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.services.bird.send_chat", return_value="Говорят, диск весил тонну.")
+    @patch("chat.services.bird.room_users_sync", return_value=None)
+    def test_command_stays_silent_when_presence_is_unknown(self, presence, send_chat):
+        """Redis не ответил — команда молчит, а не говорит наугад."""
+        output = StringIO()
+
+        call_command("bird_chatter", stdout=output)
+
+        self.assertIn("Молчит", output.getvalue())
+        self.assertIn("присутствие", output.getvalue())
+        self.assertFalse(Message.objects.exists())
+        send_chat.assert_not_called()
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.services.bird.send_chat", return_value="Говорят, диск весил тонну.")
+    @patch("chat.services.bird.room_users_sync", return_value=["guest"])
+    def test_command_stays_silent_when_a_guest_is_present(self, presence, send_chat):
+        User.objects.create_user(username="guest")
+        output = StringIO()
+
+        call_command("bird_chatter", stdout=output)
+
+        self.assertIn("Молчит", output.getvalue())
+        self.assertIn("гости", output.getvalue())
+        send_chat.assert_not_called()
