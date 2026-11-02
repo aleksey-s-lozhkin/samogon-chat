@@ -60,8 +60,14 @@ def bird_tick(self):
 
 
 def schedule_bird_tick() -> bool:
-    """Назначает следующий тик, если птица включена."""
-    if not settings.BIRD_ENABLED:
+    """Назначает следующий тик, если птица включена.
+
+    Включённость читается из админки, а не из окружения: тогда переключатель
+    начинает работать сразу, без перезапуска контейнеров.
+    """
+    from chat.services.bird import load_config
+
+    if not load_config().enabled:
         return False
     bird_tick.apply_async(countdown=settings.BIRD_CHECK_SECONDS)
     return True

@@ -1,10 +1,12 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.utils import timezone
 
 from .models import (
     Attachment,
     AtmosphereLine,
     BartenderJob,
+    BirdPost,
+    BirdSettings,
     Message,
     MessageReaction,
     MessageReport,
@@ -197,6 +199,138 @@ class MessageReportAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return request.user.is_superuser
+
+
+@admin.register(BirdSettings)
+class BirdSettingsAdmin(admin.ModelAdmin):
+    """Переключатель и ритм птицы.
+
+    Живёт в админке, а не в окружении: включение не должно требовать
+    перезапуска контейнеров, а «сказать сейчас» — захода по SSH.
+    """
+
+    list_display = (
+        "enabled",
+        "room",
+        "interval_minutes",
+        "daily_limit",
+        "quiet_hours",
+        "updated_at",
+    )
+    readonly_fields = ("updated_at",)
+    actions = ("draft_now", "say_now")
+    fieldsets = (
+        (
+            "Переключатель",
+            {
+                "fields": ("enabled", "room"),
+                "description": (
+                    "Птица молчит, пока в беседе есть гости. Хозяин и "
+                    "персонажи гостями не считаются."
+                ),
+            },
+        ),
+        (
+            "Ритм",
+            {
+                "fields": (
+                    "interval_minutes",
+                    "daily_limit",
+                    "quiet_from",
+                    "quiet_to",
+                    "timezone_name",
+                ),
+                "description": (
+                    "Тихие часы считаются по одному поясу: беседа общая, и "
+                    "«ночь для каждого гостя» определить нельзя."
+                ),
+            },
+        ),
+        ("Служебное", {"fields": ("updated_at",)}),
+    )
+
+    def has_add_permission(self, request):
+        # Настройки одни на сервис: вторая строка сделала бы поведение
+        # зависящим от порядка чтения.
+        return not BirdSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description="Тишина")
+    def quiet_hours(self, obj):
+        return f"{obj.quiet_from:02d}:00–{obj.quiet_to:02d}:00"
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if not obj.enabled:
+            return
+        # Включили — сразу ставим следующий тик, чтобы не ждать перезапуска.
+        from chat.tasks import schedule_bird_tick
+
+        try:
+            schedule_bird_tick()
+        except Exception:
+            self.message_user(
+                request,
+                "Птица включена, но поставить задачу в очередь не удалось: "
+                "проверьте брокер. После перезапуска воркера она начнёт сама.",
+                level=messages.ERROR,
+            )
+
+    @admin.action(description="Показать черновик: что птица сказала бы")
+    def draft_now(self, request, queryset):
+        from chat.services.bird import speak
+
+        text = speak(force=True, dry_run=True)
+        if text:
+            self.message_user(request, f"Сказала бы: {text}")
+        else:
+            self.message_user(
+                request,
+                "Сейчас сказать не может: проверьте переключатель, беседу и "
+                "доступность модели. Подробности — в журнале.",
+                level=messages.WARNING,
+            )
+
+    @admin.action(description="Сказать сейчас: реплика появится в беседе")
+    def say_now(self, request, queryset):
+        from chat.services.bird import speak
+
+        text = speak(force=True)
+        if text:
+            self.message_user(request, f"Сказала: {text}")
+        else:
+            self.message_user(
+                request,
+                "Сказать не удалось. Подробности — в журнале.",
+                level=messages.WARNING,
+            )
+
+
+@admin.register(BirdPost)
+class BirdPostAdmin(admin.ModelAdmin):
+    """Что птица говорила и по какому поводу. Только чтение."""
+
+    list_display = ("created_at", "topic_id", "room", "short_text")
+    list_filter = ("room",)
+    search_fields = ("topic_id", "message__text")
+    date_hierarchy = "created_at"
+    ordering = ("-created_at",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description="Реплика")
+    def short_text(self, obj):
+        text = obj.message.text
+        return text if len(text) <= 80 else f"{text[:80]}…"
 
 
 @admin.register(ModerationEvent)

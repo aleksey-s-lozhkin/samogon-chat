@@ -17,6 +17,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase, override_settings
+from django.urls import reverse
 
 from chat.models import BartenderJob, BirdPost, Message, Room
 from chat.services import bird
@@ -59,14 +60,14 @@ class BirdDecisionTests(TestCase):
         decision = bird.decide(now=self.daytime, room_users=[])
 
         self.assertFalse(decision.speak)
-        self.assertIn("BIRD_ENABLED", decision.reason)
+        self.assertIn("переключател", decision.reason)
 
     @override_settings(**{**BIRD_SETTINGS, "BIRD_ROOM_SLUG": ""})
     def test_requires_a_configured_room(self):
         decision = bird.decide(now=self.daytime, room_users=[])
 
         self.assertFalse(decision.speak)
-        self.assertIn("BIRD_ROOM_SLUG", decision.reason)
+        self.assertIn("беседа", decision.reason)
 
     @override_settings(**{**BIRD_SETTINGS, "BIRD_ROOM_SLUG": "nowhere"})
     def test_missing_room_is_reported(self):
@@ -944,3 +945,142 @@ class BirdSchedulingTests(TestCase):
 
         speak.assert_called_once_with()
         schedule.assert_called_once_with()
+
+
+class BirdAdminTests(TestCase):
+    """Переключатель в админке: включение без перезапуска и обкатка кнопкой."""
+
+    def setUp(self):
+        self.room, _ = Room.objects.get_or_create(
+            slug="u-stoyki",
+            defaults={"name": "У стойки"},
+        )
+        self.admin = User.objects.create_superuser(
+            username="admin",
+            email="admin@example.com",
+            password="pass",
+        )
+        self.client.force_login(self.admin)
+        self.change_url = reverse("admin:chat_birdsettings_change", args=[1])
+        self.changelist_url = reverse("admin:chat_birdsettings_changelist")
+
+    @override_settings(**{**BIRD_SETTINGS, "BIRD_ENABLED": False})
+    def test_admin_row_overrides_environment(self):
+        """Строка в админке главнее окружения: включили — значит включена."""
+        from chat.models import BirdSettings
+        from chat.services.bird import load_config
+
+        BirdSettings.objects.create(
+            enabled=True,
+            room=self.room,
+            interval_minutes=15,
+            daily_limit=3,
+        )
+
+        config = load_config()
+
+        self.assertTrue(config.enabled)
+        self.assertEqual(config.room_slug, "u-stoyki")
+        self.assertEqual(config.interval_minutes, 15)
+        self.assertEqual(config.daily_limit, 3)
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_without_a_row_environment_values_apply(self):
+        from chat.services.bird import load_config
+
+        config = load_config()
+
+        self.assertEqual(config.enabled, settings.BIRD_ENABLED)
+        self.assertEqual(config.room_slug, settings.BIRD_ROOM_SLUG)
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.tasks.schedule_bird_tick", return_value=True)
+    def test_saving_enabled_arms_the_tick_immediately(self, schedule):
+        """Иначе включение ждало бы перезапуска воркера."""
+        from chat.models import BirdSettings
+
+        BirdSettings.objects.create(enabled=False, room=self.room)
+        response = self.client.post(
+            self.change_url,
+            {
+                "enabled": "on",
+                "room": str(self.room.pk),
+                "interval_minutes": "30",
+                "daily_limit": "12",
+                "quiet_from": "1",
+                "quiet_to": "8",
+                "timezone_name": "Europe/Moscow",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        schedule.assert_called_once()
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.tasks.schedule_bird_tick", return_value=True)
+    def test_saving_disabled_does_not_arm_anything(self, schedule):
+        from chat.models import BirdSettings
+
+        BirdSettings.objects.create(enabled=False, room=self.room)
+        response = self.client.post(
+            self.change_url,
+            {
+                "room": str(self.room.pk),
+                "interval_minutes": "30",
+                "daily_limit": "12",
+                "quiet_from": "1",
+                "quiet_to": "8",
+                "timezone_name": "Europe/Moscow",
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        schedule.assert_not_called()
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.services.bird.speak", return_value="Говорят, диск весил тонну.")
+    def test_draft_action_shows_the_line_without_posting(self, speak):
+        from chat.models import BirdSettings
+
+        BirdSettings.objects.create(enabled=True, room=self.room)
+        response = self.client.post(
+            self.changelist_url,
+            {
+                "action": "draft_now",
+                "_selected_action": ["1"],
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Сказала бы")
+        speak.assert_called_once()
+        self.assertTrue(speak.call_args.kwargs["dry_run"])
+        self.assertFalse(Message.objects.exists())
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.services.bird.speak", return_value="Сказано по-настоящему.")
+    def test_say_action_reports_failure_honestly(self, speak):
+        from chat.models import BirdSettings
+
+        BirdSettings.objects.create(enabled=True, room=self.room)
+        speak.return_value = None
+
+        response = self.client.post(
+            self.changelist_url,
+            {"action": "say_now", "_selected_action": ["1"]},
+            follow=True,
+        )
+
+        self.assertContains(response, "Сказать не удалось")
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_only_one_settings_row_can_exist(self):
+        from chat.models import BirdSettings
+
+        first = BirdSettings.objects.create(enabled=False)
+        second = BirdSettings.objects.create(enabled=True)
+
+        self.assertEqual(first.pk, 1)
+        self.assertEqual(second.pk, 1)
+        self.assertEqual(BirdSettings.objects.count(), 1)
+        self.assertTrue(BirdSettings.objects.get().enabled)

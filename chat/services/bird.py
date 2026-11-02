@@ -65,6 +65,52 @@ LANGUAGE_RETRY = (
 
 
 @dataclass(frozen=True)
+class BirdConfig:
+    """Действующие настройки: из админки, а если строки нет — из окружения."""
+
+    enabled: bool
+    room_slug: str
+    interval_minutes: int
+    daily_limit: int
+    quiet_from: int
+    quiet_to: int
+    timezone_name: str
+
+
+def load_config() -> BirdConfig:
+    """Читает настройки птицы.
+
+    Строка в админке главнее окружения: переключатель должен работать без
+    перезапуска контейнеров. Пока строки нет, берутся значения из окружения —
+    так уже настроенный сервис продолжает работать как раньше.
+    """
+    from chat.models import BirdSettings
+
+    row = BirdSettings.objects.select_related("room").first()
+    if row is None:
+        quiet_from, quiet_to = quiet_window()
+        return BirdConfig(
+            enabled=settings.BIRD_ENABLED,
+            room_slug=settings.BIRD_ROOM_SLUG.strip(),
+            interval_minutes=settings.BIRD_INTERVAL_MINUTES,
+            daily_limit=settings.BIRD_DAILY_LIMIT,
+            quiet_from=quiet_from,
+            quiet_to=quiet_to,
+            timezone_name=settings.BIRD_QUIET_TIMEZONE,
+        )
+
+    return BirdConfig(
+        enabled=row.enabled,
+        room_slug=row.room.slug if row.room_id else "",
+        interval_minutes=row.interval_minutes,
+        daily_limit=row.daily_limit,
+        quiet_from=row.quiet_from,
+        quiet_to=row.quiet_to,
+        timezone_name=row.timezone_name,
+    )
+
+
+@dataclass(frozen=True)
 class Decision:
     """Говорить ли и почему. Причина нужна и в логах, и в выводе команды."""
 
@@ -128,20 +174,19 @@ def quiet_window() -> tuple[int, int]:
     return (start, end)
 
 
-def local_now(now: datetime | None = None) -> datetime:
+def local_now(now: datetime | None = None, *, timezone_name: str | None = None) -> datetime:
     """Время в эталонном поясе птицы.
 
     Комната общая: «ночь для каждого гостя» не определить, поэтому тихие часы
-    считаются по одному поясу и это записано в документации.
+    считаются по одному поясу. Пояс задаётся в админке, по умолчанию — из
+    окружения, и это записано в документации.
     """
     moment = now or timezone.now()
+    name = timezone_name or settings.BIRD_QUIET_TIMEZONE
     try:
-        zone = ZoneInfo(settings.BIRD_QUIET_TIMEZONE)
+        zone = ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError):
-        logger.warning(
-            "bird_timezone_unknown value=%s",
-            settings.BIRD_QUIET_TIMEZONE,
-        )
+        logger.warning("bird_timezone_unknown value=%s", name)
         zone = ZoneInfo("UTC")
     return moment.astimezone(zone)
 
@@ -232,14 +277,15 @@ def pick_topic(*, room: Room, rng=None) -> dict | None:
     return (rng or random).choice(pool)
 
 
-def decide(*, now=None, room_users=FETCH_PRESENCE) -> Decision:
+def decide(*, now=None, room_users=FETCH_PRESENCE, config=None) -> Decision:
     """Стоит ли говорить прямо сейчас и почему именно так."""
-    if not settings.BIRD_ENABLED:
-        return Decision(False, "выключено настройкой BIRD_ENABLED")
+    config = config or load_config()
+    if not config.enabled:
+        return Decision(False, "выключено переключателем в админке")
 
-    slug = settings.BIRD_ROOM_SLUG.strip()
+    slug = config.room_slug.strip()
     if not slug:
-        return Decision(False, "не задана комната BIRD_ROOM_SLUG")
+        return Decision(False, "не задана беседа для птицы")
 
     room = Room.objects.filter(slug=slug).first()
     if room is None:
@@ -252,19 +298,28 @@ def decide(*, now=None, room_users=FETCH_PRESENCE) -> Decision:
     if guests:
         return Decision(False, f"в комнате гости: {len(guests)}")
 
-    moment = local_now(now)
-    quiet_from, quiet_to = quiet_window()
-    if in_quiet_hours(moment.hour, quiet_from=quiet_from, quiet_to=quiet_to):
+    moment = local_now(now, timezone_name=config.timezone_name)
+    if in_quiet_hours(
+        moment.hour,
+        quiet_from=config.quiet_from,
+        quiet_to=config.quiet_to,
+    ):
         return Decision(False, f"тихий час ({moment.hour}:00)")
 
-    pause = _pause_reason(room, now=now, moment=moment)
+    pause = _pause_reason(room, now=now, moment=moment, config=config)
     if pause:
         return Decision(False, pause)
 
     return Decision(True, "в комнате никого, пора говорить")
 
 
-def _pause_reason(room: Room, *, now=None, moment: datetime | None = None) -> str:
+def _pause_reason(
+    room: Room,
+    *,
+    now=None,
+    moment: datetime | None = None,
+    config: BirdConfig | None = None,
+) -> str:
     """Почему нельзя говорить из-за ритма: пауза после реплики или потолок.
 
     Вынесено отдельно, потому что тот же вопрос задаётся второй раз под
@@ -277,21 +332,22 @@ def _pause_reason(room: Room, *, now=None, moment: datetime | None = None) -> st
         .values_list("created_at", flat=True)
         .first()
     )
+    config = config or load_config()
     if last is not None:
         elapsed = (now or timezone.now()) - last
-        if elapsed < timedelta(minutes=settings.BIRD_INTERVAL_MINUTES):
+        if elapsed < timedelta(minutes=config.interval_minutes):
             return (
                 f"рано: прошло {int(elapsed.total_seconds() // 60)} мин "
-                f"из {settings.BIRD_INTERVAL_MINUTES}"
+                f"из {config.interval_minutes}"
             )
 
-    moment = moment or local_now(now)
+    moment = moment or local_now(now, timezone_name=config.timezone_name)
     day_start = moment.replace(hour=0, minute=0, second=0, microsecond=0)
     said_today = BirdPost.objects.filter(
         room=room,
         created_at__gte=day_start,
     ).count()
-    if said_today >= settings.BIRD_DAILY_LIMIT:
+    if said_today >= config.daily_limit:
         return f"дневной потолок: {said_today}"
     return ""
 
@@ -351,6 +407,7 @@ def speak(
     room_users=FETCH_PRESENCE,
     ask=None,
     rng=None,
+    config=None,
 ):
     """Говорит, если пора. Возвращает текст реплики или None.
 
@@ -363,20 +420,21 @@ def speak(
     молчим». Раньше по умолчанию стоял ``None``, и штатный путь без ``--force``
     молчал всегда: путались «не знаю» и «спроси».
     """
+    config = config or load_config()
     if force:
-        if not settings.BIRD_ENABLED:
-            return _refuse("выключено настройкой BIRD_ENABLED")
-        slug = settings.BIRD_ROOM_SLUG.strip()
+        if not config.enabled:
+            return _refuse("выключено переключателем в админке")
+        slug = config.room_slug.strip()
         if not slug:
-            return _refuse("не задана комната BIRD_ROOM_SLUG")
+            return _refuse("не задана беседа для птицы")
         room = Room.objects.filter(slug=slug).first()
         if room is None:
-            return _refuse(f"комната {slug!r} не найдена")
+            return _refuse(f"беседа {slug!r} не найдена")
     else:
-        decision = decide(now=now, room_users=room_users)
+        decision = decide(now=now, room_users=room_users, config=config)
         if not decision.speak:
             return _refuse(decision.reason)
-        room = Room.objects.get(slug=settings.BIRD_ROOM_SLUG.strip())
+        room = Room.objects.get(slug=config.room_slug.strip())
 
     topic = pick_topic(room=room, rng=rng)
     if topic is None:
@@ -421,6 +479,7 @@ def speak(
             force=force,
             now=now,
             room_users=room_users,
+            config=config,
         )
     except BirdIdentityError as error:
         return _refuse(f"имя персонажа недоступно: {error}")
@@ -439,6 +498,7 @@ def _publish(
     force: bool = False,
     now=None,
     room_users=FETCH_PRESENCE,
+    config=None,
 ):
     """Публикует реплику и ставит Семёну задание ответить.
 
@@ -450,12 +510,13 @@ def _publish(
     это время в комнату мог зайти гость или начаться тихий час — тогда реплика
     отменяется, а не публикуется «потому что уже решили».
     """
+    config = config or load_config()
     bird = get_bird_user()
     with transaction.atomic():
         Room.objects.select_for_update().get(pk=room.pk)
 
         if not force:
-            pause = _pause_reason(room, now=now)
+            pause = _pause_reason(room, now=now, config=config)
             if pause:
                 return _refuse(f"передумала: {pause}")
 
@@ -465,9 +526,12 @@ def _publish(
             if guests:
                 return _refuse(f"передумала: в комнате гости ({len(guests)})")
 
-            moment = local_now(now)
-            quiet_from, quiet_to = quiet_window()
-            if in_quiet_hours(moment.hour, quiet_from=quiet_from, quiet_to=quiet_to):
+            moment = local_now(now, timezone_name=config.timezone_name)
+            if in_quiet_hours(
+                moment.hour,
+                quiet_from=config.quiet_from,
+                quiet_to=config.quiet_to,
+            ):
                 return _refuse("передумала: начался тихий час")
 
         message = MessageService.create_message(
