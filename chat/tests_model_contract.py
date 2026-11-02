@@ -46,6 +46,7 @@ PRESET_PREFIX = "samogon-"
 PERSONA_PATH = Path(__file__).with_name("services") / "prompts" / "semen.txt"
 BARTENDER_PATH = Path(__file__).with_name("services") / "bartender.py"
 PAYLOAD_PATH = Path(__file__).with_name("services") / "ollama.py"
+BIRD_PATH = Path(__file__).with_name("services") / "bird.py"
 
 
 class TestSharedModelContract(SimpleTestCase):
@@ -100,6 +101,17 @@ class TestSharedModelContract(SimpleTestCase):
         self.assertNotIn('"num_ctx"', bartender)
         self.assertNotIn('"keep_alive"', bartender)
         self.assertIn("chat_payload(", bartender)
+
+    def test_second_character_uses_the_shared_payload(self) -> None:
+        """Птица ходит в модель тем же путём, что и Семён.
+
+        Свой запрос у второго персонажа означал бы вторую копию договора:
+        имя модели, контекст и keep_alive разъехались бы тихо.
+        """
+        source = BIRD_PATH.read_text(encoding="utf-8")
+        self.assertIn("chat_payload(", source)
+        for literal in ('"num_ctx"', '"keep_alive"', '"model"'):
+            self.assertNotIn(literal, source)
 
     def test_timeout_leaves_room_for_a_cold_load(self) -> None:
         """Таймаут больше времени загрузки модели.

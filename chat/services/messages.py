@@ -21,7 +21,11 @@ from chat.models import (
 class MessageService:
     @staticmethod
     def display_username(username: str) -> str:
-        return "Семён" if username == settings.BARTENDER_USERNAME else username
+        if username == settings.BARTENDER_USERNAME:
+            return "Семён"
+        if username == settings.BIRD_USERNAME:
+            return "Птица-Говорун"
+        return username
 
     @staticmethod
     def get_avatar_url(user) -> str | None:

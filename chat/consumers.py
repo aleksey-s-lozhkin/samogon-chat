@@ -24,6 +24,7 @@ from .services.presence import online_users
 from .services.welcome import ensure_welcome_message
 from users.models import ChatStatus
 from users.statuses import normalize_custom_status
+from users.services.bots import bot_usernames, is_bot
 from users.services.push import enqueue_direct_message_push
 from .validators import validate_message
 
@@ -335,7 +336,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if recipient:
             await self.channel_layer.group_send(self.user_group_name, event)
             await self.channel_layer.group_send(f"chat_user_{recipient.id}", event)
-            if recipient.username != settings.BARTENDER_USERNAME:
+            # Персонажам личные уведомления не нужны: они и есть бот.
+            if not is_bot(recipient):
                 schedule_direct_message_push(
                     sender_id=self.user.pk,
                     recipient_id=recipient.id,
@@ -351,7 +353,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.channel_layer.group_send(self.room_group_name, event)
             # Общая комната: те, кто выбрал «все новые сообщения» и кого нет
             # в приложении, получат уведомление. Отправителю не шлём.
-            if self.user.username != settings.BARTENDER_USERNAME:
+            # Реплика персонажа не должна поднимать уведомления гостям:
+            # птица говорит по расписанию, и рассылка стала бы спамом.
+            if not is_bot(self.user):
                 schedule_room_message_push(
                     sender_id=self.user.pk,
                     room_slug=self.room.slug,
@@ -750,7 +754,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 Q(banned_at__isnull=True)
                 | Q(banned_until__lte=timezone.now())
             )
-            .exclude(username=settings.BARTENDER_USERNAME)
+            .exclude(username__in=bot_usernames())
             .annotate(
                 glasses_poured=Count(
                     "chat_messages",

@@ -2,12 +2,13 @@ from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 from users.models import ChatStatus, User
+from users.services.bots import bot_usernames
 
 
 def eligible_guests():
     return User.objects.filter(is_active=True, is_superuser=False).filter(
         Q(banned_at__isnull=True) | Q(banned_until__lte=timezone.now())
-    ).exclude(username=settings.BARTENDER_USERNAME)
+    ).exclude(username__in=bot_usernames())
 
 
 def guest_data(user, labels=None):
