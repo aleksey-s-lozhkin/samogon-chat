@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.utils import timezone
 
 from chat.models import BirdPost, Message, Room
@@ -193,6 +194,20 @@ def decide(*, now=None, room_users=None) -> Decision:
     if in_quiet_hours(moment.hour, quiet_from=quiet_from, quiet_to=quiet_to):
         return Decision(False, f"тихий час ({moment.hour}:00)")
 
+    pause = _pause_reason(room, now=now, moment=moment)
+    if pause:
+        return Decision(False, pause)
+
+    return Decision(True, "в комнате никого, пора говорить")
+
+
+def _pause_reason(room: Room, *, now=None, moment: datetime | None = None) -> str:
+    """Почему нельзя говорить из-за ритма: пауза после реплики или потолок.
+
+    Вынесено отдельно, потому что тот же вопрос задаётся второй раз под
+    блокировкой строки беседы: пока модель писала реплику, параллельный запуск
+    (например, пересечение двух тиков cron) мог успеть сказать своё.
+    """
     last = (
         BirdPost.objects.filter(room=room)
         .order_by("-created_at")
@@ -202,21 +217,20 @@ def decide(*, now=None, room_users=None) -> Decision:
     if last is not None:
         elapsed = (now or timezone.now()) - last
         if elapsed < timedelta(minutes=settings.BIRD_INTERVAL_MINUTES):
-            return Decision(
-                False,
+            return (
                 f"рано: прошло {int(elapsed.total_seconds() // 60)} мин "
-                f"из {settings.BIRD_INTERVAL_MINUTES}",
+                f"из {settings.BIRD_INTERVAL_MINUTES}"
             )
 
+    moment = moment or local_now(now)
     day_start = moment.replace(hour=0, minute=0, second=0, microsecond=0)
     said_today = BirdPost.objects.filter(
         room=room,
         created_at__gte=day_start,
     ).count()
     if said_today >= settings.BIRD_DAILY_LIMIT:
-        return Decision(False, f"дневной потолок: {said_today}")
-
-    return Decision(True, "в комнате никого, пора говорить")
+        return f"дневной потолок: {said_today}"
+    return ""
 
 
 def compose_line(topic: dict, *, ask=None) -> str:
@@ -303,7 +317,7 @@ def speak(*, force=False, dry_run=False, now=None, room_users=None, ask=None, rn
     if dry_run:
         return text
 
-    return _publish(room=room, topic=topic, text=text)
+    return _publish(room=room, topic=topic, text=text, force=force)
 
 
 def _refuse(reason: str):
@@ -311,19 +325,34 @@ def _refuse(reason: str):
     return None
 
 
-def _publish(*, room: Room, topic: dict, text: str) -> str:
-    """Публикует реплику и ставит Семёну задание ответить."""
+def _publish(*, room: Room, topic: dict, text: str, force: bool = False):
+    """Публикует реплику и ставит Семёну задание ответить.
+
+    Строка беседы блокируется на время записи: два пересекающихся запуска не
+    должны сказать по реплике каждый. Модель к этому моменту уже отработала,
+    поэтому блокировка держится миллисекунды, а не секунды генерации.
+    """
     bird = get_bird_user()
-    message = MessageService.create_message(
-        user_id=bird.id,
-        room=room,
-        text=text,
-    )
-    BirdPost.objects.create(
-        room=room,
-        message=message,
-        topic_id=str(topic.get("id", ""))[:64],
-    )
+    with transaction.atomic():
+        Room.objects.select_for_update().get(pk=room.pk)
+
+        if not force:
+            pause = _pause_reason(room)
+            if pause:
+                # Пока писала, кто-то успел: молчим, чтобы не было двух реплик.
+                return _refuse(f"передумала: {pause}")
+
+        message = MessageService.create_message(
+            user_id=bird.id,
+            room=room,
+            text=text,
+        )
+        BirdPost.objects.create(
+            room=room,
+            message=message,
+            topic_id=str(topic.get("id", ""))[:64],
+        )
+
     broadcast_message(message)
     enqueue_bartender_job(
         user=bird,

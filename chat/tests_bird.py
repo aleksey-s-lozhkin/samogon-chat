@@ -354,3 +354,33 @@ class BirdCommandTests(TestCase):
         self.assertIn("Сказала:", output.getvalue())
         self.assertEqual(Message.objects.filter(room=self.room).count(), 1)
         self.assertEqual(BirdPost.objects.count(), 1)
+
+
+class BirdConcurrencyTests(TestCase):
+    """Пересечение двух запусков не должно дать две реплики."""
+
+    def setUp(self):
+        self.room, _ = Room.objects.get_or_create(
+            slug="u-stoyki",
+            defaults={"name": "У стойки"},
+        )
+        self.owner = User.objects.create_user(username="owner", is_superuser=True)
+        self.daytime = datetime(2026, 11, 2, 9, 0, tzinfo=dt_timezone.utc)
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_second_run_right_after_the_first_stays_silent(self):
+        """Первый запуск сказал — второй в тот же момент молчит."""
+        first = bird.speak(
+            now=self.daytime,
+            room_users=[],
+            ask=lambda payload: "Первая реплика.",
+        )
+        second = bird.speak(
+            now=self.daytime,
+            room_users=[],
+            ask=lambda payload: "Вторая реплика.",
+        )
+
+        self.assertEqual(first, "Первая реплика.")
+        self.assertIsNone(second)
+        self.assertEqual(Message.objects.filter(room=self.room).count(), 1)
