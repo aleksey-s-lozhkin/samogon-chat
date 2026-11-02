@@ -1044,11 +1044,7 @@ class BirdAdminTests(TestCase):
 
         BirdSettings.objects.create(enabled=True, room=self.room)
         response = self.client.post(
-            self.changelist_url,
-            {
-                "action": "draft_now",
-                "_selected_action": ["1"],
-            },
+            reverse("admin:chat_birdsettings_draft", args=[1]),
             follow=True,
         )
 
@@ -1066,8 +1062,7 @@ class BirdAdminTests(TestCase):
         speak.return_value = None
 
         response = self.client.post(
-            self.changelist_url,
-            {"action": "say_now", "_selected_action": ["1"]},
+            reverse("admin:chat_birdsettings_say", args=[1]),
             follow=True,
         )
 

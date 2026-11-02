@@ -1,0 +1,19 @@
+{% extends "admin/base_site.html" %}
+{% load admin_dashboard %}
+
+{% block content_title %}{% endblock %}
+
+{% block content %}
+<div class="samogon-admin-page">
+    <div class="samogon-page-heading">
+        <div>
+            <p class="samogon-eyebrow">Сводка</p>
+            <h1>Управление Самогоном</h1>
+            <p>Что происходит в приложении и что требует внимания.</p>
+        </div>
+        <a class="button samogon-primary-action" href="{% url 'chat:rooms' %}">Открыть чат</a>
+    </div>
+
+    {% dashboard_metrics %}
+</div>
+{% endblock %}
