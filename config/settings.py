@@ -427,6 +427,9 @@ BIRD_QUIET_TIMEZONE = os.getenv("BIRD_QUIET_TIMEZONE", "Europe/Moscow")
 BIRD_MAX_LENGTH = int(os.getenv("BIRD_MAX_LENGTH", "220"))
 # Сколько последних поводов не повторять: список из 70 тем иначе зациклится.
 BIRD_TOPIC_HISTORY = int(os.getenv("BIRD_TOPIC_HISTORY", "20"))
+# Как часто воркер проверяет, пора ли говорить. Интервал между репликами
+# задаёт BIRD_INTERVAL_MINUTES, это лишь шаг проверки.
+BIRD_CHECK_SECONDS = int(os.getenv("BIRD_CHECK_SECONDS", "300"))
 
 # Метрики Семёна не содержат текст сообщений и нужны для диагностики Ollama.
 LOGGING = {
