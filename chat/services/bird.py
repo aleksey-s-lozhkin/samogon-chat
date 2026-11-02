@@ -27,6 +27,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from django.db import transaction
 from django.utils import timezone
 
@@ -226,11 +227,15 @@ def guests_in_room(room_slug: str, *, room_users=FETCH_PRESENCE) -> list[str] | 
     if not names:
         return []
 
+    # Хозяин заведения — это и суперпользователь, и сотрудник с доступом в
+    # админку: владелец часто работает под обычной учётной записью, иначе он
+    # сам же и выключал бы птицу, сидя в беседе.
     owners = set(
         get_user_model().objects.filter(
             username__in=names,
-            is_superuser=True,
-        ).values_list("username", flat=True)
+        )
+        .filter(Q(is_superuser=True) | Q(is_staff=True))
+        .values_list("username", flat=True)
     )
     return [name for name in names if name not in owners]
 
@@ -494,7 +499,18 @@ def speak(
         return _refuse(f"имя персонажа недоступно: {error}")
 
 
+#: Причина последнего отказа. Нужна management-команде и админке, чтобы
+#: «молчит» не превращалось в «пойди посмотри логи».
+_last_refusal = ""
+
+
+def last_refusal() -> str:
+    return _last_refusal
+
+
 def _refuse(reason: str):
+    global _last_refusal
+    _last_refusal = reason
     logger.info("bird_silent reason=%s", reason)
     return None
 

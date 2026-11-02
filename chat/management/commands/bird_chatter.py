@@ -8,7 +8,7 @@
 
 from django.core.management.base import BaseCommand
 
-from chat.services.bird import decide, speak
+from chat.services.bird import decide, last_refusal, speak
 
 
 class Command(BaseCommand):
@@ -41,9 +41,7 @@ class Command(BaseCommand):
 
         text = speak(force=force, dry_run=dry_run)
         if text is None:
-            self.stdout.write(
-                "Молчит: реплику собрать не удалось, подробности в журнале."
-            )
+            self.stdout.write(f"Молчит: {last_refusal() or 'причина неизвестна'}")
             return
 
         if dry_run:

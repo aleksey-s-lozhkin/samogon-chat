@@ -1148,3 +1148,42 @@ class ModeratorPermissionTests(TestCase):
         self.assertIn("chat.view_birdsettings", granted)
         self.assertIn("chat.change_birdsettings", granted)
         self.assertIn("chat.view_birdpost", granted)
+
+
+class BirdOwnerTests(TestCase):
+    """Хозяин не выключает птицу: он и есть зритель."""
+
+    def setUp(self):
+        self.room, _ = Room.objects.get_or_create(
+            slug="u-stoyki",
+            defaults={"name": "У стойки"},
+        )
+        self.daytime = datetime(2026, 11, 2, 9, 0, tzinfo=dt_timezone.utc)
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_staff_account_is_not_a_guest(self):
+        """Владелец часто работает под обычной учётной записью сотрудника."""
+        User.objects.create_user(username="owner", is_staff=True)
+
+        decision = bird.decide(now=self.daytime, room_users=["owner"])
+
+        self.assertTrue(decision.speak, decision.reason)
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_ordinary_guest_still_silences_the_bird(self):
+        User.objects.create_user(username="guest")
+
+        decision = bird.decide(now=self.daytime, room_users=["guest"])
+
+        self.assertFalse(decision.speak)
+        self.assertIn("гости", decision.reason)
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.services.bird.send_chat", side_effect=OllamaUnavailable)
+    def test_command_explains_why_it_stays_silent(self, send_chat):
+        """«Подробности в журнале» — плохой ответ для команды по расписанию."""
+        output = StringIO()
+
+        call_command("bird_chatter", "--force", stdout=output)
+
+        self.assertIn("модель недоступна", output.getvalue())
