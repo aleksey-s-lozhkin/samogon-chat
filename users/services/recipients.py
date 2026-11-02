@@ -22,7 +22,13 @@ def resolve_recipient(*, username: str, viewer, room=None):
     if not name or viewer is None:
         return None
 
-    user = User.objects.filter(username__iexact=name).first()
+    # Сначала точное совпадение: регистрация не запрещает Alice и alice, и
+    # поиск без регистра мог бы отправить личное сообщение не тому человеку.
+    user = User.objects.filter(username=name).first()
+    if user is None:
+        # Регистр не совпал — принимаем только однозначный вариант.
+        candidates = list(User.objects.filter(username__iexact=name)[:2])
+        user = candidates[0] if len(candidates) == 1 else None
     if user is None or user.pk == viewer.pk:
         return None
     if not user.is_active or user.is_superuser or user.is_banned:
