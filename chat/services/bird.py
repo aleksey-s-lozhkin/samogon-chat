@@ -27,6 +27,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.db.models import Q
 from django.db import transaction
 from django.utils import timezone
@@ -65,6 +66,15 @@ LANGUAGE_RETRY = (
 )
 
 
+class BirdConfigUnavailable(RuntimeError):
+    """Настройки прочитать не удалось: включена птица или нет — неизвестно.
+
+    Это не «выключено». Молчаливое «выключено» однажды уже стоило суток
+    тишины: при недоступной базе птица замолчала, а причина выглядела как
+    осознанное решение хозяина.
+    """
+
+
 @dataclass(frozen=True)
 class BirdConfig:
     """Действующие настройки: из админки, а если строки нет — из окружения."""
@@ -91,7 +101,13 @@ def load_config() -> BirdConfig:
 
     try:
         row = BirdSettings.objects.select_related("room").first()
-    except DatabaseError:
+    except DatabaseError as error:
+        if "does not exist" not in str(error):
+            # Соединение сломано или база недоступна. Сбрасываем его, чтобы
+            # следующий заход не наткнулся на ту же ошибку, и честно говорим,
+            # что состояние неизвестно.
+            connection.close()
+            raise BirdConfigUnavailable(str(error)) from error
         # Таблицы может не быть: воркер стартует раньше, чем веб-контейнер
         # применит миграции. Это не повод падать — работаем по окружению.
         logger.warning("bird_settings_unavailable, беру значения из окружения")
@@ -293,7 +309,10 @@ def pick_topic(*, room: Room, rng=None) -> dict | None:
 
 def decide(*, now=None, room_users=FETCH_PRESENCE, config=None) -> Decision:
     """Стоит ли говорить прямо сейчас и почему именно так."""
-    config = config or load_config()
+    try:
+        config = config or load_config()
+    except BirdConfigUnavailable as error:
+        return Decision(False, f"настройки недоступны: {error}")
     if not config.enabled:
         return Decision(False, "выключено переключателем в админке")
 
@@ -434,7 +453,10 @@ def speak(
     молчим». Раньше по умолчанию стоял ``None``, и штатный путь без ``--force``
     молчал всегда: путались «не знаю» и «спроси».
     """
-    config = config or load_config()
+    try:
+        config = config or load_config()
+    except BirdConfigUnavailable as error:
+        return _refuse(f"настройки недоступны: {error}")
     if force:
         if not config.enabled:
             return _refuse("выключено переключателем в админке")

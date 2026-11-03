@@ -916,12 +916,37 @@ class BirdSchedulingTests(TestCase):
         )
 
     @override_settings(**{**BIRD_SETTINGS, "BIRD_ENABLED": False})
+    @patch("chat.tasks.schedule_bird_tick")
+    def test_disabled_bird_stops_the_chain(self, schedule):
+        """Выключение останавливает цепочку на ближайшем тике."""
+        from chat.tasks import bird_tick
+
+        bird_tick.run()
+
+        schedule.assert_not_called()
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.tasks.schedule_bird_tick")
+    @patch("chat.services.bird.load_config")
+    def test_unknown_config_keeps_the_chain_alive(self, load_config, schedule):
+        """База недоступна — это не «выключено»: пробуем снова."""
+        from chat.services.bird import BirdConfigUnavailable
+
+        load_config.side_effect = BirdConfigUnavailable("нет связи")
+        from chat.tasks import bird_tick
+
+        bird_tick.run()
+
+        schedule.assert_called_once_with()
+
+    @override_settings(**BIRD_SETTINGS)
     @patch("chat.tasks.bird_tick.apply_async")
-    def test_disabled_bird_does_not_arm_anything(self, apply_async):
+    def test_scheduling_does_not_depend_on_settings(self, apply_async):
+        """Постановка тика не читает настройки: иначе сбой базы её отменяет."""
         from chat.tasks import schedule_bird_tick
 
-        self.assertFalse(schedule_bird_tick())
-        apply_async.assert_not_called()
+        self.assertTrue(schedule_bird_tick())
+        apply_async.assert_called_once()
 
     @override_settings(**BIRD_SETTINGS)
     @patch("chat.tasks.schedule_bird_tick")
@@ -932,7 +957,7 @@ class BirdSchedulingTests(TestCase):
         # Исключение не должно выходить наружу, иначе цепочка оборвётся.
         bird_tick.run()
 
-        speak.assert_called_once_with()
+        self.assertEqual(speak.call_count, 1)
         schedule.assert_called_once_with()
 
     @override_settings(**BIRD_SETTINGS)
@@ -943,7 +968,7 @@ class BirdSchedulingTests(TestCase):
 
         bird_tick.run()
 
-        speak.assert_called_once_with()
+        self.assertEqual(speak.call_count, 1)
         schedule.assert_called_once_with()
 
 
@@ -1123,6 +1148,51 @@ class BirdStartupResilienceTests(TestCase):
         bird_tick.run()
 
         speak.assert_called_once()
+
+
+class BirdConfigFailureTests(TestCase):
+    """Сбой соединения — «неизвестно», а не «выключено»."""
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_connection_failure_is_not_reported_as_disabled(self):
+        from unittest.mock import patch
+
+        from django.db import OperationalError
+        from django.db.models.manager import Manager
+
+        from chat.services.bird import BirdConfigUnavailable, load_config
+
+        with patch.object(
+            Manager,
+            "select_related",
+            side_effect=OperationalError("Temporary failure in name resolution"),
+        ):
+            with self.assertRaises(BirdConfigUnavailable):
+                load_config()
+
+    @override_settings(**BIRD_SETTINGS)
+    def test_speak_names_the_real_reason(self):
+        from unittest.mock import patch
+
+        from django.db import OperationalError
+        from django.db.models.manager import Manager
+
+        with patch.object(
+            Manager,
+            "select_related",
+            side_effect=OperationalError("нет связи"),
+        ):
+            with patch.object(
+                bird,
+                "load_config",
+                __import__("unittest.mock", fromlist=["MagicMock"]).MagicMock(
+                    side_effect=bird.BirdConfigUnavailable("нет связи")
+                ),
+            ):
+                result = bird.speak(force=True)
+
+        self.assertIsNone(result)
+        self.assertIn("настройки недоступны", bird.last_refusal())
 
 
 class ModeratorPermissionTests(TestCase):
