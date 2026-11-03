@@ -48,31 +48,42 @@ def bird_tick(self):
     Дубли безопасны: решение принимается под блокировкой строки беседы, а
     интервал проверяется дважды — второй раз уже под ней.
     """
-    from chat.services.bird import speak
+    from chat.services.bird import BirdConfigUnavailable, load_config, speak
 
     try:
-        speak()
+        config = load_config()
+    except BirdConfigUnavailable:
+        # Состояние неизвестно: не выключаемся навсегда, пробуем снова.
+        logger.error("bird_config_unavailable, повторю позже", exc_info=True)
+        schedule_bird_tick()
+        return
+
+    if not config.enabled:
+        # Осознанно выключена — цепочка останавливается. Включение из админки
+        # ставит первый тик само.
+        return
+
+    try:
+        speak(config=config)
     except Exception:
-        # Птица не должна ронять воркер и останавливать саму себя.
+        # Птица не должна ронять воркер. Даже упав, она пробует снова.
         logger.warning("bird_tick_failed", exc_info=True)
-    finally:
-        try:
-            schedule_bird_tick()
-        except Exception:
-            # Оборванная цепочка — тихая поломка: пишем так, чтобы было видно.
-            logger.warning("bird_reschedule_failed", exc_info=True)
+
+    try:
+        schedule_bird_tick()
+    except Exception:
+        # Оборванная цепочка — тихая поломка: пишем так, чтобы было видно.
+        logger.warning("bird_reschedule_failed", exc_info=True)
 
 
 def schedule_bird_tick() -> bool:
-    """Назначает следующий тик, если птица включена.
+    """Назначает следующий тик, не спрашивая настроек.
 
-    Включённость читается из админки, а не из окружения: тогда переключатель
-    начинает работать сразу, без перезапуска контейнеров.
+    Включённость проверяет сам тик. Так сделано после 3 ноября: при старте
+    воркера база не разрешалась по имени, проверка настроек падала, и цепочка
+    не поднималась вовсе — птица замолчала, а выглядело это как «выключена».
+    Пустой тик раз в пять минут дешевле, чем потерянная птица.
     """
-    from chat.services.bird import load_config
-
-    if not load_config().enabled:
-        return False
     bird_tick.apply_async(countdown=settings.BIRD_CHECK_SECONDS)
     return True
 
@@ -80,17 +91,21 @@ def schedule_bird_tick() -> bool:
 @worker_ready.connect
 def restore_queued_bartender_jobs(**kwargs):
     """Возвращает в Redis задания, сохранённые во время недоступности брокера."""
-    for job_id in BartenderJob.objects.filter(
-        status=BartenderJob.Status.QUEUED,
-    ).values_list("id", flat=True).iterator():
-        process_bartender_job.delay(str(job_id))
-    # Птица планирует себя сама; после перезапуска воркера цепочка
-    # восстанавливается здесь, иначе она бы тихо оборвалась. Ошибку глушим:
-    # обработчик сигнала не должен мешать воркеру подняться.
+    # Птицу запускаем первым делом и без условий: если база в этот момент
+    # недоступна, восстановление заданий упадёт, но цепочка птицы поднимется.
+    # Ошибку глушим — обработчик сигнала не должен мешать воркеру подняться.
     try:
         schedule_bird_tick()
     except Exception:
         logger.warning("bird_schedule_failed", exc_info=True)
+
+    try:
+        for job_id in BartenderJob.objects.filter(
+            status=BartenderJob.Status.QUEUED,
+        ).values_list("id", flat=True).iterator():
+            process_bartender_job.delay(str(job_id))
+    except Exception:
+        logger.warning("bartender_restore_failed", exc_info=True)
 
 
 @shared_task(bind=True, max_retries=2, default_retry_delay=10)
