@@ -4133,3 +4133,31 @@ class CharacterModelTests(TestCase):
         payload = self._payload(author=BIRD_LABEL, character_model="")
 
         self.assertEqual(payload["model"], settings.OLLAMA_MODEL)
+
+
+class ServicePrefixCleanupTests(TestCase):
+    """Служебный префикс не должен попадать в чат."""
+
+    def test_arrow_prefix_is_removed(self):
+        from chat.services.bartender import bartender
+
+        self.assertEqual(
+            bartender._strip_markdown_decoration(">>> Добавить нечего."),
+            "Добавить нечего.",
+        )
+
+    def test_name_prefix_is_removed(self):
+        from chat.services.bartender import bartender
+
+        self.assertEqual(
+            bartender._strip_markdown_decoration("Семён: Ну и что?"),
+            "Ну и что?",
+        )
+
+    def test_plain_text_is_untouched(self):
+        from chat.services.bartender import bartender
+
+        self.assertEqual(
+            bartender._strip_markdown_decoration("Обычный ответ."),
+            "Обычный ответ.",
+        )
