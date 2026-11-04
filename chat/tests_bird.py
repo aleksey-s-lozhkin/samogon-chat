@@ -737,12 +737,26 @@ class BirdChainClaimTests(TestCase):
 
     @override_settings(**BIRD_SETTINGS)
     @patch("chat.tasks.bird_tick.apply_async")
-    def test_tick_extends_its_own_chain(self, apply_async):
+    def test_restart_takes_over_the_chain(self, apply_async):
+        """Старт воркера забирает владение, даже если старая цепочка в очереди."""
         from chat.tasks import schedule_bird_tick
 
         self.assertTrue(schedule_bird_tick())
-        self.assertTrue(schedule_bird_tick(extend_claim=True))
+        self.assertTrue(schedule_bird_tick(force=True))
         self.assertEqual(apply_async.call_count, 2)
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.tasks.schedule_bird_tick")
+    def test_stale_chain_stops_instead_of_rearming(self, schedule):
+        """Тик от старой цепочки не переставляет себя."""
+        from django.core.cache import cache
+
+        from chat.tasks import BIRD_CHAIN_KEY, bird_tick
+
+        cache.set(BIRD_CHAIN_KEY, "new-owner")
+        bird_tick.run(chain_id="old-chain")
+
+        schedule.assert_not_called()
 
     @override_settings(**BIRD_SETTINGS)
     @patch("chat.tasks.bird_tick.apply_async")
@@ -964,8 +978,10 @@ class BirdSchedulingTests(TestCase):
         from chat.tasks import schedule_bird_tick
 
         self.assertTrue(schedule_bird_tick())
-        apply_async.assert_called_once_with(
-            countdown=settings.BIRD_CHECK_SECONDS,
+        self.assertEqual(apply_async.call_count, 1)
+        self.assertEqual(
+            apply_async.call_args.kwargs["countdown"],
+            settings.BIRD_CHECK_SECONDS,
         )
 
     @override_settings(**{**BIRD_SETTINGS, "BIRD_ENABLED": False})
@@ -990,7 +1006,7 @@ class BirdSchedulingTests(TestCase):
 
         bird_tick.run()
 
-        schedule.assert_called_once_with(extend_claim=True)
+        schedule.assert_called_once_with(chain_id=None)
 
     @override_settings(**BIRD_SETTINGS)
     @patch("chat.tasks.bird_tick.apply_async")
@@ -1011,7 +1027,7 @@ class BirdSchedulingTests(TestCase):
         bird_tick.run()
 
         self.assertEqual(speak.call_count, 1)
-        schedule.assert_called_once_with(extend_claim=True)
+        schedule.assert_called_once_with(chain_id=None)
 
     @override_settings(**BIRD_SETTINGS)
     @patch("chat.tasks.schedule_bird_tick")
@@ -1022,7 +1038,7 @@ class BirdSchedulingTests(TestCase):
         bird_tick.run()
 
         self.assertEqual(speak.call_count, 1)
-        schedule.assert_called_once_with(extend_claim=True)
+        schedule.assert_called_once_with(chain_id=None)
 
 
 class BirdAdminTests(TestCase):

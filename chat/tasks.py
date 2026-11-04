@@ -37,8 +37,12 @@ def generate_atmosphere_line_candidate(self):
 
 
 @shared_task(bind=True)
-def bird_tick(self):
+def bird_tick(self, chain_id=None):
     """Один тик птицы: решает, пора ли говорить, и планирует следующий.
+
+    ``chain_id`` — какая цепочка поставила этот тик. Если право продолжать
+    уже у другой (воркер перезапускался, цепочка дублировалась), тик молча
+    завершается: иначе старые цепочки переставляют себя вечно.
 
     Расписание живёт внутри задачи, а не в Celery beat: beat — это ещё один
     контейнер и ещё одно место, где настраивается время. Тик сам назначает
@@ -50,12 +54,19 @@ def bird_tick(self):
     """
     from chat.services.bird import BirdConfigUnavailable, load_config, speak
 
+    if chain_id is not None:
+        owner = _bird_chain_owner()
+        # None — кэш недоступен: считаем себя владельцем, иначе птица умрёт.
+        if owner is not None and owner != chain_id:
+            logger.info("bird_chain_superseded")
+            return
+
     try:
         config = load_config()
     except BirdConfigUnavailable:
         # Состояние неизвестно: не выключаемся навсегда, пробуем снова.
         logger.error("bird_config_unavailable, повторю позже", exc_info=True)
-        schedule_bird_tick(extend_claim=True)
+        schedule_bird_tick(chain_id=chain_id)
         return
 
     if not config.enabled:
@@ -70,7 +81,7 @@ def bird_tick(self):
         logger.warning("bird_tick_failed", exc_info=True)
 
     try:
-        schedule_bird_tick(extend_claim=True)
+        schedule_bird_tick(chain_id=chain_id)
     except Exception:
         # Оборванная цепочка — тихая поломка: пишем так, чтобы было видно.
         logger.warning("bird_reschedule_failed", exc_info=True)
@@ -79,7 +90,17 @@ def bird_tick(self):
 BIRD_CHAIN_KEY = "samogon:bird:chain"
 
 
-def schedule_bird_tick(*, extend_claim: bool = False) -> bool:
+def _bird_chain_owner() -> str | None:
+    """Идентификатор цепочки, которой принадлежит право продолжать."""
+    from django.core.cache import cache
+
+    try:
+        return cache.get(BIRD_CHAIN_KEY)
+    except Exception:
+        return None
+
+
+def schedule_bird_tick(*, chain_id: str | None = None, force: bool = False) -> bool:
     """Назначает следующий тик, следя, чтобы цепочка была одна.
 
     Включённость проверяет сам тик. Так сделано после 3 ноября: при старте
@@ -94,19 +115,31 @@ def schedule_bird_tick(*, extend_claim: bool = False) -> bool:
     ``extend_claim=True`` — продление собственной цепочки: тик снимает
     блокировку на время своей работы и ставит следующую.
     """
+    from uuid import uuid4
+
     from django.core.cache import cache
 
-    try:
-        if extend_claim:
-            cache.set(BIRD_CHAIN_KEY, "1", timeout=settings.BIRD_CHECK_SECONDS * 2)
-        elif not cache.add(BIRD_CHAIN_KEY, "1", timeout=settings.BIRD_CHECK_SECONDS * 2):
-            return False
-    except Exception:
-        # Кэш недоступен — ставим тик без проверки: лишний тик безвреден,
-        # а пропущенный убивает птицу.
-        logger.warning("bird_chain_cache_unavailable", exc_info=True)
+    ttl = settings.BIRD_CHECK_SECONDS * 2
+    if chain_id is None:
+        chain_id = uuid4().hex
+        try:
+            # force — забрать владение себе (старт воркера). Старые цепочки
+            # после этого увидят чужой id и завершатся, не переставляясь.
+            if force:
+                cache.set(BIRD_CHAIN_KEY, chain_id, timeout=ttl)
+            elif not cache.add(BIRD_CHAIN_KEY, chain_id, timeout=ttl):
+                return False
+        except Exception:
+            # Кэш недоступен — ставим тик без проверки: лишний тик безвреден,
+            # а пропущенный убивает птицу.
+            logger.warning("bird_chain_cache_unavailable", exc_info=True)
+    else:
+        try:
+            cache.set(BIRD_CHAIN_KEY, chain_id, timeout=ttl)
+        except Exception:
+            logger.warning("bird_chain_cache_unavailable", exc_info=True)
 
-    bird_tick.apply_async(countdown=settings.BIRD_CHECK_SECONDS)
+    bird_tick.apply_async(args=[chain_id], countdown=settings.BIRD_CHECK_SECONDS)
     return True
 
 
@@ -117,7 +150,9 @@ def restore_queued_bartender_jobs(**kwargs):
     # недоступна, восстановление заданий упадёт, но цепочка птицы поднимется.
     # Ошибку глушим — обработчик сигнала не должен мешать воркеру подняться.
     try:
-        schedule_bird_tick()
+        # force: забираем владение. Цепочки, оставшиеся в очереди от прошлых
+        # запусков, увидят чужой id и завершатся, а не будут переставлять себя.
+        schedule_bird_tick(force=True)
     except Exception:
         logger.warning("bird_schedule_failed", exc_info=True)
 
