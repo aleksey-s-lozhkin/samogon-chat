@@ -346,6 +346,36 @@ def decide(*, now=None, room_users=FETCH_PRESENCE, config=None) -> Decision:
     return Decision(True, "в комнате никого, пора говорить")
 
 
+def _effective_interval_minutes(
+    config,
+    *,
+    moment: datetime,
+    said_today: int,
+) -> int:
+    """Пауза, при которой дневной бюджет доживает до конца окна.
+
+    При фиксированных 30 минутах двенадцать реплик выгорают к обеду, и вечер —
+    время, когда в бар и заходят, — остаётся пустым. Поэтому пауза считается
+    как «оставшиеся часы до тишины, делённые на оставшиеся реплики»: сразу
+    после начала дня это ~85 минут, а к вечеру — больше.
+
+    Настроенное значение остаётся **нижней границей**: «не чаще, чем задано».
+    Если хозяин поставил 120 минут, птица не станет говорить чаще, даже когда
+    бюджет позволяет.
+    """
+    remaining_lines = max(config.daily_limit - said_today, 1)
+    hour = moment.hour + moment.minute / 60
+    quiet_from = config.quiet_from
+    if hour >= config.quiet_to:
+        remaining_hours = (24 - hour) + quiet_from
+    else:
+        remaining_hours = quiet_from - hour
+    if remaining_hours <= 0:
+        return config.interval_minutes
+    spread = remaining_hours * 60 / remaining_lines
+    return max(config.interval_minutes, int(spread))
+
+
 def _pause_reason(
     room: Room,
     *,
@@ -359,21 +389,7 @@ def _pause_reason(
     блокировкой строки беседы: пока модель писала реплику, параллельный запуск
     (например, пересечение двух тиков cron) мог успеть сказать своё.
     """
-    last = (
-        BirdPost.objects.filter(room=room)
-        .order_by("-created_at")
-        .values_list("created_at", flat=True)
-        .first()
-    )
     config = config or load_config()
-    if last is not None:
-        elapsed = (now or timezone.now()) - last
-        if elapsed < timedelta(minutes=config.interval_minutes):
-            return (
-                f"рано: прошло {int(elapsed.total_seconds() // 60)} мин "
-                f"из {config.interval_minutes}"
-            )
-
     moment = moment or local_now(now, timezone_name=config.timezone_name)
     day_start = moment.replace(hour=0, minute=0, second=0, microsecond=0)
     said_today = BirdPost.objects.filter(
@@ -382,6 +398,25 @@ def _pause_reason(
     ).count()
     if said_today >= config.daily_limit:
         return f"дневной потолок: {said_today}"
+
+    interval = _effective_interval_minutes(
+        config,
+        moment=moment,
+        said_today=said_today,
+    )
+    last = (
+        BirdPost.objects.filter(room=room)
+        .order_by("-created_at")
+        .values_list("created_at", flat=True)
+        .first()
+    )
+    if last is not None:
+        elapsed = (now or timezone.now()) - last
+        if elapsed < timedelta(minutes=interval):
+            return (
+                f"рано: прошло {int(elapsed.total_seconds() // 60)} мин "
+                f"из {interval}"
+            )
     return ""
 
 

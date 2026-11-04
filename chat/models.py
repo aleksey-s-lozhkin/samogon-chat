@@ -425,6 +425,10 @@ class BirdSettings(models.Model):
     interval_minutes = models.PositiveIntegerField(
         "Пауза между репликами, мин",
         default=30,
+        help_text=(
+            "Нижняя граница: птица не говорит чаще. Дальше пауза сама "
+            "растягивается, чтобы реплики хватило до конца дня."
+        ),
     )
     daily_limit = models.PositiveSmallIntegerField(
         "Потолок реплик в сутки",
