@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone as dt_timezone
+from zoneinfo import ZoneInfo
 
 from io import StringIO
 from unittest.mock import patch
@@ -115,7 +116,7 @@ class BirdDecisionTests(TestCase):
     def test_speaks_again_after_the_interval(self):
         message = Message.objects.create(user=self.owner, room=self.room, text="привет")
         post = BirdPost.objects.create(room=self.room, message=message, topic_id="x")
-        BirdPost.objects.filter(pk=post.pk).update(created_at=self.daytime - timedelta(minutes=40))
+        BirdPost.objects.filter(pk=post.pk).update(created_at=self.daytime - timedelta(hours=3))
 
         decision = bird.decide(now=self.daytime, room_users=[])
 
@@ -404,7 +405,8 @@ class BirdRhythmTests(TestCase):
             room_users=[],
             ask=lambda payload: "Первая реплика.",
         )
-        BirdPost.objects.update(created_at=self.daytime - timedelta(minutes=40))
+        # Пауза зависит от остатка бюджета, поэтому берём заведомо большой зазор.
+        BirdPost.objects.update(created_at=self.daytime - timedelta(hours=3))
 
         second = bird.speak(
             now=self.daytime,
@@ -1321,3 +1323,46 @@ class BirdOwnerTests(TestCase):
         call_command("bird_chatter", "--force", stdout=output)
 
         self.assertIn("модель недоступна", output.getvalue())
+
+
+class BirdRhythmSpreadTests(TestCase):
+    """Ритм сам растягивает дневной бюджет до конца окна.
+
+    При фиксированных 30 минутах двенадцать реплик выгорали к обеду, и вечер
+    оставался пустым — гость заходил в самый интересный час и не заставал
+    ничего.
+    """
+
+    def interval(self, hour, minute, *, said, limit=12, floor=30, quiet_from=1, quiet_to=8):
+        from datetime import datetime
+
+        from chat.services.bird import BirdConfig, _effective_interval_minutes
+
+        config = BirdConfig(
+            enabled=True,
+            room_slug="u-stoyki",
+            interval_minutes=floor,
+            daily_limit=limit,
+            quiet_from=quiet_from,
+            quiet_to=quiet_to,
+            timezone_name="Europe/Moscow",
+        )
+        moment = datetime(2026, 11, 4, hour, minute, tzinfo=dt_timezone.utc)
+        return _effective_interval_minutes(config, moment=moment, said_today=said)
+
+    def test_nothing_said_yet_spreads_over_the_whole_day(self):
+        # 08:00 → до 01:00 семнадцать часов на двенадцать реплик.
+        self.assertEqual(self.interval(8, 0, said=0), 85)
+
+    def test_pause_grows_as_the_budget_is_used(self):
+        # 12:00, сказано пять → тринадцать часов на семь реплик.
+        self.assertEqual(self.interval(12, 0, said=5), 111)
+
+    def test_evening_leaves_room_for_the_last_lines(self):
+        # 23:00, сказано одиннадцать → два часа на одну.
+        self.assertEqual(self.interval(23, 0, said=11), 120)
+
+    def test_configured_pause_stays_a_floor(self):
+        """Хозяин сказал «не чаще 120 минут» — модель не спорит."""
+        self.assertEqual(self.interval(8, 0, said=0, floor=120), 120)
+
