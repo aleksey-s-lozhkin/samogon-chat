@@ -45,6 +45,12 @@ jobs:
           pip --version
 
       # Poetry закреплён: без версии сборка невоспроизводима.
+      - name: Cache Poetry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ hashFiles('poetry.lock') }}
+
       - name: Install dependencies
         run: pip install --no-cache-dir "poetry==2.4.1" && poetry install --no-interaction --no-root --only main
 
@@ -65,7 +71,7 @@ jobs:
         run: poetry run python manage.py makemigrations --check --dry-run
 
       - name: Run tests
-        run: poetry run python manage.py test
+        run: poetry run python manage.py test --parallel 2
 
   publish:
     name: Publish image to Docker Hub
@@ -92,6 +98,8 @@ jobs:
         with:
           context: .
           push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           tags: |
             ${{ env.IMAGE_NAME }}:latest
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
