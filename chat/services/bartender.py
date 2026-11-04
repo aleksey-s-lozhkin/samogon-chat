@@ -31,6 +31,9 @@ CHARACTER_PROMPTS = {
 #: Параметры генерации для ответов персонажу: меньше фантазии, короче реплика.
 CHARACTER_GENERATION = {"temperature": 0.4, "num_predict": 90}
 
+#: Служебный префикс, который промпт запрещает, а модель иногда ставит.
+SERVICE_PREFIX = re.compile(r"^(?:>>>|’>|«>|Семён\s*:)\s*", re.IGNORECASE)
+
 #: Сколько слов в начале ответа считается повтором реплики собеседника.
 ECHO_MIN_WORDS = 3
 
@@ -229,7 +232,9 @@ class BartenderService:
     def _strip_markdown_decoration(content: str) -> str:
         """Убираем видимые маркеры, не меняя текст и имена вроде __hash__."""
         content = re.sub(r"```(?:[A-Za-z0-9_+-]+)?\s*", "", content)
-        return content.replace("`", "").replace("**", "").strip()
+        content = content.replace("`", "").replace("**", "").strip()
+        # Модель иногда ставит служебный префикс, который промпт запрещает.
+        return SERVICE_PREFIX.sub("", content).strip()
 
     @staticmethod
     def _needs_language_retry(content: str) -> bool:
