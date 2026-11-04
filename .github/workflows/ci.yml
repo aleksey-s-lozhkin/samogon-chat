@@ -2,9 +2,14 @@ name: Verify pull request
 
 on:
   pull_request:
-    branches: [develop, main]
-  push:
-    branches: [develop, main]
+    branches: [main]
+  workflow_dispatch:
+
+# Новый пуш в ту же ветку отменяет предыдущий прогон: ждать устаревший
+# результат незачем, а раннеры заняты впустую.
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -39,6 +44,12 @@ jobs:
           pip --version
 
       # Poetry закреплён: без версии сборка невоспроизводима.
+      - name: Cache Poetry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ hashFiles('poetry.lock') }}
+
       - name: Install dependencies
         run: pip install --no-cache-dir "poetry==2.4.1" && poetry install --no-interaction --no-root --only main
 
@@ -69,7 +80,7 @@ jobs:
           poetry run python manage.py test config.test_admin.AdminDiagnosticsTests.test_admin_index_renders
 
       - name: Run tests
-        run: poetry run python manage.py test
+        run: poetry run python manage.py test --parallel 2
 
       - name: Check release audit tools
         run: |
@@ -84,8 +95,17 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Build image without publishing
-        run: docker build --tag samogon:pull-request .
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: samogon:pull-request
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   browser-smoke:
     name: Browser smoke tests
@@ -117,8 +137,20 @@ jobs:
           pip --version
 
       # Poetry закреплён: без версии сборка невоспроизводима.
+      - name: Cache Poetry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ hashFiles('poetry.lock') }}
+
       - name: Install dependencies
         run: pip install --no-cache-dir "poetry==2.4.1" && poetry install --no-interaction --no-root --with dev
+
+      - name: Cache browser engines
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('poetry.lock') }}
 
       - name: Install browser engines
         run: poetry run playwright install --with-deps chromium webkit
