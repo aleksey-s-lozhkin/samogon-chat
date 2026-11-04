@@ -713,6 +713,49 @@ class BirdScheduledPathTests(TestCase):
         send_chat.assert_not_called()
 
 
+class BirdChainClaimTests(TestCase):
+    """Цепочка должна быть одна, сколько бы раз её ни ставили."""
+
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+
+    def tearDown(self):
+        from django.core.cache import cache
+
+        cache.clear()
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.tasks.bird_tick.apply_async")
+    def test_second_schedule_does_not_start_a_second_chain(self, apply_async):
+        from chat.tasks import schedule_bird_tick
+
+        self.assertTrue(schedule_bird_tick())
+        self.assertFalse(schedule_bird_tick())
+        apply_async.assert_called_once()
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.tasks.bird_tick.apply_async")
+    def test_tick_extends_its_own_chain(self, apply_async):
+        from chat.tasks import schedule_bird_tick
+
+        self.assertTrue(schedule_bird_tick())
+        self.assertTrue(schedule_bird_tick(extend_claim=True))
+        self.assertEqual(apply_async.call_count, 2)
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.tasks.bird_tick.apply_async")
+    def test_broken_cache_still_arms_the_tick(self, apply_async):
+        """Лишний тик безвреден, пропущенный — убивает птицу."""
+        from chat.tasks import schedule_bird_tick
+
+        with patch("django.core.cache.cache.add", side_effect=RuntimeError("redis down")):
+            self.assertTrue(schedule_bird_tick())
+
+        apply_async.assert_called_once()
+
+
 class BirdLateCheckTests(TestCase):
     """Гость, зашедший во время генерации, отменяет реплику."""
 
@@ -905,6 +948,16 @@ class BartenderAccessTests(TestCase):
 class BirdSchedulingTests(TestCase):
     """Расписание живёт внутри воркера: без cron и без Celery beat."""
 
+    def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
+
+    def tearDown(self):
+        from django.core.cache import cache
+
+        cache.clear()
+
     @override_settings(**BIRD_SETTINGS)
     @patch("chat.tasks.bird_tick.apply_async")
     def test_schedule_arms_the_next_tick(self, apply_async):
@@ -937,7 +990,7 @@ class BirdSchedulingTests(TestCase):
 
         bird_tick.run()
 
-        schedule.assert_called_once_with()
+        schedule.assert_called_once_with(extend_claim=True)
 
     @override_settings(**BIRD_SETTINGS)
     @patch("chat.tasks.bird_tick.apply_async")
@@ -958,7 +1011,7 @@ class BirdSchedulingTests(TestCase):
         bird_tick.run()
 
         self.assertEqual(speak.call_count, 1)
-        schedule.assert_called_once_with()
+        schedule.assert_called_once_with(extend_claim=True)
 
     @override_settings(**BIRD_SETTINGS)
     @patch("chat.tasks.schedule_bird_tick")
@@ -969,7 +1022,7 @@ class BirdSchedulingTests(TestCase):
         bird_tick.run()
 
         self.assertEqual(speak.call_count, 1)
-        schedule.assert_called_once_with()
+        schedule.assert_called_once_with(extend_claim=True)
 
 
 class BirdAdminTests(TestCase):
