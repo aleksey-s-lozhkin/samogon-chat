@@ -410,6 +410,16 @@ except ValueError:
 # 8192 проверено замером: 6,19 ГБ видеопамяти из 8. Промпт Семёна
 # занимает 2709 токенов, так что запас есть и на историю беседы.
 OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "8192"))
+# Отдельная модель для ответов персонажу (птице). Пусто — общая модель.
+#
+# Зачем отдельная: qwen3:8b не тянет остроумную реакцию на произвольный
+# технический факт — проверено четырьмя стратегиями промпта. T-lite-it-2.1
+# заметно лучше держит инструкции и тон. Цена: она вытесняет общую модель
+# на время ответа, поэтому keep_alive для неё — 0 (выгрузить сразу), а
+# запускается это раз в полчаса, когда птица говорит.
+OLLAMA_CHARACTER_MODEL = os.getenv("OLLAMA_CHARACTER_MODEL", "").strip()
+# Выгружать модель персонажа сразу после ответа: соседи ждут общую модель.
+OLLAMA_CHARACTER_KEEP_ALIVE = os.getenv("OLLAMA_CHARACTER_KEEP_ALIVE", "0").strip()
 OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.5"))
 OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "120"))
 BARTENDER_RESPONSE_MAX_LENGTH = int(
