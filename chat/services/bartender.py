@@ -31,6 +31,16 @@ CHARACTER_PROMPTS = {
 #: Параметры генерации для ответов персонажу: меньше фантазии, короче реплика.
 CHARACTER_GENERATION = {"temperature": 0.4, "num_predict": 90}
 
+#: Плоские ответы персонажу: «добавить нечего» читается как обида.
+FLAT_CHARACTER_REPLIES = frozenset(
+    {
+        "добавить нечего",
+        "нечего добавить",
+        "нечего сказать",
+        "мне нечего добавить",
+    }
+)
+
 #: Служебный префикс, который промпт запрещает, а модель иногда ставит.
 SERVICE_PREFIX = re.compile(r"^(?:>>>|’>|«>|Семён\s*:)\s*", re.IGNORECASE)
 
@@ -138,6 +148,17 @@ class BartenderService:
         )
 
         cleaned = self._strip_markdown_decoration(content)
+        if character_reply and _is_flat(cleaned):
+            # Плоский ответ — повод переспросить, а не публиковать «обиду».
+            logger.info("bartender_flat_character_reply")
+            try:
+                retry = dict(generation, temperature=0.7)
+                content = self._request_reply(messages, **retry)
+                retried = self._strip_markdown_decoration(content)
+                if retried and not _is_flat(retried):
+                    cleaned = retried
+            except BartenderUnavailable:
+                pass
         if character_reply:
             # Персонажу не нужно цитировать собеседника: это выглядит как эхо.
             cleaned = self._strip_leading_echo(cleaned, prompt)
@@ -298,6 +319,12 @@ class BartenderService:
             user.set_unusable_password()
             user.save(update_fields=["password"])
         return user
+
+
+def _is_flat(reply: str) -> bool:
+    """Ответ без мысли: «добавить нечего» и его варианты."""
+    normalized = re.sub(r"[^\wа-яё ]+", "", reply.lower()).strip()
+    return " ".join(normalized.split()) in FLAT_CHARACTER_REPLIES
 
 
 def _echo_word(word: str) -> str:

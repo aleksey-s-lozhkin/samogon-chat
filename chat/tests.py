@@ -4161,3 +4161,50 @@ class ServicePrefixCleanupTests(TestCase):
             bartender._strip_markdown_decoration("Обычный ответ."),
             "Обычный ответ.",
         )
+
+
+class FlatCharacterReplyTests(TestCase):
+    """«Добавить нечего» — не ответ, а обида: переспрашиваем один раз."""
+
+    def test_flat_reply_is_recognised(self):
+        from chat.services.bartender import _is_flat
+
+        self.assertTrue(_is_flat("Добавить нечего."))
+        self.assertTrue(_is_flat(">>> нечего добавить!"))
+        self.assertFalse(_is_flat("И пять мегабайт. Прогресс."))
+
+    def test_flat_reply_is_retried_once(self):
+        import json
+        from unittest.mock import patch
+
+        from chat.services.bartender_context import BIRD_LABEL
+
+        replies = iter(
+            [
+                json.dumps({"message": {"content": "Добавить нечего."}}).encode(),
+                json.dumps({"message": {"content": "И пять мегабайт. Прогресс."}}).encode(),
+            ]
+        )
+
+        def fake_urlopen(request, timeout=None):
+            body = next(replies)
+
+            class Response:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc):
+                    return False
+
+                def read(self):
+                    return body
+
+            return Response()
+
+        with patch("chat.services.bartender.urlopen", side_effect=fake_urlopen):
+            reply = bartender.reply(
+                text="Первый диск весил тонну.",
+                current_author=BIRD_LABEL,
+            )
+
+        self.assertEqual(reply.text, "И пять мегабайт. Прогресс.")
