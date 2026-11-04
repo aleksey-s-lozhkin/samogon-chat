@@ -129,7 +129,7 @@ class BartenderService:
         elapsed_ms = int((monotonic() - started_at) * 1000)
         logger.info(
             "bartender_reply_sent model=%s elapsed_ms=%d language_retry=%s",
-            settings.OLLAMA_MODEL,
+            generation.get("model") or settings.OLLAMA_MODEL,
             elapsed_ms,
             retried_for_language,
         )
