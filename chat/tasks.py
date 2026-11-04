@@ -55,12 +55,12 @@ def bird_tick(self):
     except BirdConfigUnavailable:
         # Состояние неизвестно: не выключаемся навсегда, пробуем снова.
         logger.error("bird_config_unavailable, повторю позже", exc_info=True)
-        schedule_bird_tick()
+        schedule_bird_tick(extend_claim=True)
         return
 
     if not config.enabled:
-        # Осознанно выключена — цепочка останавливается. Включение из админки
-        # ставит первый тик само.
+        # Осознанно выключена — цепочка останавливается, блокировка истекает
+        # сама. Включение из админки ставит первый тик.
         return
 
     try:
@@ -70,20 +70,42 @@ def bird_tick(self):
         logger.warning("bird_tick_failed", exc_info=True)
 
     try:
-        schedule_bird_tick()
+        schedule_bird_tick(extend_claim=True)
     except Exception:
         # Оборванная цепочка — тихая поломка: пишем так, чтобы было видно.
         logger.warning("bird_reschedule_failed", exc_info=True)
 
 
-def schedule_bird_tick() -> bool:
-    """Назначает следующий тик, не спрашивая настроек.
+BIRD_CHAIN_KEY = "samogon:bird:chain"
+
+
+def schedule_bird_tick(*, extend_claim: bool = False) -> bool:
+    """Назначает следующий тик, следя, чтобы цепочка была одна.
 
     Включённость проверяет сам тик. Так сделано после 3 ноября: при старте
     воркера база не разрешалась по имени, проверка настроек падала, и цепочка
     не поднималась вовсе — птица замолчала, а выглядело это как «выключена».
-    Пустой тик раз в пять минут дешевле, чем потерянная птица.
+
+    Блокировка нужна потому, что тик ставят из трёх мест: старт воркера,
+    сохранение настроек в админке и сам тик. Без неё цепочки складываются:
+    после трёх деплоев их стало три, и воркер просыпался 36 раз в час вместо
+    двенадцати.
+
+    ``extend_claim=True`` — продление собственной цепочки: тик снимает
+    блокировку на время своей работы и ставит следующую.
     """
+    from django.core.cache import cache
+
+    try:
+        if extend_claim:
+            cache.set(BIRD_CHAIN_KEY, "1", timeout=settings.BIRD_CHECK_SECONDS * 2)
+        elif not cache.add(BIRD_CHAIN_KEY, "1", timeout=settings.BIRD_CHECK_SECONDS * 2):
+            return False
+    except Exception:
+        # Кэш недоступен — ставим тик без проверки: лишний тик безвреден,
+        # а пропущенный убивает птицу.
+        logger.warning("bird_chain_cache_unavailable", exc_info=True)
+
     bird_tick.apply_async(countdown=settings.BIRD_CHECK_SECONDS)
     return True
 
