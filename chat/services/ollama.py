@@ -28,7 +28,9 @@ class OllamaUnavailable(RuntimeError):
 
 
 #: Reasoning-модель может прислать цепочку размышлений. В чат она не идёт.
-THINKING_TRACE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+# Одиночные теги тоже убираем: некоторые модели (например, T-lite) начинают
+# ответ с закрывающего </think>, не открывая блок.
+THINKING_TRACE = re.compile(r"<think>.*?</think>|<think>|</think>", re.DOTALL)
 
 
 def chat_payload(
@@ -36,6 +38,8 @@ def chat_payload(
     *,
     temperature: float,
     num_predict: int,
+    model: str | None = None,
+    keep_alive: int | str | None = None,
 ) -> dict:
     """Собирает тело запроса из настроек, а не из литералов.
 
@@ -43,10 +47,12 @@ def chat_payload(
     сделало бы расхождение с лаптем невидимым.
     """
     return {
-        "model": settings.OLLAMA_MODEL,
+        "model": model or settings.OLLAMA_MODEL,
         "stream": False,
         "think": False,
-        "keep_alive": settings.OLLAMA_KEEP_ALIVE,
+        "keep_alive": (
+            settings.OLLAMA_KEEP_ALIVE if keep_alive is None else keep_alive
+        ),
         "options": {
             "temperature": temperature,
             "num_ctx": settings.OLLAMA_NUM_CTX,

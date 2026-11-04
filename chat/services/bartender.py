@@ -87,7 +87,12 @@ class BartenderService:
             current_author=current_author,
         )
         character_reply = current_author in CHARACTER_PROMPTS
-        generation = CHARACTER_GENERATION if character_reply else {}
+        generation = dict(CHARACTER_GENERATION) if character_reply else {}
+        if character_reply and settings.OLLAMA_CHARACTER_MODEL:
+            # Отдельная модель персонажа: выгружаем сразу после ответа, чтобы
+            # не держать общую модель вытесненной у соседей.
+            generation["model"] = settings.OLLAMA_CHARACTER_MODEL
+            generation["keep_alive"] = settings.OLLAMA_CHARACTER_KEEP_ALIVE
         try:
             content = self._request_reply(messages, **generation)
 
@@ -237,6 +242,8 @@ class BartenderService:
         *,
         temperature: float | None = None,
         num_predict: int | None = None,
+        model: str | None = None,
+        keep_alive: int | str | None = None,
     ) -> str:
         payload = chat_payload(
             messages,
@@ -246,6 +253,8 @@ class BartenderService:
             num_predict=(
                 settings.OLLAMA_NUM_PREDICT if num_predict is None else num_predict
             ),
+            model=model,
+            keep_alive=keep_alive,
         )
         request = Request(
             f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/chat",

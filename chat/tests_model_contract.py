@@ -97,9 +97,12 @@ class TestSharedModelContract(SimpleTestCase):
             self.assertIn(value, payload)
 
         # У Семёна остаётся только отправка: тела запроса там быть не должно.
+        # Значения (модель персонажа, keep_alive) он может передавать, но
+        # собирает тело по-прежнему chat_payload.
         bartender = BARTENDER_PATH.read_text(encoding="utf-8")
         self.assertNotIn('"num_ctx"', bartender)
-        self.assertNotIn('"keep_alive"', bartender)
+        self.assertNotIn('"model":', bartender)
+        self.assertNotIn('"stream":', bartender)
         self.assertIn("chat_payload(", bartender)
 
     def test_second_character_uses_the_shared_payload(self) -> None:
@@ -150,3 +153,24 @@ class TestSharedModelContract(SimpleTestCase):
             "характер должен идти сообщением роли system, а не полем модели",
         )
         self.assertIn('"role": "system"', source)
+
+
+class TestCharacterModelException(SimpleTestCase):
+    """Вторая модель — узкое, оговорённое исключение из договора.
+
+    Семён отвечает гостям общей моделью. Ответы **персонажу** уходят на
+    отдельную: qwen3:8b не тянет остроумную реакцию на произвольный факт
+    (проверено четырьмя стратегиями промпта), T-lite-it-2.1 держит
+    инструкции заметно лучше. Цена — вытеснение общей модели, поэтому она
+    выгружается сразу после ответа и запускается раз в полчаса.
+    """
+
+    def test_shared_model_is_untouched(self) -> None:
+        self.assertEqual(settings.OLLAMA_MODEL, SHARED_MODEL)
+
+    def test_character_model_is_optional(self) -> None:
+        """Без переменной окружения поведение прежнее."""
+        self.assertIsInstance(settings.OLLAMA_CHARACTER_MODEL, str)
+
+    def test_character_model_is_unloaded_right_after_the_reply(self) -> None:
+        self.assertEqual(str(settings.OLLAMA_CHARACTER_KEEP_ALIVE), "0")

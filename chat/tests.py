@@ -4053,3 +4053,83 @@ class ChatConsumerTests(TransactionTestCase):
         self.assertIn("timestamp", delivered_message)
 
         await communicator.disconnect()
+
+
+class ThinkingTraceCleanupTests(TestCase):
+    """Одиночные теги рассуждений не должны попадать в чат."""
+
+    def test_orphan_closing_tag_is_removed(self):
+        """T-lite начинает ответ с закрывающего тега, не открывая блок."""
+        from chat.services.ollama import THINKING_TRACE
+
+        cleaned = THINKING_TRACE.sub("", "</think>  Умнее всех — это когда знаешь.").strip()
+
+        self.assertEqual(cleaned, "Умнее всех — это когда знаешь.")
+
+    def test_paired_block_is_removed(self):
+        from chat.services.ollama import THINKING_TRACE
+
+        cleaned = THINKING_TRACE.sub("", "<think>долго думал</think>Ответ").strip()
+
+        self.assertEqual(cleaned, "Ответ")
+
+    def test_plain_reply_is_untouched(self):
+        from chat.services.ollama import THINKING_TRACE
+
+        self.assertEqual(THINKING_TRACE.sub("", "Обычный ответ").strip(), "Обычный ответ")
+
+
+class CharacterModelTests(TestCase):
+    """Ответы персонажу уходят на отдельную модель, гостю — на общую."""
+
+    def _payload(self, *, author, character_model=""):
+        import json
+        from unittest.mock import patch
+
+        captured = {}
+
+        def fake_urlopen(request, timeout=None):
+            captured.update(json.loads(request.data))
+
+            class Response:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc):
+                    return False
+
+                def read(self):
+                    return b'{"message": {"content": "\\u041e\\u0442\\u0432\\u0435\\u0442"}}'
+
+            return Response()
+
+        with override_settings(OLLAMA_CHARACTER_MODEL=character_model):
+            with patch("chat.services.bartender.urlopen", side_effect=fake_urlopen):
+                bartender.reply(text="Проверка", current_author=author)
+        return captured
+
+    def test_guest_reply_uses_the_shared_model(self):
+        payload = self._payload(
+            author="guest_1",
+            character_model="second_constantine/t-lite-it-2.1:8b",
+        )
+
+        self.assertEqual(payload["model"], settings.OLLAMA_MODEL)
+
+    def test_character_reply_uses_the_character_model(self):
+        from chat.services.bartender_context import BIRD_LABEL
+
+        payload = self._payload(
+            author=BIRD_LABEL,
+            character_model="second_constantine/t-lite-it-2.1:8b",
+        )
+
+        self.assertEqual(payload["model"], "second_constantine/t-lite-it-2.1:8b")
+        self.assertEqual(str(payload["keep_alive"]), "0")
+
+    def test_empty_setting_falls_back_to_the_shared_model(self):
+        from chat.services.bartender_context import BIRD_LABEL
+
+        payload = self._payload(author=BIRD_LABEL, character_model="")
+
+        self.assertEqual(payload["model"], settings.OLLAMA_MODEL)
