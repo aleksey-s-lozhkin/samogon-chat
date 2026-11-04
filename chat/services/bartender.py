@@ -17,25 +17,25 @@ from chat.services.language import needs_language_retry
 from chat.services.ollama import THINKING_TRACE, chat_payload
 
 
-#: Подсказка для персонажа: с птицей разговор идёт иначе, чем с гостем.
-#: Проверено на живой модели: без неё Семён начинает ответ с дословного
-#: повторения её реплики и почти всегда предлагает кружку.
-CHARACTER_NOTES = {
-    BIRD_LABEL: (
-        "<character_note>\n"
-        "Сейчас с тобой говорит не гость: это Птица-Говорун, она живёт в баре "
-        "и любит техно-истории.\n"
-        "Не повторяй её фразу и не пересказывай её: она только что это сказала.\n"
-        "Не наливай, не предлагай напитки и закуски, не спрашивай про кружку "
-        "и не превращай ответ в тост.\n"
-        "Подхвати её мысль и добавь одну короткую свою — или пошути. "
-        "Одна-две фразы.\n"
-        "</character_note>"
-    ),
+#: Режим разговора с персонажем: отдельный файл, а не строка в коде.
+#: Базовая персона одна; добавка подключается, только когда говорит персонаж.
+#: Проверено на живой модели: без неё Семён повторяет её реплику и предлагает
+#: кружку, а с голыми запретами уходит в сюрреализм.
+CHARACTER_PROMPTS = {
+    label: (
+        Path(__file__).with_name("prompts") / name
+    ).read_text(encoding="utf-8").strip()
+    for label, name in ((BIRD_LABEL, "semen-to-bird.txt"),)
 }
+
+#: Параметры генерации для ответов персонажу: меньше фантазии, короче реплика.
+CHARACTER_GENERATION = {"temperature": 0.4, "num_predict": 90}
 
 #: Сколько слов в начале ответа считается повтором реплики собеседника.
 ECHO_MIN_WORDS = 3
+
+#: Служебные слова, с которых может начинаться копия чужой реплики.
+ECHO_LEAD_WORDS = frozenset({"и", "а", "ну", "да", "вот", "так", "это"})
 
 BARTENDER_MENTION = re.compile(r"^@(?:сем[её]н|semen)\b[,:!]?\s*", re.IGNORECASE)
 BARTENDER_SYSTEM_PROMPT = (
@@ -86,8 +86,10 @@ class BartenderService:
             context=context,
             current_author=current_author,
         )
+        character_reply = current_author in CHARACTER_PROMPTS
+        generation = CHARACTER_GENERATION if character_reply else {}
         try:
-            content = self._request_reply(messages)
+            content = self._request_reply(messages, **generation)
 
             if self._needs_language_retry(content):
                 # Повторная попытка исправляет смешение языков у локальной модели.
@@ -128,7 +130,7 @@ class BartenderService:
         )
 
         cleaned = self._strip_markdown_decoration(content)
-        if current_author in CHARACTER_NOTES:
+        if character_reply:
             # Персонажу не нужно цитировать собеседника: это выглядит как эхо.
             cleaned = self._strip_leading_echo(cleaned, prompt)
         return BartenderReply(text=self._truncate_reply(cleaned))
@@ -146,9 +148,9 @@ class BartenderService:
             f'<current_message author="{escape(current_author)}">'
             f"{escape(prompt)}</current_message>"
         )
-        note = CHARACTER_NOTES.get(current_author)
+        note = CHARACTER_PROMPTS.get(current_author)
         if note:
-            parts.append(note)
+            parts.append(f"<character_note>\n{note}\n</character_note>")
         return [
             {"role": "system", "content": BARTENDER_SYSTEM_PROMPT},
             {"role": "user", "content": "\n".join(parts)},
@@ -177,8 +179,16 @@ class BartenderService:
             if _echo_word(token)
         ]
 
+        # Ответ часто начинается с «И», «А», «Ну» перед копией реплики.
+        # Такие слова не должны спасать эхо от обрезки.
+        start = 0
+        while start < len(meaningful) and meaningful[start][0] in ECHO_LEAD_WORDS:
+            start += 1
+
         matched = 0
-        for prompt_word, (content_word, _index) in zip(prompt_words, meaningful):
+        for prompt_word, (content_word, _index) in zip(
+            prompt_words, meaningful[start:]
+        ):
             if prompt_word != content_word:
                 break
             matched += 1
@@ -187,7 +197,10 @@ class BartenderService:
         if matched < needed:
             return content
 
-        cut_from = meaningful[matched][1] if matched < len(meaningful) else len(tokens)
+        next_index = start + matched
+        cut_from = (
+            meaningful[next_index][1] if next_index < len(meaningful) else len(tokens)
+        )
         rest = " ".join(tokens[cut_from:]).lstrip(" \t\n—–-,.:;!?)»\"")
         return rest or content
 
@@ -218,11 +231,21 @@ class BartenderService:
         """Не публикуем ответы без русской речи или с китайскими символами."""
         return needs_language_retry(content)
 
-    def _request_reply(self, messages: list[dict[str, str]]) -> str:
+    def _request_reply(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float | None = None,
+        num_predict: int | None = None,
+    ) -> str:
         payload = chat_payload(
             messages,
-            temperature=settings.OLLAMA_TEMPERATURE,
-            num_predict=settings.OLLAMA_NUM_PREDICT,
+            temperature=(
+                settings.OLLAMA_TEMPERATURE if temperature is None else temperature
+            ),
+            num_predict=(
+                settings.OLLAMA_NUM_PREDICT if num_predict is None else num_predict
+            ),
         )
         request = Request(
             f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/chat",
