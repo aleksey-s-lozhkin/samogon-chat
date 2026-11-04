@@ -3307,7 +3307,8 @@ class BartenderBirdDialogueTests(TestCase):
 
         self.assertIn("<character_note>", content)
         self.assertIn("Птица-Говорун", content)
-        self.assertIn("Не повторяй её фразу", content)
+        self.assertIn("Не повторяй её слова", content)
+        self.assertIn("не предлагай напитки", content)
 
     def test_generic_guest_gets_no_character_note(self):
         messages = bartender._build_messages(
