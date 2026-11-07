@@ -46,7 +46,7 @@ def _clean_title(raw: str) -> str:
     return text[: settings.BIRD_NEWS_MAX_TITLE]
 
 
-def fetch_stories(*, limit: int = 30) -> list[Story]:
+def fetch_stories(*, limit: int = 30, min_points: int | None = None) -> list[Story]:
     """Свежие истории с Hacker News, отфильтрованные по рейтингу.
 
     Сеть может не ответить — это не ошибка птицы, поэтому вызывающий код
@@ -63,7 +63,10 @@ def fetch_stories(*, limit: int = 30) -> list[Story]:
         object_id = str(hit.get("objectID") or "")
         if not title or not object_id:
             continue
-        if points < settings.BIRD_NEWS_MIN_POINTS:
+        threshold = (
+            settings.BIRD_NEWS_MIN_POINTS if min_points is None else min_points
+        )
+        if points < threshold:
             continue
         stories.append(Story(id=object_id, title=title, points=points))
     return stories
@@ -128,14 +131,19 @@ def news_topic_id(story: Story) -> str:
     return f"{NEWS_TOPIC_PREFIX}{story.id}"
 
 
-def pick_news_topic(*, recent_ids: set[str], attempts: int = 3) -> dict | None:
+def pick_news_topic(
+    *,
+    recent_ids: set[str],
+    attempts: int = 3,
+    min_points: int | None = None,
+) -> dict | None:
     """Первый подходящий свежий повод или None.
 
     Если сеть недоступна или модель промолчала про все попытки — None, и
     вызывающий код берёт курируемый повод. Птица не обязана говорить новость.
     """
     try:
-        stories = fetch_stories()
+        stories = fetch_stories(min_points=min_points)
     except (OSError, ValueError, KeyError, json.JSONDecodeError) as error:
         import logging
 
