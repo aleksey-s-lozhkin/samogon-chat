@@ -227,6 +227,7 @@ class BirdSettingsAdmin(admin.ModelAdmin):
         "interval_minutes",
         "daily_limit",
         "quiet_hours",
+        "news_enabled",
         "updated_at",
     )
     readonly_fields = ("updated_at",)
@@ -301,6 +302,22 @@ class BirdSettingsAdmin(admin.ModelAdmin):
                 "description": (
                     "Птица молчит, пока в беседе есть гости. Хозяин и "
                     "персонажи гостями не считаются."
+                ),
+            },
+        ),
+        (
+            "Новость дня",
+            {
+                "fields": (
+                    "news_enabled",
+                    "news_min_points",
+                    "news_max_per_day",
+                ),
+                "description": (
+                    "Раз в сутки птица может взять повод из внешней ленты "
+                    "(Hacker News). Заголовок считается данными: фильтр по "
+                    "рейтингу, право модели промолчать и проверка чисел. "
+                    "Если лента недоступна — обычный курируемый повод."
                 ),
             },
         ),

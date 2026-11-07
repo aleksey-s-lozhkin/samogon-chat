@@ -1106,6 +1106,8 @@ class BirdAdminTests(TestCase):
                 "quiet_from": "1",
                 "quiet_to": "8",
                 "timezone_name": "Europe/Moscow",
+                "news_min_points": "200",
+                "news_max_per_day": "1",
             },
         )
 
@@ -1127,6 +1129,8 @@ class BirdAdminTests(TestCase):
                 "quiet_from": "1",
                 "quiet_to": "8",
                 "timezone_name": "Europe/Moscow",
+                "news_min_points": "200",
+                "news_max_per_day": "1",
             },
         )
 
@@ -1467,3 +1471,74 @@ class BirdNewsTests(TestCase):
         story = Story(id="1", title="Libghostty 1.0", points=500)
         with patch.object(news, "send_chat", return_value="ПРОПУСК"):
             self.assertIsNone(compose_news_line(story))
+
+
+class BirdNewsAdminTests(TestCase):
+    """Настройки новости живут в админке, окружение — значения по умолчанию."""
+
+    def setUp(self):
+        self.room, _ = Room.objects.get_or_create(
+            slug="u-stoyki",
+            defaults={"name": "У стойки"},
+        )
+        self.daytime = datetime(2026, 11, 8, 9, 0, tzinfo=dt_timezone.utc)
+        from django.core.cache import cache
+
+        cache.clear()
+
+    @override_settings(**{**BIRD_SETTINGS, "BIRD_NEWS_ENABLED": False})
+    def test_admin_row_turns_news_on(self):
+        from chat.models import BirdSettings
+        from chat.services.bird import load_config
+
+        BirdSettings.objects.create(
+            enabled=True,
+            room=self.room,
+            news_enabled=True,
+            news_min_points=500,
+            news_max_per_day=2,
+        )
+
+        config = load_config()
+
+        self.assertTrue(config.news_enabled)
+        self.assertEqual(config.news_min_points, 500)
+        self.assertEqual(config.news_max_per_day, 2)
+
+    @override_settings(**{**BIRD_SETTINGS, "BIRD_NEWS_ENABLED": True})
+    def test_admin_row_turns_news_off(self):
+        from chat.models import BirdSettings
+        from chat.services.bird import load_config
+
+        BirdSettings.objects.create(enabled=True, room=self.room, news_enabled=False)
+
+        self.assertFalse(load_config().news_enabled)
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.services.news.fetch_stories")
+    def test_disabled_in_admin_skips_the_network(self, fetch):
+        from chat.models import BirdSettings
+
+        BirdSettings.objects.create(enabled=True, room=self.room, news_enabled=False)
+
+        self.assertIsNone(bird._news_topic(room=self.room, now=self.daytime))
+        fetch.assert_not_called()
+
+    @override_settings(**BIRD_SETTINGS)
+    @patch("chat.services.news.compose_news_line", return_value="Пишут, что-то новое.")
+    @patch("chat.services.news.fetch_stories")
+    def test_admin_threshold_is_passed_to_the_feed(self, fetch, compose):
+        from chat.models import BirdSettings
+        from chat.services.news import Story
+
+        BirdSettings.objects.create(
+            enabled=True,
+            room=self.room,
+            news_enabled=True,
+            news_min_points=700,
+        )
+        fetch.return_value = [Story(id="1", title="Some news", points=900)]
+
+        bird._news_topic(room=self.room, now=self.daytime)
+
+        self.assertEqual(fetch.call_args.kwargs["min_points"], 700)

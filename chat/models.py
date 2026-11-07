@@ -444,6 +444,23 @@ class BirdSettings(models.Model):
         default=8,
         validators=[MinValueValidator(0), MaxValueValidator(23)],
     )
+    news_enabled = models.BooleanField(
+        "Новость дня",
+        default=False,
+        help_text=(
+            "Раз в сутки брать повод из внешней ленты (Hacker News). "
+            "Заголовок считается данными: фильтр по рейтингу, право модели "
+            "промолчать и проверка чисел."
+        ),
+    )
+    news_min_points = models.PositiveIntegerField(
+        "Минимальный рейтинг новости",
+        default=200,
+    )
+    news_max_per_day = models.PositiveSmallIntegerField(
+        "Новостей в сутки",
+        default=1,
+    )
     timezone_name = models.CharField(
         "Часовой пояс тишины",
         max_length=64,

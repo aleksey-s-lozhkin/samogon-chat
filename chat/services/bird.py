@@ -87,6 +87,9 @@ class BirdConfig:
     quiet_from: int
     quiet_to: int
     timezone_name: str
+    news_enabled: bool = False
+    news_min_points: int = 200
+    news_max_per_day: int = 1
 
 
 def load_config() -> BirdConfig:
@@ -124,6 +127,9 @@ def load_config() -> BirdConfig:
             quiet_from=quiet_from,
             quiet_to=quiet_to,
             timezone_name=settings.BIRD_QUIET_TIMEZONE,
+            news_enabled=settings.BIRD_NEWS_ENABLED,
+            news_min_points=settings.BIRD_NEWS_MIN_POINTS,
+            news_max_per_day=settings.BIRD_NEWS_MAX_PER_DAY,
         )
 
     return BirdConfig(
@@ -134,6 +140,9 @@ def load_config() -> BirdConfig:
         quiet_from=row.quiet_from,
         quiet_to=row.quiet_to,
         timezone_name=row.timezone_name,
+        news_enabled=row.news_enabled,
+        news_min_points=row.news_min_points,
+        news_max_per_day=row.news_max_per_day,
     )
 
 
@@ -288,9 +297,10 @@ def get_bird_user():
     return user
 
 
-def _news_topic(*, room: Room, now=None) -> dict | None:
+def _news_topic(*, room: Room, now=None, config=None) -> dict | None:
     """Новость дня, если она включена, не исчерпана и есть свежая история."""
-    if not settings.BIRD_NEWS_ENABLED:
+    config = config or load_config()
+    if not config.news_enabled:
         return None
 
     moment = local_now(now)
@@ -300,7 +310,7 @@ def _news_topic(*, room: Room, now=None) -> dict | None:
         created_at__gte=day_start,
         topic_id__startswith=NEWS_TOPIC_PREFIX,
     ).count()
-    if news_today >= settings.BIRD_NEWS_MAX_PER_DAY:
+    if news_today >= config.news_max_per_day:
         return None
 
     recent = set(
@@ -310,7 +320,7 @@ def _news_topic(*, room: Room, now=None) -> dict | None:
     )
     from chat.services.news import pick_news_topic
 
-    topic = pick_news_topic(recent_ids=recent)
+    topic = pick_news_topic(recent_ids=recent, min_points=config.news_min_points)
     if topic is not None:
         logger.info("bird_news_topic id=%s", topic.get("id"))
     return topic
@@ -538,7 +548,7 @@ def speak(
             return _refuse(decision.reason)
         room = Room.objects.get(slug=config.room_slug.strip())
 
-    topic = _news_topic(room=room, now=now)
+    topic = _news_topic(room=room, now=now, config=config)
     precomposed = None
     if topic is not None:
         precomposed = topic.pop("line", None)
