@@ -21,7 +21,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from chat.models import BartenderJob, BirdPost, Message, Room
-from chat.services import bird
+from chat.services import bird, news
 from chat.services.bartender_context import build_bartender_conversation
 from chat.services.guests import eligible_guests
 from chat.services.messages import MessageService
@@ -1366,3 +1366,104 @@ class BirdRhythmSpreadTests(TestCase):
         """Хозяин сказал «не чаще 120 минут» — модель не спорит."""
         self.assertEqual(self.interval(8, 0, said=0, floor=120), 120)
 
+
+
+class BirdNewsTests(TestCase):
+    """Новость дня: внешний заголовок — данные, а не инструкция."""
+
+    def setUp(self):
+        self.room, _ = Room.objects.get_or_create(
+            slug="u-stoyki",
+            defaults={"name": "У стойки"},
+        )
+        self.owner = User.objects.create_user(username="news-owner")
+        self.daytime = datetime(2026, 11, 7, 9, 0, tzinfo=dt_timezone.utc)
+
+    @override_settings(**{**BIRD_SETTINGS, "BIRD_NEWS_ENABLED": False})
+    @patch("chat.services.news.fetch_stories")
+    def test_disabled_news_does_not_touch_the_network(self, fetch):
+        self.assertIsNone(bird._news_topic(room=self.room, now=self.daytime))
+        fetch.assert_not_called()
+
+    @override_settings(**{**BIRD_SETTINGS, "BIRD_NEWS_ENABLED": True})
+    @patch("chat.services.news.compose_news_line", return_value="Пишут, что флоппи-диски уходят из авиации.")
+    @patch("chat.services.news.fetch_stories")
+    def test_news_is_used_when_available(self, fetch, compose):
+        from chat.services.news import Story
+
+        fetch.return_value = [Story(id="123", title="FAA to phase out floppy disks", points=500)]
+
+        topic = bird._news_topic(room=self.room, now=self.daytime)
+
+        self.assertIsNotNone(topic)
+        self.assertEqual(topic["id"], "news-123")
+        self.assertEqual(topic["kind"], "новость")
+        self.assertIn("флоппи", topic["line"])
+
+    @override_settings(**{**BIRD_SETTINGS, "BIRD_NEWS_ENABLED": True})
+    @patch("chat.services.news.compose_news_line", return_value="Пишут, что-то новое.")
+    @patch("chat.services.news.fetch_stories")
+    def test_daily_limit_allows_one_news_per_day(self, fetch, compose):
+        from chat.services.news import Story
+
+        fetch.return_value = [Story(id="555", title="Some news", points=500)]
+        message = Message.objects.create(user=self.owner, room=self.room, text="x")
+        BirdPost.objects.create(room=self.room, message=message, topic_id="news-999")
+
+        self.assertIsNone(bird._news_topic(room=self.room, now=self.daytime))
+
+    @override_settings(**{**BIRD_SETTINGS, "BIRD_NEWS_ENABLED": True})
+    @patch("chat.services.news.fetch_stories", side_effect=OSError("нет сети"))
+    def test_network_failure_falls_back(self, fetch):
+        self.assertIsNone(bird._news_topic(room=self.room, now=self.daytime))
+
+    @override_settings(**{**BIRD_SETTINGS, "BIRD_NEWS_ENABLED": True})
+    @patch("chat.services.news.compose_news_line", return_value=None)
+    @patch("chat.services.news.fetch_stories")
+    def test_silent_model_falls_back_to_curated(self, fetch, compose):
+        from chat.services.news import Story
+
+        fetch.return_value = [Story(id="777", title="Libghostty 1.0", points=800)]
+
+        self.assertIsNone(bird._news_topic(room=self.room, now=self.daytime))
+
+    def test_fetch_filters_low_points_and_cleans_titles(self):
+        import io
+        import json
+        from unittest.mock import patch
+
+        payload = {
+            "hits": [
+                {"objectID": "1", "title": "<b>Big</b> news", "points": 500},
+                {"objectID": "2", "title": "Small news", "points": 10},
+            ]
+        }
+        raw = json.dumps(payload).encode()
+
+        class Response:
+            def __enter__(self):
+                return io.BytesIO(raw)
+
+            def __exit__(self, *exc):
+                return False
+
+        with override_settings(**{**BIRD_SETTINGS, "BIRD_NEWS_ENABLED": True}):
+            with patch("chat.services.news.urllib.request.urlopen", return_value=Response()):
+                stories = news.fetch_stories()
+
+        self.assertEqual(len(stories), 1)
+        self.assertEqual(stories[0].title, "Big news")
+
+    def test_invented_numbers_are_rejected(self):
+        from chat.services.news import Story, compose_news_line
+
+        story = Story(id="1", title="FAA says floppy disks leave by 2028", points=500)
+        with patch.object(news, "send_chat", return_value="Пишут, что в 2027 году диски уйдут."):
+            self.assertIsNone(compose_news_line(story))
+
+    def test_marker_means_the_model_did_not_understand(self):
+        from chat.services.news import Story, compose_news_line
+
+        story = Story(id="1", title="Libghostty 1.0", points=500)
+        with patch.object(news, "send_chat", return_value="ПРОПУСК"):
+            self.assertIsNone(compose_news_line(story))
