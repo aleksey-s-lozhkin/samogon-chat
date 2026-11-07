@@ -446,7 +446,9 @@ BIRD_QUIET_HOURS = os.getenv("BIRD_QUIET_HOURS", "1-8")
 BIRD_QUIET_TIMEZONE = os.getenv("BIRD_QUIET_TIMEZONE", "Europe/Moscow")
 BIRD_MAX_LENGTH = int(os.getenv("BIRD_MAX_LENGTH", "220"))
 # Сколько последних поводов не повторять: список из 70 тем иначе зациклится.
-BIRD_TOPIC_HISTORY = int(os.getenv("BIRD_TOPIC_HISTORY", "20"))
+# Сколько последних поводов не повторять. Поднято с 20 до 40, когда пул вырос
+# до 212 тем: глубина истории удлиняет цикл не хуже, чем сам пул.
+BIRD_TOPIC_HISTORY = int(os.getenv("BIRD_TOPIC_HISTORY", "40"))
 # Как часто воркер проверяет, пора ли говорить. Интервал между репликами
 # задаёт BIRD_INTERVAL_MINUTES, это лишь шаг проверки.
 BIRD_CHECK_SECONDS = int(os.getenv("BIRD_CHECK_SECONDS", "300"))
