@@ -36,6 +36,7 @@ from chat.models import BirdPost, Message, Room
 from chat.services.events import broadcast_message
 from chat.services.jobs import enqueue_bartender_job
 from chat.services.language import needs_language_retry
+from chat.services.news import NEWS_TOPIC_PREFIX
 from chat.services.ollama import OllamaUnavailable, chat_payload, send_chat
 from chat.services.presence import room_users_sync
 from chat.services.messages import MessageService
@@ -287,6 +288,34 @@ def get_bird_user():
     return user
 
 
+def _news_topic(*, room: Room, now=None) -> dict | None:
+    """Новость дня, если она включена, не исчерпана и есть свежая история."""
+    if not settings.BIRD_NEWS_ENABLED:
+        return None
+
+    moment = local_now(now)
+    day_start = moment.replace(hour=0, minute=0, second=0, microsecond=0)
+    news_today = BirdPost.objects.filter(
+        room=room,
+        created_at__gte=day_start,
+        topic_id__startswith=NEWS_TOPIC_PREFIX,
+    ).count()
+    if news_today >= settings.BIRD_NEWS_MAX_PER_DAY:
+        return None
+
+    recent = set(
+        BirdPost.objects.filter(room=room)
+        .order_by("-created_at")
+        .values_list("topic_id", flat=True)[: settings.BIRD_TOPIC_HISTORY]
+    )
+    from chat.services.news import pick_news_topic
+
+    topic = pick_news_topic(recent_ids=recent)
+    if topic is not None:
+        logger.info("bird_news_topic id=%s", topic.get("id"))
+    return topic
+
+
 def pick_topic(*, room: Room, rng=None) -> dict | None:
     """Выбирает повод, не повторяя последние.
 
@@ -427,6 +456,8 @@ def compose_line(topic: dict, *, ask=None) -> str:
         hint = "Это байка: подай её как «говорят» или «рассказывают»."
     elif kind == "шутка":
         hint = "Это скорее шутка, чем факт: не выдавай её за открытие."
+    elif kind == "новость":
+        hint = "Это новость: подай её как «пишут» или «сообщают», без выдуманных деталей."
     else:
         hint = "Это факт: не добавляй деталей, которых в нём нет."
 
@@ -507,14 +538,23 @@ def speak(
             return _refuse(decision.reason)
         room = Room.objects.get(slug=config.room_slug.strip())
 
-    topic = pick_topic(room=room, rng=rng)
+    topic = _news_topic(room=room, now=now)
+    precomposed = None
+    if topic is not None:
+        precomposed = topic.pop("line", None)
+    if topic is None:
+        topic = pick_topic(room=room, rng=rng)
     if topic is None:
         return _refuse("нет поводов: файл bird-topics.json пуст или недоступен")
 
-    try:
-        text = compose_line(topic, ask=ask)
-    except OllamaUnavailable:
-        return _refuse("модель недоступна")
+    if precomposed:
+        # Новость уже пересказана моделью новостей: второй раз не спрашиваем.
+        text = precomposed
+    else:
+        try:
+            text = compose_line(topic, ask=ask)
+        except OllamaUnavailable:
+            return _refuse("модель недоступна")
 
     if needs_language_retry(text):
         # Просим переписать именно прошлый ответ: повтор того же промпта даёт

@@ -449,6 +449,21 @@ BIRD_MAX_LENGTH = int(os.getenv("BIRD_MAX_LENGTH", "220"))
 # Сколько последних поводов не повторять. Поднято с 20 до 40, когда пул вырос
 # до 212 тем: глубина истории удлиняет цикл не хуже, чем сам пул.
 BIRD_TOPIC_HISTORY = int(os.getenv("BIRD_TOPIC_HISTORY", "40"))
+# Новость дня из внешней ленты. По умолчанию выключено: внешний заголовок —
+# это данные из интернета, и включать их должен человек, а не деплой.
+BIRD_NEWS_ENABLED = os.getenv("BIRD_NEWS_ENABLED", "0") == "1"
+BIRD_NEWS_URL = os.getenv(
+    "BIRD_NEWS_URL",
+    "https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=30",
+)
+BIRD_NEWS_MIN_POINTS = int(os.getenv("BIRD_NEWS_MIN_POINTS", "200"))
+BIRD_NEWS_MAX_PER_DAY = int(os.getenv("BIRD_NEWS_MAX_PER_DAY", "1"))
+BIRD_NEWS_TIMEOUT = int(os.getenv("BIRD_NEWS_TIMEOUT", "10"))
+BIRD_NEWS_MAX_TITLE = int(os.getenv("BIRD_NEWS_MAX_TITLE", "200"))
+# Модель для перевода и пересказа новости. Пусто — модель персонажа, если она
+# задана, иначе общая. Заголовки на английском: 8B на незнакомых названиях
+# домысливает, 14B держится заголовка.
+BIRD_NEWS_MODEL = os.getenv("BIRD_NEWS_MODEL", "").strip()
 # Как часто воркер проверяет, пора ли говорить. Интервал между репликами
 # задаёт BIRD_INTERVAL_MINUTES, это лишь шаг проверки.
 BIRD_CHECK_SECONDS = int(os.getenv("BIRD_CHECK_SECONDS", "300"))
