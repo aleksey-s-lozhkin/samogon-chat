@@ -4166,6 +4166,12 @@ class ServicePrefixCleanupTests(TestCase):
 class FlatCharacterReplyTests(TestCase):
     """«Добавить нечего» — не ответ, а обида: переспрашиваем один раз."""
 
+    def test_question_reply_is_recognised(self):
+        from chat.services.bartender import _is_unwanted
+
+        self.assertTrue(_is_unwanted("Тогда почему Tesla не сворачивает производство?"))
+        self.assertFalse(_is_unwanted("Тогда пусть сначала свернут электрокары."))
+
     def test_flat_reply_is_recognised(self):
         from chat.services.bartender import _is_flat
 

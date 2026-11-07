@@ -148,14 +148,14 @@ class BartenderService:
         )
 
         cleaned = self._strip_markdown_decoration(content)
-        if character_reply and _is_flat(cleaned):
+        if character_reply and _is_unwanted(cleaned):
             # Плоский ответ — повод переспросить, а не публиковать «обиду».
             logger.info("bartender_flat_character_reply")
             try:
                 retry = dict(generation, temperature=0.7)
                 content = self._request_reply(messages, **retry)
                 retried = self._strip_markdown_decoration(content)
-                if retried and not _is_flat(retried):
+                if retried and not _is_unwanted(retried):
                     cleaned = retried
             except BartenderUnavailable:
                 pass
@@ -325,6 +325,17 @@ def _is_flat(reply: str) -> bool:
     """Ответ без мысли: «добавить нечего» и его варианты."""
     normalized = re.sub(r"[^\wа-яё ]+", "", reply.lower()).strip()
     return " ".join(normalized.split()) in FLAT_CHARACTER_REPLIES
+
+
+def _is_unwanted(reply: str) -> bool:
+    """Ответ персонажу, который нельзя публиковать.
+
+    Плоский («добавить нечего») — читается как обида. С вопросом — нарушает
+    правило «не спрашивай птицу, она не ответит»; проверено на живой 14B:
+    она задала вопрос, хотя подсказка это запрещает. Просьба в промпте — не
+    механизм, поэтому проверяем кодом.
+    """
+    return _is_flat(reply) or reply.rstrip().endswith("?")
 
 
 def _echo_word(word: str) -> str:
