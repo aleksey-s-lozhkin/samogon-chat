@@ -20,7 +20,12 @@ from dataclasses import dataclass
 
 from django.conf import settings
 
-from chat.services.ollama import OllamaUnavailable, chat_payload, send_chat
+from chat.services.ollama import (
+    OllamaUnavailable,
+    chat_payload,
+    send_chat,
+    unload_model,
+)
 
 #: Что модель отвечает, если не поняла заголовок. Латиница и кириллица.
 SKIP_MARKERS = ("ПРОПУСК", "ПРОПУСК.", "SKIP")
@@ -87,6 +92,9 @@ def compose_news_line(story: Story, *, ask=None) -> str | None:
         "ПРОПУСК и больше ничего."
     )
     model = settings.BIRD_NEWS_MODEL or settings.OLLAMA_CHARACTER_MODEL or None
+    if model and model != settings.OLLAMA_MODEL:
+        # Освобождаем видеопамять: общая модель закреплена и не даст загрузиться.
+        unload_model(settings.OLLAMA_MODEL)
     request = (ask or send_chat)(
         chat_payload(
             [

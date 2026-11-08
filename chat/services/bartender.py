@@ -14,7 +14,7 @@ from django.contrib.auth import get_user_model
 from chat.services.bartender_context import BIRD_LABEL, BartenderContextEntry
 from chat.services.bartender_guardrails import guardrail_reply
 from chat.services.language import needs_language_retry
-from chat.services.ollama import THINKING_TRACE, chat_payload
+from chat.services.ollama import THINKING_TRACE, chat_payload, unload_model
 
 
 #: Режим разговора с персонажем: отдельный файл, а не строка в коде.
@@ -106,6 +106,10 @@ class BartenderService:
             # не держать общую модель вытесненной у соседей.
             generation["model"] = settings.OLLAMA_CHARACTER_MODEL
             generation["keep_alive"] = settings.OLLAMA_CHARACTER_KEEP_ALIVE
+            if settings.OLLAMA_CHARACTER_MODEL != settings.OLLAMA_MODEL:
+                # Общая модель закреплена в видеопамяти: без явной выгрузки
+                # вторая не помещается, и запрос висит до таймаута.
+                unload_model(settings.OLLAMA_MODEL)
         try:
             content = self._request_reply(messages, **generation)
 

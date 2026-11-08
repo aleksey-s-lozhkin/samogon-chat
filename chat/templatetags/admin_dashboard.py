@@ -89,6 +89,13 @@ def dashboard_metrics():
         messages_today = Message.objects.filter(created_at__gte=day_ago).count()
         hidden = Message.objects.filter(hidden_at__isnull=False).count()
         open_reports = MessageReport.objects.filter(outcome="").count()
+        # Семён, молчащий сутки, виден только здесь: в чате просто нет ответов.
+        from chat.models import BartenderJob
+
+        failed_replies = BartenderJob.objects.filter(
+            status=BartenderJob.Status.FAILED,
+            created_at__gte=day_ago,
+        ).count()
         new_people = (
             get_user_model().objects.filter(date_joined__gte=day_ago).count()
         )
@@ -115,6 +122,11 @@ def dashboard_metrics():
             "label": "Людей за сутки",
             "value": new_people,
             "url": reverse("admin:users_user_changelist"),
+        },
+        {
+            "label": "Ошибок Семёна за сутки",
+            "value": failed_replies,
+            "url": reverse("admin:chat_bartenderjob_changelist"),
         },
     ]
 

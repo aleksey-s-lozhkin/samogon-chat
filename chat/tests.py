@@ -4214,3 +4214,81 @@ class FlatCharacterReplyTests(TestCase):
             )
 
         self.assertEqual(reply.text, "И пять мегабайт. Прогресс.")
+
+
+class ModelUnloadTests(TestCase):
+    """Перед второй моделью общую надо выгрузить, иначе она не помещается.
+
+    8 ноября Семён молчал сутки: общая 8B закреплена в видеопамяти, 14B не
+    могла загрузиться, и каждое задание падало с bartender_unavailable.
+    """
+
+    def test_unload_sends_zero_keep_alive(self):
+        import json
+        from unittest.mock import patch
+
+        from chat.services.ollama import unload_model
+
+        captured = {}
+
+        def fake_urlopen(request, timeout=None):
+            captured.update(json.loads(request.data))
+
+            class Response:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc):
+                    return False
+
+            return Response()
+
+        with patch("chat.services.ollama.urlopen", side_effect=fake_urlopen):
+            unload_model("qwen3:8b")
+
+        self.assertEqual(captured["model"], "qwen3:8b")
+        self.assertEqual(captured["keep_alive"], 0)
+
+    def test_unload_failure_does_not_break_the_reply(self):
+        from unittest.mock import patch
+
+        from chat.services.ollama import unload_model
+
+        with patch("chat.services.ollama.urlopen", side_effect=OSError("нет ollama")):
+            unload_model("qwen3:8b")  # не должно поднять исключение
+
+    def test_character_reply_unloads_the_shared_model(self):
+        import json
+        from unittest.mock import patch
+
+        from chat.services.bartender_context import BIRD_LABEL
+
+        calls = []
+
+        def fake_urlopen(request, timeout=None):
+            body = json.loads(request.data)
+            calls.append(body)
+
+            class Response:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc):
+                    return False
+
+                def read(self):
+                    return b'{"message": {"content": "\\u041e\\u0442\\u0432\\u0435\\u0442"}}'
+
+            return Response()
+
+        with override_settings(
+            OLLAMA_MODEL="qwen3:8b",
+            OLLAMA_CHARACTER_MODEL="qwen3:14b",
+        ):
+            with patch("chat.services.bartender.urlopen", side_effect=fake_urlopen):
+                with patch("chat.services.ollama.urlopen", side_effect=fake_urlopen):
+                    bartender.reply(text="Проверка", current_author=BIRD_LABEL)
+
+        unload_calls = [c for c in calls if c.get("keep_alive") == 0 and "messages" not in c]
+        self.assertTrue(unload_calls, "общая модель должна выгружаться перед второй")
+        self.assertEqual(unload_calls[0]["model"], "qwen3:8b")
