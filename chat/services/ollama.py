@@ -33,6 +33,34 @@ class OllamaUnavailable(RuntimeError):
 THINKING_TRACE = re.compile(r"<think>.*?</think>|<think>|</think>", re.DOTALL)
 
 
+def unload_model(model: str) -> None:
+    """Просит Ollama выгрузить модель, освобождая видеопамять.
+
+    Зачем это нужно: общая модель живёт с ``keep_alive=-1`` и **закреплена** в
+    видеопамяти. Вторая модель тогда не помещается, и Ollama не выгружает
+    первую сама — запрос просто висит до таймаута. Именно так 8 ноября Семён
+    замолчал на сутки: «barsender_unavailable» в каждом задании, а птица при
+    этом говорила.
+
+    Вызов вспомогательный: если он не удался, основной запрос всё равно
+    попробуем — вдруг места хватит.
+    """
+    payload = {"model": model, "keep_alive": 0}
+    request = Request(
+        f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/generate",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urlopen(request, timeout=settings.OLLAMA_TIMEOUT_SECONDS):
+            pass
+    except (OSError, ValueError):
+        # OSError покрывает URLError, TimeoutError и обрывы соединения:
+        # вспомогательный вызов не должен ломать основной.
+        return
+
+
 def chat_payload(
     messages: list[dict[str, str]],
     *,
