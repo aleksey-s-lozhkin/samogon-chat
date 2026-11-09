@@ -484,6 +484,7 @@ def compose_line(topic: dict, *, ask=None) -> str:
             ],
             temperature=BIRD_TEMPERATURE,
             num_predict=BIRD_NUM_PREDICT,
+            model=settings.BIRD_MODEL or None,
         )
     )
     return request.strip().strip('"').strip()
