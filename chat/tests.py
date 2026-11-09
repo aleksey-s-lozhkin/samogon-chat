@@ -4387,3 +4387,17 @@ class BartenderModelChoiceTests(TestCase):
         )
 
         self.assertEqual(payload["model"], "qwen3:14b")
+
+
+class KeepAliveParsingTests(TestCase):
+    """Ollama принимает -1 числом и отвергает строкой "-1" (400 Bad Request)."""
+
+    def test_numeric_value_becomes_int(self):
+        from config.settings import _parse_keep_alive
+
+        self.assertEqual(_parse_keep_alive("-1"), -1)
+
+    def test_duration_string_stays_string(self):
+        from config.settings import _parse_keep_alive
+
+        self.assertEqual(_parse_keep_alive("10m"), "10m")

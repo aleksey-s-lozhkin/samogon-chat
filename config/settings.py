@@ -393,13 +393,19 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen3:8b")
 # около двадцати, и запрос упирался в таймаут, отдавая гостю заготовку
 # вместо ответа. Шестьдесят оставляют запас и на загрузку, и на очередь.
 OLLAMA_TIMEOUT_SECONDS = int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "60"))
-OLLAMA_KEEP_ALIVE_RAW = os.getenv("OLLAMA_KEEP_ALIVE", "-1")
-try:
-    # Число -1 сообщает Ollama не выгружать модель из памяти.
-    OLLAMA_KEEP_ALIVE = int(OLLAMA_KEEP_ALIVE_RAW)
-except ValueError:
-    # Строковые интервалы вроде "10m" Ollama также принимает.
-    OLLAMA_KEEP_ALIVE = OLLAMA_KEEP_ALIVE_RAW
+def _parse_keep_alive(raw: str):
+    """Число остаётся числом, интервал вроде "10m" — строкой.
+
+    Ollama принимает -1 числом и отвечает 400 Bad Request на строку "-1".
+    Разбор один на обе настройки, чтобы это не всплывало снова.
+    """
+    try:
+        return int(raw)
+    except ValueError:
+        return raw
+
+
+OLLAMA_KEEP_ALIVE = _parse_keep_alive(os.getenv("OLLAMA_KEEP_ALIVE", "-1"))
 # Размер контекстного окна. **Общий с лаптем, и это не совпадение.**
 #
 # num_ctx — параметр загрузки модели, а не запроса. Если два приложения
@@ -419,7 +425,12 @@ OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "8192"))
 # запускается это раз в полчаса, когда птица говорит.
 OLLAMA_CHARACTER_MODEL = os.getenv("OLLAMA_CHARACTER_MODEL", "").strip()
 # Выгружать модель персонажа сразу после ответа: соседи ждут общую модель.
-OLLAMA_CHARACTER_KEEP_ALIVE = os.getenv("OLLAMA_CHARACTER_KEEP_ALIVE", "0").strip()
+# Разбор как у общей модели: Ollama принимает число (например, -1 — держать
+# вечно) или строку-интервал вроде "10m", но не строку "-1": на ней отвечает
+# 400 Bad Request, и ответ Семёна падает мгновенно.
+OLLAMA_CHARACTER_KEEP_ALIVE = _parse_keep_alive(
+    os.getenv("OLLAMA_CHARACTER_KEEP_ALIVE", "0").strip()
+)
 # Выгружать ли общую модель перед ответом персонажу.
 #
 # Нужно только на одной видеокарте: общая модель закреплена, вторая не
