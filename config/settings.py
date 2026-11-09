@@ -420,6 +420,20 @@ OLLAMA_NUM_CTX = int(os.getenv("OLLAMA_NUM_CTX", "8192"))
 OLLAMA_CHARACTER_MODEL = os.getenv("OLLAMA_CHARACTER_MODEL", "").strip()
 # Выгружать модель персонажа сразу после ответа: соседи ждут общую модель.
 OLLAMA_CHARACTER_KEEP_ALIVE = os.getenv("OLLAMA_CHARACTER_KEEP_ALIVE", "0").strip()
+# Выгружать ли общую модель перед ответом персонажу.
+#
+# Нужно только на одной видеокарте: общая модель закреплена, вторая не
+# помещается, и без выгрузки запрос висит до таймаута (так Семён молчал
+# 8 ноября). На двух картах этого делать нельзя — выгрузка лишит общей модели
+# соседей без всякой пользы: 8B и 14B мирно живут на разных картах.
+OLLAMA_CHARACTER_UNLOAD_SHARED = os.getenv("OLLAMA_CHARACTER_UNLOAD_SHARED", "0") == "1"
+# Модель для ответов Семёна гостям. Пусто — общая. С двумя картами можно
+# поставить 14B: она держится на второй карте и отвечает быстрее, чем 8B
+# на одной.
+OLLAMA_BARTENDER_MODEL = os.getenv("OLLAMA_BARTENDER_MODEL", "").strip()
+# Модель для реплик птицы. Пусто — общая. Скорость здесь не важна: реплика
+# раз в час с лишним.
+BIRD_MODEL = os.getenv("BIRD_MODEL", "").strip()
 OLLAMA_TEMPERATURE = float(os.getenv("OLLAMA_TEMPERATURE", "0.5"))
 OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "120"))
 BARTENDER_RESPONSE_MAX_LENGTH = int(

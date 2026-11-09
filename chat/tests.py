@@ -4257,6 +4257,43 @@ class ModelUnloadTests(TestCase):
         with patch("chat.services.ollama.urlopen", side_effect=OSError("нет ollama")):
             unload_model("qwen3:8b")  # не должно поднять исключение
 
+    def test_two_cards_do_not_unload_the_shared_model(self):
+        """С двумя картами модели живут рядом: выгрузка лишняя и вредная."""
+        import json
+        from unittest.mock import patch
+
+        from chat.services.bartender_context import BIRD_LABEL
+
+        calls = []
+
+        def fake_urlopen(request, timeout=None):
+            body = json.loads(request.data)
+            calls.append(body)
+
+            class Response:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc):
+                    return False
+
+                def read(self):
+                    return b'{"message": {"content": "\u041e\u0442\u0432\u0435\u0442"}}'
+
+            return Response()
+
+        with override_settings(
+            OLLAMA_MODEL="qwen3:8b",
+            OLLAMA_CHARACTER_MODEL="qwen3:14b",
+            OLLAMA_CHARACTER_UNLOAD_SHARED=False,
+        ):
+            with patch("chat.services.bartender.urlopen", side_effect=fake_urlopen):
+                with patch("chat.services.ollama.urlopen", side_effect=fake_urlopen):
+                    bartender.reply(text="Проверка", current_author=BIRD_LABEL)
+
+        unload_calls = [c for c in calls if c.get("keep_alive") == 0 and "messages" not in c]
+        self.assertEqual(unload_calls, [])
+
     def test_character_reply_unloads_the_shared_model(self):
         import json
         from unittest.mock import patch
@@ -4284,6 +4321,7 @@ class ModelUnloadTests(TestCase):
         with override_settings(
             OLLAMA_MODEL="qwen3:8b",
             OLLAMA_CHARACTER_MODEL="qwen3:14b",
+            OLLAMA_CHARACTER_UNLOAD_SHARED=True,
         ):
             with patch("chat.services.bartender.urlopen", side_effect=fake_urlopen):
                 with patch("chat.services.ollama.urlopen", side_effect=fake_urlopen):
@@ -4292,3 +4330,60 @@ class ModelUnloadTests(TestCase):
         unload_calls = [c for c in calls if c.get("keep_alive") == 0 and "messages" not in c]
         self.assertTrue(unload_calls, "общая модель должна выгружаться перед второй")
         self.assertEqual(unload_calls[0]["model"], "qwen3:8b")
+
+
+class BartenderModelChoiceTests(TestCase):
+    """На двух картах и гость, и птица могут идти на 14B."""
+
+    def _payload(self, *, author, bartender_model="", character_model=""):
+        import json
+        from unittest.mock import patch
+
+        captured = {}
+
+        def fake_urlopen(request, timeout=None):
+            captured.update(json.loads(request.data))
+
+            class Response:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc):
+                    return False
+
+                def read(self):
+                    return b'{"message": {"content": "\\u041e\\u0442\\u0432\\u0435\\u0442"}}'
+
+            return Response()
+
+        overrides = {
+            "OLLAMA_MODEL": "qwen3:8b",
+            "OLLAMA_BARTENDER_MODEL": bartender_model,
+            "OLLAMA_CHARACTER_MODEL": character_model,
+            "OLLAMA_CHARACTER_UNLOAD_SHARED": False,
+        }
+        with override_settings(**overrides):
+            with patch("chat.services.bartender.urlopen", side_effect=fake_urlopen):
+                bartender.reply(text="Проверка", current_author=author)
+        return captured
+
+    def test_guest_uses_bartender_model_when_set(self):
+        payload = self._payload(author="guest_1", bartender_model="qwen3:14b")
+
+        self.assertEqual(payload["model"], "qwen3:14b")
+
+    def test_guest_falls_back_to_shared_model(self):
+        payload = self._payload(author="guest_1")
+
+        self.assertEqual(payload["model"], "qwen3:8b")
+
+    def test_character_keeps_its_own_model(self):
+        from chat.services.bartender_context import BIRD_LABEL
+
+        payload = self._payload(
+            author=BIRD_LABEL,
+            bartender_model="qwen3:8b",
+            character_model="qwen3:14b",
+        )
+
+        self.assertEqual(payload["model"], "qwen3:14b")

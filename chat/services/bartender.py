@@ -102,14 +102,18 @@ class BartenderService:
         character_reply = current_author in CHARACTER_PROMPTS
         generation = dict(CHARACTER_GENERATION) if character_reply else {}
         if character_reply and settings.OLLAMA_CHARACTER_MODEL:
-            # Отдельная модель персонажа: выгружаем сразу после ответа, чтобы
-            # не держать общую модель вытесненной у соседей.
             generation["model"] = settings.OLLAMA_CHARACTER_MODEL
             generation["keep_alive"] = settings.OLLAMA_CHARACTER_KEEP_ALIVE
-            if settings.OLLAMA_CHARACTER_MODEL != settings.OLLAMA_MODEL:
-                # Общая модель закреплена в видеопамяти: без явной выгрузки
-                # вторая не помещается, и запрос висит до таймаута.
-                unload_model(settings.OLLAMA_MODEL)
+        elif settings.OLLAMA_BARTENDER_MODEL:
+            # Гостям — модель бармена, если она задана отдельно.
+            generation["model"] = settings.OLLAMA_BARTENDER_MODEL
+        if (
+            generation.get("model")
+            and generation["model"] != settings.OLLAMA_MODEL
+            and settings.OLLAMA_CHARACTER_UNLOAD_SHARED
+        ):
+            # Только для одной карты: иначе вторая модель не помещается.
+            unload_model(settings.OLLAMA_MODEL)
         try:
             content = self._request_reply(messages, **generation)
 
@@ -128,7 +132,9 @@ class BartenderService:
                                 f"Ответ: {content}"
                             ),
                         },
-                    ]
+                    ],
+                    model=generation.get("model"),
+                    keep_alive=generation.get("keep_alive"),
                 )
 
             if self._needs_language_retry(content):
