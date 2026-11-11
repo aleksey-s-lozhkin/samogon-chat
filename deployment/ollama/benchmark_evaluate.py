@@ -14,7 +14,7 @@ PROJECT_DIR = SCRIPT_DIR.parents[1]
 if str(PROJECT_DIR) not in sys.path:
     sys.path.insert(0, str(PROJECT_DIR))
 
-from chat.services.language import HAN_CHARACTERS, CYRILLIC_CHARACTERS
+from chat.services.language import CYRILLIC_CHARACTERS, HAN_CHARACTERS, LETTERS
 
 
 DEFAULT_SCENARIOS = SCRIPT_DIR / "benchmark-dialogues.json"
@@ -77,7 +77,7 @@ def evaluate(record, scenario):
         failures.append("markdown")
     if SPEAKER_PREFIX.search(text):
         failures.append("speaker_prefix")
-    if HAN_CHARACTERS.search(text) or not CYRILLIC_CHARACTERS.search(text):
+    if HAN_CHARACTERS.search(text) or (LETTERS.search(text) and not CYRILLIC_CHARACTERS.search(text)):
         failures.append("wrong_language")
     if not first_letter_is_upper(text):
         failures.append("lowercase_start")
