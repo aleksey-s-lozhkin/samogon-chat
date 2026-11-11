@@ -13,10 +13,21 @@ import re
 # «Проверь порт сервера。」 состоит из кириллицы и всё же не является русской.
 HAN_CHARACTERS = re.compile(r"[\u3000-\u303f\u3400-\u9fff\uff00-\uffef]")
 CYRILLIC_CHARACTERS = re.compile(r"[А-Яа-яЁё]")
+#: Любые буквы: латиница и прочие алфавиты.
+LETTERS = re.compile(r"[^\W\d_]", re.UNICODE)
 
 
 def needs_language_retry(content: str) -> bool:
-    """Ответ без русской речи или с китайскими символами просим переписать."""
-    return bool(HAN_CHARACTERS.search(content)) or not bool(
-        CYRILLIC_CHARACTERS.search(content)
-    )
+    """Ответ без русской речи или с китайскими символами просим переписать.
+
+    Ответ, в котором нет букв вовсе, — не «чужой язык»: на просьбу назвать
+    число «7» это правильный и единственный ответ. Раньше такие ответы уходили
+    на повтор и заканчивались «сбоем разговорника».
+    """
+    if HAN_CHARACTERS.search(content):
+        return True
+    if CYRILLIC_CHARACTERS.search(content):
+        return False
+    # Буквы есть, но ни одной русской — значит, ответ действительно на другом
+    # языке. Если букв нет (число, знак, эмодзи) — повторять нечего.
+    return bool(LETTERS.search(content))
