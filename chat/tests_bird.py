@@ -682,7 +682,14 @@ class BirdScheduledPathTests(TestCase):
         """Команда по расписанию обязана говорить, а не молчать всегда."""
         output = StringIO()
 
-        call_command("bird_chatter", stdout=output)
+        # Время фиксируем: иначе днём тест говорит, а в тихие часы молчит —
+        # и падает каждое утро между часом и восемью.
+        from datetime import datetime, timezone as dt_timezone
+        from unittest.mock import patch
+
+        fixed = datetime(2026, 11, 2, 9, 0, tzinfo=dt_timezone.utc)
+        with patch("chat.services.bird.timezone.now", return_value=fixed):
+            call_command("bird_chatter", stdout=output)
 
         self.assertIn("Сказала:", output.getvalue())
         self.assertEqual(Message.objects.filter(room=self.room).count(), 1)

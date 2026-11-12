@@ -4458,3 +4458,64 @@ class RepeatRequestGuardrailTests(TestCase):
         from chat.services.bartender_guardrails import guardrail_reply
 
         self.assertIsNone(guardrail_reply("повтори, что ты сказал про git"))
+
+
+class RandomNumberTests(TestCase):
+    """Настоящий рандом вместо «самого вероятного числа».
+
+    Модель на просьбу о случайном числе выдаёт самое частое в обучающих
+    данных: 7 для 1–10, 17 для 1–30, 73 для 1–100. Проверено десятью
+    прогонами. Поэтому число выбирает сервер.
+    """
+
+    def test_range_is_parsed(self):
+        from chat.services.randomness import parse_range
+
+        self.assertEqual(parse_range("назови случайное число от 1 до 30"), (1, 30))
+        self.assertEqual(parse_range("случайное число 1-100"), (1, 100))
+        self.assertEqual(parse_range("число наугад от 5 до 5"), (5, 5))
+
+    def test_reversed_range_is_fixed(self):
+        from chat.services.randomness import parse_range
+
+        self.assertEqual(parse_range("случайное число от 30 до 1"), (1, 30))
+
+    def test_non_random_requests_are_not_ours(self):
+        from chat.services.randomness import parse_range
+
+        self.assertIsNone(parse_range("назови любое слово"))
+        self.assertIsNone(parse_range("сколько будет 2+2"))
+        self.assertIsNone(parse_range("случайное число"))
+
+    def test_absurd_range_is_refused(self):
+        from chat.services.randomness import parse_range
+
+        self.assertIsNone(parse_range("случайное число от 1 до 10000000"))
+
+    def test_draw_stays_inside_the_range(self):
+        import random
+
+        from chat.services.randomness import draw
+
+        generator = random.Random(42)
+        numbers = {draw(1, 30, rng=generator) for _ in range(200)}
+
+        self.assertTrue(numbers)
+        self.assertGreaterEqual(min(numbers), 1)
+        self.assertLessEqual(max(numbers), 30)
+        self.assertGreater(len(numbers), 1, "число не должно быть одним и тем же")
+
+    def test_reply_does_not_ask_the_model(self):
+        from unittest.mock import patch
+
+        with patch("chat.services.bartender.urlopen") as model_call:
+            reply = bartender.reply(
+                text="назови случайное число от 1 до 30",
+                current_author="guest_1",
+            )
+
+        model_call.assert_not_called()
+        self.assertRegex(reply.text, r"\b\d+\b")
+        number = int(reply.text.split()[0].strip(".,"))
+        self.assertGreaterEqual(number, 1)
+        self.assertLessEqual(number, 30)

@@ -13,6 +13,7 @@ from django.contrib.auth import get_user_model
 
 from chat.services.bartender_context import BIRD_LABEL, BartenderContextEntry
 from chat.services.bartender_guardrails import guardrail_reply
+from chat.services import randomness
 from chat.services.language import needs_language_retry
 from chat.services.ollama import THINKING_TRACE, chat_payload, unload_model
 
@@ -93,6 +94,13 @@ class BartenderService:
         if guarded_reply:
             logger.info("bartender_guardrail_reply rule=%s", guarded_reply.rule)
             return BartenderReply(text=guarded_reply.text)
+
+        # Случайное число выбирает сервер, а не модель: модель выдаёт самое
+        # вероятное, и «случайное 17» выдаёт в ней калькулятор.
+        random_answer = randomness.answer(prompt)
+        if random_answer:
+            logger.info("bartender_random_number")
+            return BartenderReply(text=random_answer)
 
         messages = self._build_messages(
             prompt=prompt,
