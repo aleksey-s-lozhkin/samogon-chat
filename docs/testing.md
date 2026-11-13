@@ -9,6 +9,25 @@ poetry run python manage.py spectacular --validate
 poetry run python manage.py test
 ```
 
+## Покрытие
+
+CI считает покрытие на каждом pull request и падает ниже **85%** (порог задан в
+`pyproject.toml`, `[tool.coverage.report]`). Считается только рабочий код:
+миграции, management-команды, сами тесты и точки входа вроде `wsgi` исключены.
+
+Локально — те же три шага, что и в CI. Порядок важен: `--parallel` запускает
+тесты в отдельных процессах, поэтому данные сначала собираются, потом
+объединяются, и только затем строится отчёт.
+
+```bash
+poetry run coverage run --concurrency=multiprocessing manage.py test --parallel 2
+poetry run coverage combine
+poetry run coverage report --sort=cover
+```
+
+`--sort=cover` показывает сверху самые слабые модули — с них и начинать.
+Текущий уровень и разбор слабых мест: в [статусе релиза](release-status.md).
+
 Проверку production-настроек удобно запускать отдельно: она требует явных
 секретов и по умолчанию запрещает тихий откат на SQLite.
 

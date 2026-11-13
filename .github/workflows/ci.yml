@@ -53,6 +53,11 @@ jobs:
       - name: Install dependencies
         run: pip install --no-cache-dir "poetry==2.4.1" && poetry install --no-interaction --no-root --only main
 
+      # coverage не нужен в образе, поэтому он в dev-группе; здесь ставим его
+      # явно и закреплённой версией — как pip и poetry выше.
+      - name: Install coverage
+        run: poetry run pip install --no-cache-dir "coverage==7.17.2"
+
       - name: Check Django configuration
         env:
           DEBUG: "0"
@@ -79,8 +84,16 @@ jobs:
           poetry run python manage.py collectstatic --noinput --clear
           poetry run python manage.py test config.test_admin.AdminDiagnosticsTests.test_admin_index_renders
 
-      - name: Run tests
-        run: poetry run python manage.py test --parallel 2
+      - name: Run tests with coverage
+        run: poetry run coverage run --concurrency=multiprocessing manage.py test --parallel 2
+
+      - name: Combine coverage data
+        run: poetry run coverage combine
+
+      # Порог 85% — защита от падения покрытия после крупных правок.
+      # Значение ниже проверяется в pyproject.toml ([tool.coverage.report]).
+      - name: Report coverage
+        run: poetry run coverage report
 
       - name: Check release audit tools
         run: |
