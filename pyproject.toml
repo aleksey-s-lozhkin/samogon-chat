@@ -26,5 +26,29 @@ build-backend = "poetry.core.masonry.api"
 
 [dependency-groups]
 dev = [
-    "playwright (>=1.62.0,<2.0.0)"
+    "playwright (>=1.62.0,<2.0.0)",
+    "coverage (>=7.17.0,<8.0.0)",
 ]
+
+# Покрытие считается только по рабочему коду: миграции, management-команды,
+# сами тесты и точки входа вроде wsgi измерять бессмысленно — они либо
+# генерируются, либо запускаются один раз.
+[tool.coverage.run]
+source = ["chat", "users", "config"]
+parallel = true
+concurrency = ["multiprocessing"]
+omit = [
+    "*/migrations/*",
+    "*/management/*",
+    "*/tests*.py",
+    "*/test_*.py",
+    "*_test.py",
+    "config/asgi.py",
+    "config/wsgi.py",
+    "config/settings_smoke.py",
+]
+
+[tool.coverage.report]
+# Ниже 85% — PR не проходит: это защита от падения после крупных правок.
+fail_under = 85
+show_missing = false
